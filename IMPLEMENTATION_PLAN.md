@@ -11,16 +11,22 @@ disciplined without burning the token pool.
 
 ## 1. Where this stands
 
+> **Updated 2026-09-16.** Phase 0 and TAP-7739 are done. See §9 for what changed and
+> `LESSONS_LEARNED.md` for the things that cost time.
+
 **Shipped.** A FastAPI + PostgreSQL API with events, invitations, token-based invite
 links and RSVPs. Alembic migrations apply and roll back. CI runs ruff, `mypy --strict`
 and pytest against a real Postgres and is green.
+
+**Shipped 2026-09-16.** The `.claude/` harness (§3), and **TAP-7739** — per-person
+`attendees`, a six-row `segments` schedule, an `attendance` join, `rsvp_opens_at` and a
+`timezone` on `events`, and a thin `rsvps`. On a branch, green, **not yet merged**.
 
 **Designed, not built.** Three-page guest site (Welcome → The Wedding → RSVP), mobile
 and web, in a Design canvas. Direction settled: server-rendered Jinja2 + htmx 2.x +
 Tailwind, no Node toolchain.
 
-**Not started.** Every template, host authentication, and the schema the real event
-needs.
+**Not started.** Every template, and host authentication.
 
 **The immovable fact.** The wedding is **Sunday 13 February 2028 at 3pm**. Invitations
 go out ~6–8 weeks ahead; save-the-dates 6–12 months ahead. RSVP deadline 15 December
@@ -47,17 +53,17 @@ is safe *only* because the review instance runs on invented guests.
 > unauthenticated until Phase 2. `GET /events/{id}/guests` returns every invite token to
 > anyone with the URL. Real names do not touch the box until TAP-7725 lands.
 
-### Phase 0 — Harness (half a day)
-Set up `.claude/` for this repo. Section 3. Do this first; everything after is cheaper.
+### Phase 0 — Harness (half a day) — **DONE 2026-09-16**
+`.claude/` exists. Section 3, with the corrections noted there.
 
 ### Phase 1 — The thing people see (M2)
 | Issue | Why it is here |
 | --- | --- |
-| **TAP-7739** Schema redesign | Blocks the form's shape. Per-person attendees, drop meal choice, add `rsvp_opens_at`, add day-segments. Do it before building the form twice. |
-| **TAP-7728** Guest invite page | Jinja + htmx 2.x + Tailwind. Three pages. 18px body, 44px targets, native controls. |
-| **TAP-7729** RSVP window | Enforce both ends: `rsvp_opens_at` and `rsvp_deadline`. |
-| **TAP-7740** DNS → Cloudflare | Blocks TAP-7738. **Touches the live NLT Labs site — needs Bill's explicit go-ahead.** Quick Tunnel is the no-risk fallback. |
-| **TAP-7738** Review instance | Cloudflare Tunnel off the dev box. Fake data, `noindex`, visibly a draft. |
+| ~~**TAP-7739** Schema redesign~~ | **DONE 2026-09-16**, branch `tap-7739-…`, gate green, **not yet merged**. Per-person `attendees`, `segments`, `attendance`, `rsvp_opens_at`, `events.timezone`; meal choice dropped; `rsvps` thinned. |
+| **TAP-7728** Guest invite page | **Next.** Jinja + htmx 2.x + Tailwind. Three pages. 18px body, 44px targets, native controls. |
+| **TAP-7729** RSVP window | **Mostly absorbed by TAP-7739** — the API enforces both ends and reports `phase`. What is left is template behavior, which falls out of TAP-7728. Consider folding it in. |
+| **TAP-7740** DNS → Cloudflare | Blocks TAP-7738. **Far riskier than first written — the zone carries live company email. See §7.** |
+| **TAP-7738** Review instance | Cloudflare Tunnel off the dev box. Fake data, `noindex`, visibly a draft. **Take the Quick Tunnel path: it needs no DNS change at all, so it does not wait on TAP-7740.** `cloudflared` is not yet installed on this box. |
 
 ### Phase 2 — Make it safe (M1)
 `TAP-7725` host auth → `TAP-7726` ownership scoping (blocked by 7725) → `TAP-7727`
@@ -81,7 +87,9 @@ delivery and reminders.
 
 ## 3. The Claude harness for this repo
 
-There is no `.claude/` directory yet. Create one. The rule of thumb:
+`.claude/` now exists (built 2026-09-16). What follows is the intended design plus the
+corrections found while building it — read the callouts, not just the code blocks. The
+rule of thumb:
 
 | Need | Use |
 | --- | --- |
@@ -104,8 +112,9 @@ FastAPI + PostgreSQL. Server-rendered Jinja2 + htmx 2.x + Tailwind. No Node tool
 ## Commands
 - Postgres: `docker compose up -d db`  (host port 5434, not 5432)
 - Gate: `.venv/bin/ruff check . && .venv/bin/ruff format --check . && \
-         .venv/bin/mypy app migrations tests && .venv/bin/pytest -q`
+         .venv/bin/mypy app migrations scripts tests && .venv/bin/pytest -q`
 - Migrations: `.venv/bin/alembic upgrade head` / `downgrade base`
+- Seed fake review data: `.venv/bin/python -m scripts.seed_review_data`
 
 ## Invariants — do not break these
 - `guests.invite_token` is in people's inboxes once sent. NEVER re-key or re-issue a
@@ -115,7 +124,7 @@ FastAPI + PostgreSQL. Server-rendered Jinja2 + htmx 2.x + Tailwind. No Node tool
   targets, real `<input>`/`<label>`, no `role=` on divs. The guest list skews old.
 - htmx is pinned to 2.x. htmx 4 made attribute inheritance explicit and fails SILENTLY.
 - No per-plate meal choice. Dietary tags only. Headcounts are per DAY, not per plate.
-- Generated Alembic migrations must be `ruff format`ed or CI fails.
+- Generated Alembic migrations need `ruff check --fix` AND `ruff format`, or CI fails.
 - American English. This is a Texas wedding.
 
 ## Never
@@ -170,7 +179,12 @@ You build the guest site. Non-negotiable:
 name: std-review
 description: Adversarial correctness and security review before merge. Read-only.
 tools: Read, Grep, Glob, Bash
+# The allowlist alone did NOT hold — the agent registered with Write and Edit anyway.
+# This denylist overrides `tools`, so "read-only" is enforced rather than asked for.
+disallowedTools: Write, Edit, NotebookEdit
 model: opus
+skills: [security-review]
+memory: project
 ---
 Read-only. You do not fix; you find. Priorities, in order:
 1. Anything that leaks an invite token to an unauthenticated caller.
@@ -231,7 +245,17 @@ Project hooks **merge with** the user-level hooks already configured
 (continuous-learning-v2, linear, artifact-render-check). They do not replace them.
 
 The highest-value hook for this repo comes straight from a CI failure it already had —
-Alembic's generated migrations do not satisfy ruff:
+Alembic's generated migrations do not satisfy ruff.
+
+> **The first version of this hook was wrong, and it is worth understanding why.** It ran
+> `ruff format` only. A freshly generated Alembic migration fails `ruff check` with **7
+> errors** — `UP035` (`typing.Sequence`), `UP007` (`Union[...]`), and import sorting.
+> `ruff format` fixes **none** of them; they are lint rules, not formatting. The hook
+> would have run happily on every Bash call while CI kept failing for exactly the
+> original reason. It needs `ruff check --fix` *and* `ruff format`. It also uses
+> `${CLAUDE_PROJECT_DIR}` rather than relative paths, because a hook's working
+> directory is not guaranteed, and does not send stderr to `/dev/null` — a silently
+> failing formatter is how the CI failure comes back.
 
 ```json
 {
@@ -241,7 +265,7 @@ Alembic's generated migrations do not satisfy ruff:
         "matcher": "Bash",
         "hooks": [{
           "type": "command",
-          "command": "if [ -d migrations/versions ]; then .venv/bin/ruff format -q migrations/versions/ 2>/dev/null; fi"
+          "command": "if [ -d \"${CLAUDE_PROJECT_DIR}/migrations/versions\" ] && [ -x \"${CLAUDE_PROJECT_DIR}/.venv/bin/ruff\" ]; then \"${CLAUDE_PROJECT_DIR}/.venv/bin/ruff\" check --fix -q \"${CLAUDE_PROJECT_DIR}/migrations/versions/\"; \"${CLAUDE_PROJECT_DIR}/.venv/bin/ruff\" format -q \"${CLAUDE_PROJECT_DIR}/migrations/versions/\"; fi"
         }]
       }
     ]
@@ -361,12 +385,36 @@ A change is not done until all of these hold. No exceptions, no suppressions.
 | Risk | Mitigation |
 | --- | --- |
 | Real guest data on the unauthenticated review box | Fake data until TAP-7725. Stated on TAP-7738. |
-| DNS move breaks the live NLT Labs site | Separate issue (TAP-7740), own change window, Bill's explicit go-ahead. Quick Tunnel fallback needs no DNS change. |
+| **DNS move breaks live company EMAIL, not just the website** | The bigger risk by far, and not what TAP-7740 was written against. See §7.1. Quick Tunnel needs no DNS change and sidesteps this entirely. |
 | htmx 4 idioms in 2.x templates, failing silently | Pin in CLAUDE.md and in the std-templates agent. Assert the version in the base template. |
 | Invite tokens already mailed, then the schema changes | Never re-key `guests`. The whole schema design hangs off this. |
 | A dev-box outage during the RSVP window | Phase 4 moves to managed hosting before real invitations go out. |
 | Token pool exhausted by fan-outs | §4. Workflows are the exception, not the tool. |
 | Losing the guest list | Managed Postgres with a **tested** restore — TAP-7733's highest-value line. |
+
+### 7.1 TAP-7740 is riskier than it was written to be
+
+TAP-7740 reads as "moving DNS might break the company website". The `nltlabs.ai` zone
+was checked live on 2026-09-16 and carries considerably more than a website: a full
+Microsoft 365 mail deployment behind a filtering provider, the client-autoconfiguration
+and Teams records that go with it, and more Render-backed hostnames than any single
+document lists. `nltlabs.com` is a separate zone on different nameservers with its own
+mail.
+
+**Mail is the part that bites.** A broken website is obvious within seconds. Misrouted
+mail can be invisible for hours, is not recoverable, and the zone's DMARC policy is
+`quarantine` — so authentication failures are silently held rather than bounced, and
+nobody gets a warning.
+
+> **The record-level inventory lives on TAP-7740 in Linear, not here.** This repo is
+> public, and NLT Labs' mail configuration does not belong in a wedding site's history.
+> Whoever picks that issue up will find the full table, and should re-run it live anyway
+> rather than trusting a months-old snapshot.
+
+**Therefore:** do not attach TAP-7740 to this project's critical path. Take the Quick
+Tunnel route for TAP-7738 — it needs no DNS change at all. If the zone does move later,
+it is its own project with a full record export, a mail-flow test and a rollback window,
+not a step in a wedding site's build.
 
 ---
 
@@ -382,4 +430,80 @@ Carry these into the next session:
 4. **Airport shuttle** is a marked placeholder on both travel pages.
 5. **Photography** — every image is an openly-licensed placeholder. The hero is someone
    else's wedding. A Shore Thing's photo slot is empty.
-6. **Timezone** for the RSVP window is undecided; `events` has no timezone column.
+6. ~~**Timezone** for the RSVP window is undecided; `events` has no timezone column.~~
+   **Resolved in TAP-7739.** `events.timezone` holds an IANA name (`America/Chicago`);
+   `rsvp_opens_at` and `rsvp_deadline` are both `timestamptz`. A date deadline means the
+   end of that day *in the event's zone*. Postgres `timestamptz` stores UTC and discards
+   the zone, which is why the IANA name is kept in its own column.
+7. **Registry and FAQ pages** — see items 1 and 2; still not in the backlog. If they are
+   wanted, they are template work and belong with TAP-7728.
+
+---
+
+## 8.1 Deployment knowledge from the other projects on this box
+
+Researched 2026-09-16 against `~/code/NLTWeb` and the other `render.yaml` files. Useful
+for TAP-7733, and it removes some guesswork from the "Railway or Render" question.
+
+- **There is already a Render workspace**, with `RENDER_API_KEY` as the documented
+  credential (see `NLTWeb/.env.example`; the real value is in that repo's untracked
+  `.env` and in Render's dashboard — **never copy it into this public repo**).
+- **House style:** `type: web`, `region: oregon`, `plan: starter` (paid — the README's
+  objection is to Render's *free* tier, not to Render), with a `healthCheckPath`.
+  `/health` already exists here and suits that.
+- **Render does not install Python dependencies implicitly.** NLTWeb learned this in
+  production: a new `import` broke the live site while GitHub Actions stayed green,
+  because CI runs `uv sync` and Render did not. **The build command must install
+  dependencies itself** — `uv sync --frozen && …`. This is the single most valuable
+  thing to carry into TAP-7733.
+- **No project on this box uses Render managed Postgres yet** — no `databases:` block
+  exists anywhere. SaveTheDate would be the first, so budget time for it, and remember
+  that TAP-7733's real deliverable is a **tested restore**, not a provisioned database.
+- **`render.yaml` is documentation, not a control surface** in this account — there are
+  no Blueprints, every service is dashboard-managed. NLTWeb keeps
+  `scripts/check-render-drift.mjs` to stop the file lying. Worth copying that habit
+  rather than assuming a committed YAML is what is running.
+- **`cloudflared` is not installed on this box**, and there is no `~/.cloudflared`. That
+  is the first step of TAP-7738, not a detail.
+
+---
+
+## 9. What changed on 2026-09-16
+
+Recorded so a later session does not re-derive it. The reasoning behind each is in
+`LESSONS_LEARNED.md`.
+
+**Shipped**
+
+- Phase 0: `.claude/` — CLAUDE.md, three subagents, two slash commands, the hook.
+- TAP-7739 on branch `tap-7739-schema-redesign-…`, gate green, **unmerged**.
+
+**Corrections to this plan**
+
+1. **The §3.4 hook did not do its job.** `ruff format` alone cannot fix what fails
+   `ruff check` on a generated migration. Fixed in §3.4.
+2. **`tools:` on a subagent is not a hard allowlist.** `std-review` declared
+   `tools: Read, Grep, Glob, Bash` and registered *with `Write` and `Edit`*. Its whole
+   contract is read-only. `disallowedTools` overrides `tools`; §3.2 now uses it. This is
+   the plan's own rule — a rule that must always hold needs a mechanism, not prose.
+3. **TAP-7740's risk was understated.** The zone carries live Microsoft 365 mail behind
+   Proofpoint. New §7.1.
+4. **TAP-7729 is mostly already built**, because TAP-7739's own "Done when" required
+   both ends of the RSVP window.
+
+**Changes to the repo's own gates**
+
+- CI ran `alembic upgrade head` only, while the definition of done in §6 requires roll
+  back. CI now runs the full round trip.
+- `mypy` now covers `scripts` as well as `app migrations tests`.
+- The test suite builds its schema with **Alembic, not `create_all`** — the TAP-7739
+  consistency trigger is invisible to SQLAlchemy metadata, so `create_all` would have
+  given the suite a schema missing the invariant it exists to prove.
+
+**Harness notes for the next session**
+
+- Files written to `.claude/` mid-session register after a short delay. The very first
+  `/std-issue` call failed with "Unknown skill"; it worked minutes later.
+- `continuous-learning-v2` is **already installed** at user level (`PreToolUse` and
+  `PostToolUse`, matcher `*`) and registered this project as `2ec864647abf` on
+  2026-09-16. Nothing to install. It had extracted zero instincts as of that date.

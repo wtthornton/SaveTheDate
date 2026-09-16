@@ -1,0 +1,209 @@
+# Lessons learned
+
+Things that cost time on SaveTheDate, written down so the next session does not pay for
+them twice. Newest section first within each heading.
+
+This file is for judgment calls and traps. Mechanical facts belong in
+`IMPLEMENTATION_PLAN.md`; always-on rules belong in `.claude/CLAUDE.md`.
+
+---
+
+## 1. The Claude harness
+
+### `tools:` on a subagent is not a hard allowlist
+
+`.claude/agents/std-review.md` declared `tools: Read, Grep, Glob, Bash`. It registered
+with **`Write` and `Edit` as well**. Its entire contract is *"Read-only. You do not fix;
+you find."* — and that contract was prose, not a guarantee.
+
+`disallowedTools` is documented as a denylist that **overrides** `tools`, so the fix is:
+
+```yaml
+tools: Read, Grep, Glob, Bash
+disallowedTools: Write, Edit, NotebookEdit
+```
+
+**The general lesson** is the one already in the plan's own rule table: a rule that must
+always hold needs a mechanism, not a description. An allowlist you did not verify is a
+description. Check what an agent actually registered with before trusting its contract.
+
+### A hook can run happily and still not do its job
+
+The plan specified a `PostToolUse` hook running `ruff format` on `migrations/versions/`,
+to fix a CI failure Alembic had already caused once. It would not have worked. A freshly
+generated Alembic migration fails `ruff check` with **7 errors** — `UP035`
+(`typing.Sequence`), `UP007` (`Union[...]`), and import sorting. **`ruff format` fixes
+none of them**; they are lint rules, not formatting. The hook would have fired on every
+Bash call, reported success, and CI would have kept failing for exactly the original
+reason.
+
+It needs `ruff check --fix` *and* `ruff format`. Two related points:
+
+- Use `${CLAUDE_PROJECT_DIR}`, not relative paths. A hook's working directory is not
+  guaranteed, and a hook that silently no-ops from the wrong directory is worse than no
+  hook.
+- Do not send the formatter's stderr to `/dev/null`. The plan's snippet had
+  `2>/dev/null`. A silently failing formatter is precisely how the original CI failure
+  comes back.
+
+### Files written to `.claude/` register on a delay
+
+The first `/std-issue` call failed with `Unknown skill: std-issue` moments after the file
+was written; it worked a few minutes later. The same applied to the subagents. **Do not
+conclude the harness is broken** — and do not rewrite a working file because it has not
+appeared yet. Assume a short delay, and verify before claiming either way.
+
+---
+
+## 2. Database and migrations
+
+### Tests must run the migration when DDL lives outside SQLAlchemy metadata
+
+TAP-7739 enforces an invariant with a Postgres **constraint trigger**. Triggers are
+invisible to SQLAlchemy's metadata, so `Base.metadata.create_all(engine)` produces a
+schema **without them**. The suite would have been testing a schema that production does
+not have, and a test could pass while the real database rejected the same write.
+
+`tests/conftest.py` now drops the schema and runs `alembic upgrade head` once per
+session. It is slightly slower and entirely worth it — it also means every test run
+exercises the migration.
+
+**Generalize this:** the moment any schema object is created outside the ORM — trigger,
+function, view, partial index, extension, grant — `create_all` and the migration have
+diverged, and only one of them is what ships.
+
+### A cross-row invariant needs a *deferred* constraint trigger
+
+The rule "`attendees.attending` must agree with the per-segment `attendance` rows" cannot
+be a `CHECK` — it spans rows. A plain `AFTER` trigger does not work either: a single RSVP
+writes the attendee first and its segments immediately after, so the pair is inconsistent
+*mid-transaction* and only correct at `COMMIT`.
+
+```sql
+CREATE CONSTRAINT TRIGGER ...
+AFTER INSERT OR UPDATE ON attendees
+DEFERRABLE INITIALLY DEFERRED
+FOR EACH ROW EXECUTE FUNCTION ...;
+```
+
+Also: on a `DELETE` trigger, `NEW` is unassigned and referencing `NEW.field` raises.
+Branch on `TG_OP` rather than relying on `COALESCE(NEW.x, OLD.x)`.
+
+### A new invariant can make old data unrepresentable
+
+The trigger and the backfill fought each other. Backfilling an existing accepted RSVP
+creates attendees with `attending = true`, but no `segments` exist at migration time, so
+every one of them would violate "attending means attending *something*". The options were
+to lie about the old data (backfill everyone as declined) or to narrow the invariant.
+
+The invariant was narrowed: it is **suspended for an event with no segments**, where
+`attending` stands alone and has nothing to disagree with. That is defensible, but it is
+a real narrowing and it is written down here because it will not be obvious from the
+trigger source alone.
+
+**The general lesson:** when adding a constraint, check it against the data that already
+exists *and* the data the migration itself creates, before writing the backfill.
+
+### `timestamptz` does not store a time zone
+
+It stores UTC and discards the zone. If you need to render or reason in local time — and
+an event with a schedule always does — keep the IANA name in its own column. Hence
+`events.timezone` (`America/Chicago`) alongside `rsvp_opens_at` and `rsvp_deadline`.
+
+Corollary worth remembering when reading raw JSON: the Friday 6pm welcome party
+serializes as `2028-02-12T00:00:00Z`, which *looks* like Saturday. It is correct.
+
+---
+
+## 3. Process
+
+### Read the issue for self-contradiction before building it
+
+TAP-7739's description had a `Revised 2026-09-16` block appended to the top, and the
+older "Proposed schema" section below it was never updated. They disagreed on two
+substantial points: whether `meal_options` existed at all, and whether the `segments`
+table was in scope now or deferred. The title still names meal options, which were cut.
+
+Half a day could have gone into building the wrong half. **When a description has a
+revision block, assume the sections below it are stale**, say which half you are
+building, and ask rather than silently picking.
+
+### Tests that pass on the first run have proved nothing
+
+The TAP-7739 tests and implementation were written together and passed immediately. That
+is not evidence the tests work — only that nothing fails yet. The fix is to break the
+thing on purpose and confirm the right test goes red.
+
+**And the first attempt at that was itself wrong.** Dropping the triggers directly in the
+test database changed nothing, because the session fixture drops the schema and re-runs
+migrations before any test. The test passed and looked like a genuine result. Only
+mutating the **migration source** — the thing the fixture rebuilds *from* — produced a
+real red.
+
+**Generalize:** when mutation-testing, mutate the source of truth, not a downstream copy
+that a fixture will regenerate. And confirm the negative control still passes, or you
+have only proved that everything fails.
+
+### A green CI is not the same as the definition of done
+
+The project's stated definition of done required migrations to apply **and roll back**.
+CI only ran `alembic upgrade head`. The `downgrade` path — the harder half, and the one
+that matters in an incident — had never been exercised by automation. Similarly, `mypy`
+covered `app migrations tests` but not `scripts`, so a new directory would have been an
+unchecked corner.
+
+Read the definition of done against what CI actually runs, not against what it is named.
+
+---
+
+## 4. Deployment and this machine
+
+Researched 2026-09-16 across `~/code`, chiefly `NLTWeb`. Full detail in plan §7.1 and
+§8.1.
+
+### Never put a credential in this repo
+
+`github.com/wtthornton/SaveTheDate` is **public**. Real secrets live in untracked `.env`
+files and in the relevant dashboards. Record *where* a credential lives, never its value.
+This applies to anything written into the plan, this file, or a commit message.
+
+### A domain is not just a website — check what else lives in the zone
+
+TAP-7740 was written as "moving DNS might break the company site". `nltlabs.ai` also
+carries a live Microsoft 365 mail deployment and its client-autoconfiguration records.
+A broken website is obvious in seconds; **misrouted mail is invisible for hours and is
+not recoverable**, and the zone's DMARC policy silently quarantines rather than bounces,
+so nobody gets a warning either.
+
+Before touching any zone, enumerate it live and ask what breaks for each record — not
+just the one you came for. The details are on TAP-7740 in Linear; they are deliberately
+not in this public repo.
+
+### No single document lists all the hostnames
+
+`NLTWeb/docs/DEPLOY.md` documents five hostnames. The `render.yaml` files across `~/code`
+declare eleven across the nltlabs zones. Any zone work needs a **live record export** as
+its inventory, not a doc — and certificate transparency logs will surface hostnames that
+no internal document mentions at all.
+
+### Render does not install your dependencies
+
+NLTWeb learned this in production: a new `import` broke the live site while GitHub
+Actions stayed green, because CI runs `uv sync` and Render did not. **The build command
+must install dependencies itself** (`uv sync --frozen && …`). Carry this into TAP-7733.
+
+Related, from the same repo: `render.yaml` is **documentation, not a control surface** in
+this account — there are no Blueprints and every service is dashboard-managed, so editing
+the file changes nothing about a live deploy. NLTWeb keeps a drift checker to stop the
+file lying. Do not assume committed infrastructure YAML is what is running.
+
+---
+
+## 5. Carry forward
+
+- `continuous-learning-v2` is already installed at user level and registered this project
+  as `2ec864647abf`. It observes tool patterns via hooks; it does not capture judgment
+  calls, which is what this file is for. Both are worth having.
+- The four subagents `~/.claude/agents/ralph.md` delegates to
+  (`ralph-explorer`/`-tester`/`-reviewer`/`-architect`) still **do not exist on disk**.
+  Harmless while Ralph is unused; it will fail the moment it is pointed at this repo.
