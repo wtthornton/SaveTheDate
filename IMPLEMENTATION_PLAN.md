@@ -33,6 +33,7 @@ go out ~6–8 weeks ahead; save-the-dates 6–12 months ahead. RSVP deadline 15 
 | Backlog | TAP-7725 … TAP-7740, 13 issues, 4 milestones |
 | Postgres | host port **5434** (5432/5433 are taken by other local projects) |
 | Hostnames | `invite.nltlabs.ai` (live), `invite-review.nltlabs.ai` (review) |
+| Claude Code | **2.1.258** installed. Feature notes below were checked against 2.1.271+ docs, so verify anything exotic before relying on it. |
 
 ---
 
@@ -180,6 +181,13 @@ Report each finding as: file:line, the defect, and the exact input that breaks i
 Say "no findings" rather than padding.
 ```
 
+**Frontmatter fields worth using beyond the three above** (all verified against current
+docs): `memory: project` gives an agent persistent project-scoped memory across runs;
+`skills: [security-review]` attaches a skill so the agent loads it without being told;
+`isolation: worktree` gives it its own git worktree; `permissionMode`, `maxTurns` and
+`effort` bound it. For `std-review`, attaching `skills: [security-review]` and
+`memory: project` is worth it — it accumulates what it has already flagged.
+
 > **Note a real defect in the existing setup.** `~/.claude/agents/ralph.md` declares
 > `Agent(ralph-explorer, ralph-tester, ralph-reviewer, ralph-architect)` but **none of
 > those four agents exist on disk.** Ralph's delegation will fail. Either create them or
@@ -244,6 +252,12 @@ Alembic's generated migrations do not satisfy ruff:
 Add a second only if it earns its keep: formatting `app/**.py` on Write/Edit. Resist
 more. Hooks run on every matching call and slow everything down.
 
+**Exit codes are the mechanism, and they matter.** A hook returning `0` allows the call,
+`1` warns, and **`2` blocks it and feeds the reason back to Claude.** That is how you
+turn a rule into an actual gate rather than a suggestion — e.g. a `PreToolUse` hook on
+`Bash` that exits 2 if the command would `git push` while the gate is red. Use this
+sparingly; a blocking hook that misfires is infuriating.
+
 ### 3.5 Skills already on this machine
 
 Do not rebuild these — they exist at `~/.claude/skills/`:
@@ -298,9 +312,18 @@ main thread or a single subagent.
 
 ## 5. Teams, multi-session, and Ralph
 
-**Multi-session.** `ListAgents` shows other live Claude sessions on this machine;
-`SendMessage` talks to them. Useful here in one case: a long unattended job (a Phase 4
-deploy, a bulk import run) in one session while design or review continues in another.
+**Two different things share the word "team", and only one of them works today.**
+
+*Agent Teams* — a lead plus named teammates with a shared task list and mailbox — is
+**experimental and disabled by default.** It needs `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1`
+in settings `env`, and it ships with real limitations: in-process teammates cannot be
+resumed, task-list updates lag, shutdown is slow, and teams cannot nest. Not worth
+adopting for this project.
+
+*Cross-session messaging* works now and needs no flag. `ListAgents` shows other live
+Claude sessions on this machine; `SendMessage` talks to them. Useful here in one case: a
+long unattended job (a Phase 4 deploy, a bulk import run) in one session while design or
+review continues in another.
 
 Two rules learned the hard way:
 - **One session owns the repo index at a time.** Two sessions writing the same working
