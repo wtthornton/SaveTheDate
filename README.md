@@ -114,28 +114,38 @@ Interactive docs are then at <http://localhost:8000/docs>.
 
 | Table | What it holds |
 | --- | --- |
-| `events` | The event itself. `event_date` is nullable — a save-the-date can go out before the date is fixed. |
+| `events` | The event itself. `event_date` is nullable — a save-the-date can go out before the date is fixed. `timezone` is an IANA name; `rsvp_opens_at` and `rsvp_deadline` bracket the window the form is live. |
+| `segments` | One row per thing on the schedule — the welcome party, the ceremony, the optional golf round. Headcounts are per segment, because a Friday number is not a Sunday number. Optional items carry `price` (nullable while unconfirmed) and `booking_url`. |
 | `guests` | One row per invitation, not per person. `party_size` is the number of seats the invitation covers ("Alex + guest" is one row with `party_size = 2`). `invite_token` is a 32-byte URL-safe secret. |
-| `rsvps` | At most one per guest. Re-submitting the same invite link updates it in place, so guests can change their mind. |
+| `attendees` | One row per real person under an invitation, with their own `dietary_tags` and `dietary_notes`. This is what lets one person attend while their plus-one declines. |
+| `attendance` | Whether one person is coming to one segment. The row carries an explicit boolean rather than meaning "yes" by existing, so "said no to golf" stays distinct from "never answered about golf". |
+| `rsvps` | At most one per guest, and deliberately thin: `note` and `responded_at`. Its *existence* is what keeps "declined" distinct from "never replied". Re-submitting the same invite link replaces the answer, so guests can change their mind. |
 
-### Redesign pending (TAP-7739)
+There is no per-plate meal choice — dietary tags only, and headcounts are per day
+rather than per main.
 
-Design review found this model cannot carry a real wedding, and the changes land
-before the invite page is built:
+`attendees.attending` ("coming to anything at all") is kept alongside the per-segment
+rows for query convenience, and a deferred constraint trigger keeps the two in step
+rather than trusting the application to.
 
-- **Per-person `attendees`.** `rsvps.party_size = 2` says two people are coming but
-  never who, and cannot hold two meal choices or two allergies. Dietary needs are
-  collected per person, and caterers need per-plate counts. Attendance moves down to
-  the individual, so one person can attend while their plus-one declines.
-- **`meal_options`** per event, as a table rather than free text.
-- **`rsvp_opens_at`** on the event. Save-the-dates go out 6–12 months ahead and
-  invitations 6–8 weeks ahead; without an open date the form is live from day one.
+### The constraint that drives the design
 
-**The constraint that drives the design:** once invites are sent,
-`guests.invite_token` is in people's inboxes. That row can never be re-keyed without
-breaking links already in the wild. So `events` and `guests` stay stable and all future
-change is absorbed by the tables hanging off them — which is also what makes adding
-multiple sub-events later a data migration rather than a schema one.
+Once invites are sent, `guests.invite_token` is in people's inboxes. That row can never
+be re-keyed without breaking links already in the wild. So `events` and `guests` stay
+stable and all change is absorbed by the tables hanging off them. Adding the four-day
+schedule was therefore a data migration rather than a re-keying — no token changed
+value, and a test asserts exactly that.
+
+### Three RSVP phases
+
+Save-the-dates go out 6–12 months ahead and invitations 6–8 weeks ahead, so the form is
+not live the whole time. `GET /invites/{token}` reports which phase the event is in:
+
+| Phase | When | What the guest gets |
+| --- | --- | --- |
+| `before_open` | before `rsvp_opens_at` | the save-the-date, no form |
+| `open` | between the two | the form |
+| `closed` | on or after `rsvp_deadline` | their existing answer, read-only |
 
 ## API
 
@@ -149,8 +159,19 @@ multiple sub-events later a data migration rather than a schema one.
 | `GET` | `/invites/{token}` | What a guest sees: event, their name, their current RSVP |
 | `PUT` | `/invites/{token}/rsvp` | Submit or change an RSVP |
 
-An RSVP is rejected with `422` if it claims more seats than the invitation covers,
-or if it says "attending" while claiming zero seats.
+An RSVP is rejected with `422` if it names more people than the invitation covers, if a
+person is marked attending but is coming to nothing, or if a person is marked not
+attending while coming to something. It is rejected with `403` outside the RSVP window.
+
+### Seeding a review instance
+
+```bash
+.venv/bin/python -m scripts.seed_review_data
+```
+
+Creates the event, the six schedule segments and a handful of **invented** guests,
+printing an invite link for each. Guest data stays fictional until host authentication
+lands (TAP-7725) — until then anyone who can reach the API can read the whole list.
 
 ## Tests
 
