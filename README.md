@@ -100,6 +100,25 @@ Interactive docs are then at <http://localhost:8000/docs>.
 | `guests` | One row per invitation, not per person. `party_size` is the number of seats the invitation covers ("Alex + guest" is one row with `party_size = 2`). `invite_token` is a 32-byte URL-safe secret. |
 | `rsvps` | At most one per guest. Re-submitting the same invite link updates it in place, so guests can change their mind. |
 
+### Redesign pending (TAP-7739)
+
+Design review found this model cannot carry a real wedding, and the changes land
+before the invite page is built:
+
+- **Per-person `attendees`.** `rsvps.party_size = 2` says two people are coming but
+  never who, and cannot hold two meal choices or two allergies. Dietary needs are
+  collected per person, and caterers need per-plate counts. Attendance moves down to
+  the individual, so one person can attend while their plus-one declines.
+- **`meal_options`** per event, as a table rather than free text.
+- **`rsvp_opens_at`** on the event. Save-the-dates go out 6–12 months ahead and
+  invitations 6–8 weeks ahead; without an open date the form is live from day one.
+
+**The constraint that drives the design:** once invites are sent,
+`guests.invite_token` is in people's inboxes. That row can never be re-keyed without
+breaking links already in the wild. So `events` and `guests` stay stable and all future
+change is absorbed by the tables hanging off them — which is also what makes adding
+multiple sub-events later a data migration rather than a schema one.
+
 ## API
 
 | Method | Path | Purpose |
