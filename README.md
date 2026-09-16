@@ -79,7 +79,9 @@ Point the suite at a different database with `TEST_DATABASE_URL`.
 
 ## Known gaps
 
-These are tracked as epics in the Linear project and are deliberately not stubbed out:
+These are tracked as epics in the
+[Linear project](https://linear.app/tappscodingagents/project/savethedate-6d14ff49f534)
+and are deliberately not stubbed out:
 
 - **Host endpoints are unauthenticated.** Anyone who can reach the API can create
   events and read any guest list, including invite tokens. This must be closed
