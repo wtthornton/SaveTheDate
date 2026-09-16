@@ -67,6 +67,24 @@ disqualified for this project on two counts: free Postgres is deleted 30 days af
 creation, and free web services cold-start for 30–60 seconds — fatal for a link a guest
 opens exactly once.
 
+### Hostnames
+
+| Use | Hostname |
+| --- | --- |
+| Guest-facing | `invite.nltlabs.ai` |
+| Review instance | `invite-review.nltlabs.ai` |
+
+`invite` because the site lives through two phases months apart: `rsvp` is wrong while
+it is still a save-the-date, and `savethedate` is wrong once the invitation and RSVP go
+out. An *invitation* is the whole artifact and both are phases of it.
+
+Keep prefixes to a single label. Cloudflare's free Universal SSL wildcard covers
+`*.nltlabs.ai` but not `a.b.nltlabs.ai`, so use hyphens rather than a second dot.
+
+`nltlabs.ai` is on GoDaddy nameservers today, so neither hostname routes to a tunnel
+until the zone moves to Cloudflare (TAP-7740) — that change touches the live company
+site, so it is tracked separately.
+
 ## Quick start
 
 ```bash
