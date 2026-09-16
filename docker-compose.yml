@@ -1,0 +1,20 @@
+services:
+  db:
+    image: postgres:17-alpine
+    environment:
+      POSTGRES_USER: savethedate
+      POSTGRES_PASSWORD: savethedate
+      POSTGRES_DB: savethedate
+    ports:
+      # 5432/5433 are already taken by other local projects, so this one sits on 5434.
+      - "5434:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U savethedate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  pgdata:
