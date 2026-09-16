@@ -209,6 +209,31 @@ result. Thirty seconds of `git log` and one Linear query settled it.
 **Generalize:** a handover describes the world as of when it was written. Verify the
 parts you are about to act on, especially the ones that say "not done yet".
 
+### The project's own quality gate destroys the dev database
+
+The definition of done requires migrations to roll back, so `/std-gate` runs
+`alembic upgrade head && downgrade base && upgrade head`. `migrations/env.py` resolves
+its URL from `get_settings().database_url` — which defaults to the **dev** database, not
+the test one. CI never noticed because CI sets `DATABASE_URL` to the test database for
+the whole job.
+
+Locally it means the gate drops every table. That was theoretical until the TAP-7738
+review instance was live and publicly reachable: running the gate wiped the seeded
+event, **re-keyed every invite token**, and turned five just-published links into 404s
+within a minute of verifying they worked.
+
+Nothing real was lost — the guests are invented and re-seeding is instant — and that is
+the only reason this was a nuisance rather than the project's founding invariant being
+broken in public. A gate that silently destroys data is a gate nobody can run while
+anything is depending on that data.
+
+`/std-gate` and `.claude/CLAUDE.md` now pin the round trip to `TEST_DATABASE_URL`.
+
+**Generalize:** a command that is safe in CI is not automatically safe on a developer's
+box, because CI's environment is part of what makes it safe. Before running anything
+destructive locally, check what it resolves its target from — and check twice when
+something is actively serving from that target.
+
 ### A green CI is not the same as the definition of done
 
 The project's stated definition of done required migrations to apply **and roll back**.

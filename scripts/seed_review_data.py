@@ -10,8 +10,9 @@ Segments are seeded here rather than in the TAP-7739 migration so that one weddi
 details stay out of version-controlled schema history.
 """
 
+import argparse
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -29,6 +30,34 @@ SLUG = "bill-and-lisa"
 def _at(day: int, hour: int, minute: int = 0) -> datetime:
     """A moment during the wedding weekend, in Port Aransas local time."""
     return datetime(2028, 2, day, hour, minute, tzinfo=CENTRAL)
+
+
+# The dates production will really run on: invitations go out in October 2027 and
+# "RSVP by 15 December 2027" means the end of that day, in Texas.
+REAL_OPENS_AT = datetime(2027, 10, 1, 0, 0, tzinfo=CENTRAL)
+REAL_DEADLINE = datetime(2027, 12, 16, 0, 0, tzinfo=CENTRAL)
+
+PHASES = ("real", "before-open", "open", "closed")
+
+
+def rsvp_window(phase: str) -> tuple[datetime | None, datetime | None]:
+    """The `rsvp_opens_at` / `rsvp_deadline` pair that puts the event in `phase`.
+
+    A review instance defaults to `open`, because TAP-7738 is not done until a reviewer
+    has actually completed an RSVP — and on the real dates the form stays shut until
+    October 2027. The other phases are seedable too: both are part of what there is to
+    review, and neither is reachable otherwise without waiting a year.
+    """
+    now = datetime.now(UTC)
+    if phase == "real":
+        return REAL_OPENS_AT, REAL_DEADLINE
+    if phase == "before-open":
+        return now + timedelta(days=30), REAL_DEADLINE
+    if phase == "open":
+        return now - timedelta(days=1), REAL_DEADLINE
+    if phase == "closed":
+        return now - timedelta(days=60), now - timedelta(days=1)
+    raise ValueError(f"unknown RSVP phase {phase!r}; expected one of {', '.join(PHASES)}")
 
 
 @dataclass(frozen=True)
@@ -107,13 +136,14 @@ FAKE_GUESTS: list[tuple[str, int]] = [
 ]
 
 
-def seed(session: Session) -> Event:
+def seed(session: Session, phase: str = "open") -> Event:
     existing = session.scalar(select(Event).where(Event.slug == SLUG))
     if existing is not None:
         # Cascades to guests, segments, attendees and attendance.
         session.delete(existing)
         session.flush()
 
+    opens_at, deadline = rsvp_window(phase)
     event = Event(
         slug=SLUG,
         title="Bill & Lisa",
@@ -122,10 +152,8 @@ def seed(session: Session) -> Event:
         location="Port Aransas, Texas",
         details="Four days on Mustang Island. Come for the weekend, or come for the day.",
         timezone="America/Chicago",
-        # Invitations go out in October 2027; the form opens with them.
-        rsvp_opens_at=datetime(2027, 10, 1, 0, 0, tzinfo=CENTRAL),
-        # "RSVP by 15 December 2027" means the end of that day, in Texas.
-        rsvp_deadline=datetime(2027, 12, 16, 0, 0, tzinfo=CENTRAL),
+        rsvp_opens_at=opens_at,
+        rsvp_deadline=deadline,
     )
     session.add(event)
     session.flush()
@@ -154,13 +182,33 @@ def seed(session: Session) -> Event:
 
 
 def main() -> None:
-    base_url = get_settings().public_base_url.rstrip("/")
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "--phase",
+        choices=PHASES,
+        default="open",
+        help=(
+            "which RSVP phase to seed the event into. Defaults to 'open' so a reviewer "
+            "can actually complete a reply; 'real' uses the true October 2027 dates."
+        ),
+    )
+    parser.add_argument(
+        "--base-url",
+        default=None,
+        help="prefix for the printed invite links, e.g. a Quick Tunnel URL.",
+    )
+    args = parser.parse_args()
+
+    base_url = (args.base_url or get_settings().public_base_url).rstrip("/")
     with Session(engine) as session:
-        event = seed(session)
+        event = seed(session, phase=args.phase)
         guests = list(session.scalars(select(Guest).where(Guest.event_id == event.id)))
         segments = list(session.scalars(select(Segment).where(Segment.event_id == event.id)))
 
         print(f"Seeded {event.title} ({event.slug}) with {len(segments)} segments.")
+        print(
+            f"RSVP phase: {args.phase}  (opens {event.rsvp_opens_at}, closes {event.rsvp_deadline})"
+        )
         print("Invite links — every one of these guests is invented:")
         for guest in sorted(guests, key=lambda g: g.name):
             print(f"  {guest.name:<32} {base_url}/invites/{guest.invite_token}")

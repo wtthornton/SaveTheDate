@@ -333,6 +333,21 @@
   }
 }
 @layer components {
+  .draft-banner {
+    margin: 0;
+    padding: 12px 20px;
+    background: var(--color-ink);
+    color: var(--color-ground);
+    font-size: 18px;
+    line-height: 1.45;
+    text-align: center;
+    text-wrap: pretty;
+    border-bottom: 3px solid var(--color-accent);
+  }
+  .draft-banner strong {
+    color: var(--color-blush);
+    letter-spacing: 0.02em;
+  }
   .pgnav {
     display: flex;
     flex-wrap: wrap;

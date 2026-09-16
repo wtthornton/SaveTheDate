@@ -12,6 +12,15 @@
   {% block extra_head %}{% endblock %}
 </head>
 <body class="bg-ground text-ink">
+  {% if review_instance %}
+  {# TAP-7738: this deployment is reachable from the internet and seeded with invented
+     guests. It says so on every page, print included, so nobody mistakes a draft for
+     the invitation that was really sent. #}
+  <p class="draft-banner">
+    <strong>Draft preview.</strong> A work-in-progress copy for review — not the real
+    invitation. Every guest name on it is made up.
+  </p>
+  {% endif %}
   {% block nav %}
   <nav class="pgnav" aria-label="Invitation sections">
     <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path == '/invites/' ~ token else '' }}"

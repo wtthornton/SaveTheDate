@@ -17,3 +17,6 @@ build/
 .DS_Store
 .idea/
 .vscode/
+
+# TAP-7738 review instance: pid files, logs and the current tunnel URL.
+.review/
