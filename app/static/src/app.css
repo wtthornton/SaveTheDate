@@ -1,0 +1,673 @@
+/* SaveTheDate — guest pages stylesheet (TAP-7728)
+ *
+ * Tailwind v4, CSS-first config. No package.json, no Node build — this file is
+ * compiled with the standalone `tailwindcss` binary straight to app/static/app.css.
+ *
+ * The guest list skews old: every rule that a guest reads or taps carries an
+ * EXPLICIT px font-size of 18px or more, or an EXPLICIT min-height of 44px or
+ * more. The only exemption is `.eyebrow*` — small, bold, widely-tracked
+ * ornamental labels, never the thing a guest actually needs to read. Print
+ * rules (`.print*`) use `pt`, the correct unit for a printed page, and are
+ * exempt from the on-screen px floor for that reason.
+ */
+
+@import "tailwindcss";
+@source "../../templates";
+
+@theme {
+  --color-ground: #F7F2E8;
+  --color-ink: #22303A;
+  --color-body: #3C4A52;
+  --color-muted: #5E6A72;
+  --color-accent: #A94E2B;
+  --color-accent-hover: #863C20;
+  --color-rule: #E2D9C9;
+  --color-blush: #E3B9A4;
+  --color-card: #FCF8F0;
+  --color-card-selected: #F6E8E0;
+  --color-photo-slot: #EDE2D2;
+  --color-success: #2E5F63;
+
+  --font-display: "Cormorant Garamond", Georgia, serif;
+  --font-body: "Karla", "Helvetica Neue", sans-serif;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-ground);
+    -webkit-text-size-adjust: 100%;
+  }
+
+  body {
+    background-color: var(--color-ground);
+    color: var(--color-ink);
+    font-family: var(--font-body);
+    font-size: 18px;
+    line-height: 1.6;
+  }
+
+  a {
+    color: var(--color-accent);
+  }
+
+  a:hover {
+    color: var(--color-accent-hover);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+
+  fieldset {
+    border: none;
+    padding: 0;
+    margin: 0;
+  }
+}
+
+@layer components {
+
+  /* -- Navigation ------------------------------------------------------- */
+
+  .pgnav {
+    display: flex;
+    flex-wrap: wrap;
+    border-bottom: 1px solid var(--color-rule);
+    background-color: var(--color-ground);
+  }
+
+  .pgnav-link {
+    flex-grow: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    padding: 6px 10px;
+    text-align: center;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--color-muted);
+    text-decoration: none;
+  }
+
+  .pgnav-link-on {
+    color: var(--color-accent);
+    box-shadow: inset 0 -3px 0 var(--color-accent);
+  }
+
+  /* -- Eyebrows: the ONE exemption from the 18px floor ------------------ */
+
+  .eyebrow {
+    display: inline-block;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+    line-height: 1.4;
+  }
+
+  .eyebrow-muted {
+    color: var(--color-muted);
+  }
+
+  .eyebrow-invert {
+    color: var(--color-blush);
+  }
+
+  .eyebrow-signature {
+    position: relative;
+    display: block;
+    margin-top: 11px;
+    font-family: var(--font-display);
+    font-size: 15px;
+    font-style: normal;
+    letter-spacing: 0.22em;
+    color: var(--color-blush);
+  }
+
+  .section-divider {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .section-divider-line {
+    height: 1px;
+    background-color: var(--color-rule);
+    flex-grow: 1;
+  }
+
+  /* -- Display type ------------------------------------------------------ */
+
+  .display-xl {
+    font-family: var(--font-display);
+    font-size: 44px;
+    font-weight: 300;
+    line-height: 1.05;
+  }
+
+  .display-lg {
+    font-family: var(--font-display);
+    font-size: 32px;
+    font-weight: 500;
+    line-height: 1.15;
+  }
+
+  .display-md {
+    font-family: var(--font-display);
+    font-size: 26px;
+    font-weight: 500;
+    line-height: 1.2;
+  }
+
+  .display-sm {
+    font-family: var(--font-display);
+    font-size: 22px;
+    font-weight: 500;
+    line-height: 1.3;
+  }
+
+  .display-italic {
+    font-family: var(--font-display);
+    font-style: italic;
+  }
+
+  .beat-roman {
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 18px;
+    letter-spacing: 0.08em;
+    color: var(--color-accent);
+  }
+
+  /* -- Reading text ------------------------------------------------------- */
+
+  .lede {
+    font-size: 20px;
+    line-height: 1.6;
+    color: var(--color-body);
+  }
+
+  .body-copy {
+    font-size: 18px;
+    line-height: 1.6;
+    color: var(--color-body);
+  }
+
+  .muted-copy {
+    font-size: 18px;
+    line-height: 1.55;
+    color: var(--color-muted);
+  }
+
+  /* -- Cards & surfaces ---------------------------------------------------- */
+
+  .card {
+    background-color: var(--color-card);
+    border: 1px solid var(--color-rule);
+    border-radius: 4px;
+  }
+
+  .quote-card {
+    position: relative;
+    background-color: var(--color-ink);
+    border-radius: 2px;
+    padding: 28px 22px;
+    text-align: center;
+  }
+
+  .quote-card::before {
+    content: "";
+    position: absolute;
+    inset: 8px;
+    border: 1px solid rgba(227, 185, 164, 0.34);
+    pointer-events: none;
+  }
+
+  .quote-text {
+    position: relative;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 22px;
+    line-height: 1.5;
+    color: #FFFFFF;
+  }
+
+  .hero-title {
+    position: relative;
+    font-family: var(--font-display);
+    font-weight: 300;
+    font-size: 40px;
+    line-height: 1.1;
+    color: #FFFFFF;
+    text-align: center;
+  }
+
+  .hero-date {
+    position: relative;
+    font-family: var(--font-display);
+    font-style: italic;
+    font-size: 20px;
+    line-height: 1.4;
+    color: #FFFFFF;
+    text-align: center;
+  }
+
+  .photo-slot {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background-color: var(--color-photo-slot);
+    border-radius: 2px;
+    text-align: center;
+    padding: 12px;
+  }
+
+  .photo-slot-eyebrow {
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.12em;
+    color: #7A6A57;
+  }
+
+  /* -- Buttons -------------------------------------------------------------- */
+
+  .btn-primary,
+  .btn-outline,
+  .btn-dark {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    box-sizing: border-box;
+    font-family: var(--font-body);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-decoration: none;
+    border-radius: 3px;
+    cursor: pointer;
+    text-align: center;
+  }
+
+  .btn-primary {
+    min-height: 52px;
+    padding: 10px 20px;
+    background-color: var(--color-accent);
+    color: var(--color-ground);
+    border: 1px solid var(--color-accent);
+  }
+
+  .btn-primary:hover {
+    background-color: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+    color: var(--color-ground);
+  }
+
+  .btn-outline {
+    min-height: 48px;
+    padding: 10px 20px;
+    background-color: transparent;
+    color: var(--color-accent);
+    border: 1px solid var(--color-accent);
+  }
+
+  .btn-outline:hover {
+    color: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+  }
+
+  .btn-dark {
+    min-height: 52px;
+    padding: 10px 20px;
+    background-color: var(--color-ink);
+    color: var(--color-ground);
+    border: 1px solid var(--color-ink);
+  }
+
+  .btn-dark:hover {
+    background-color: #16232b;
+  }
+
+  .btn-block {
+    width: 100%;
+  }
+
+  /* -- Radio "attending" tiles ----------------------------------------------- */
+
+  .opt-tile {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    flex-grow: 1;
+    box-sizing: border-box;
+    min-height: 52px;
+    padding: 10px 16px;
+    border: 1px solid var(--color-rule);
+    border-radius: 3px;
+    background-color: var(--color-card);
+    font-size: 18px;
+    color: var(--color-ink);
+    cursor: pointer;
+  }
+
+  .opt-tile:has(input:checked) {
+    border-color: var(--color-accent);
+    background-color: var(--color-card-selected);
+    box-shadow: inset 0 0 0 1px var(--color-accent);
+  }
+
+  .opt-tile input {
+    accent-color: var(--color-accent);
+    width: 22px;
+    height: 22px;
+    margin: 0;
+    flex-shrink: 0;
+  }
+
+  /* -- Schedule / segment tap rows -------------------------------------------- */
+
+  .tap-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
+    min-height: 44px;
+    padding: 14px 16px;
+    border: 1px solid var(--color-rule);
+    border-radius: 3px;
+    background-color: var(--color-card);
+    cursor: pointer;
+  }
+
+  .tap-row:has(input:checked) {
+    border-color: var(--color-accent);
+    background-color: var(--color-card-selected);
+  }
+
+  .tap-row input {
+    accent-color: var(--color-accent);
+    width: 22px;
+    height: 22px;
+    margin: 2px 0 0;
+    flex-shrink: 0;
+  }
+
+  .tap-row-title {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--color-ink);
+  }
+
+  .tap-row-meta {
+    display: block;
+    font-size: 18px;
+    color: var(--color-muted);
+  }
+
+  .schedule-title {
+    font-family: var(--font-display);
+    font-size: 20px;
+    font-weight: 500;
+    color: var(--color-ink);
+  }
+
+  /* -- Dietary chips ----------------------------------------------------------- */
+
+  .chip-tap {
+    display: inline-flex;
+    align-items: center;
+    gap: 9px;
+    min-height: 44px;
+    padding: 0 14px;
+    border: 1px solid var(--color-rule);
+    border-radius: 22px;
+    background-color: var(--color-card);
+    font-size: 18px;
+    color: var(--color-body);
+    cursor: pointer;
+  }
+
+  .chip-tap:has(input:checked) {
+    border-color: var(--color-accent);
+    background-color: var(--color-card-selected);
+    color: var(--color-ink);
+  }
+
+  .chip-tap input {
+    accent-color: var(--color-accent);
+    width: 20px;
+    height: 20px;
+    margin: 0;
+  }
+
+  /* -- Folded per-person detail, for parties of three or more ------------------- */
+
+  .fold-panel {
+    border-top: 1px solid var(--color-rule);
+    padding-top: 4px;
+  }
+
+  .fold-tap {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    min-height: 44px;
+    padding: 10px 4px;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--color-ink);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .fold-tap::-webkit-details-marker {
+    display: none;
+  }
+
+  .fold-marker {
+    flex-shrink: 0;
+    font-size: 18px;
+    color: var(--color-accent);
+    transition: transform 0.15s ease;
+  }
+
+  details[open] > .fold-tap .fold-marker {
+    transform: rotate(180deg);
+  }
+
+  /* -- Form fields -------------------------------------------------------------- */
+
+  .field-label {
+    display: block;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--color-body);
+    margin-bottom: 7px;
+  }
+
+  .field-hint {
+    font-size: 18px;
+    color: var(--color-muted);
+  }
+
+  .field {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    min-height: 52px;
+    padding: 12px 14px;
+    border: 1px solid var(--color-rule);
+    border-radius: 3px;
+    background-color: var(--color-card);
+    font-family: var(--font-body);
+    font-size: 18px;
+    color: var(--color-ink);
+  }
+
+  textarea.field {
+    min-height: 96px;
+    resize: vertical;
+  }
+
+  .field:focus {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 1px;
+  }
+
+  /* -- RSVP fieldset ------------------------------------------------------------- */
+
+  .rsvp-fieldset {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+    padding: 22px 18px;
+    border: 1px solid var(--color-rule);
+    border-radius: 4px;
+    background-color: var(--color-card);
+  }
+
+  .rsvp-fieldset > legend {
+    padding: 0 8px;
+  }
+
+  .paid-card {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding: 16px;
+    border: 1px solid var(--color-rule);
+    border-radius: 3px;
+    background-color: var(--color-card);
+  }
+
+  .paid-price {
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--color-accent);
+  }
+
+  .paid-link {
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  /* -- Errors ---------------------------------------------------------------------- */
+
+  .form-error {
+    padding: 16px;
+    border: 1px solid var(--color-accent);
+    border-radius: 3px;
+    background-color: var(--color-card-selected);
+    color: var(--color-accent);
+    font-size: 18px;
+    font-weight: 700;
+  }
+
+  /* -- Read-only answer summary ------------------------------------------------------ */
+
+  .answer-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border-top: 1px solid var(--color-rule);
+  }
+
+  .answer-name {
+    font-family: var(--font-display);
+    font-size: 22px;
+    color: var(--color-ink);
+  }
+
+  .status-pill {
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+  }
+
+  .status-yes {
+    color: var(--color-success);
+  }
+
+  .status-no {
+    color: var(--color-muted);
+  }
+
+  /* -- Print ---------------------------------------------------------------------------
+   * Exempt from the on-screen 18px floor: the selectors below all contain
+   * "print" and use `pt`, the unit that means something on a printed page.
+   */
+
+  .print-page {
+    max-width: 640px;
+    margin: 0 auto;
+    padding: 24pt 20pt 40pt;
+    font-family: var(--font-body);
+    font-size: 14pt;
+    line-height: 1.5;
+    color: var(--color-ink);
+  }
+
+  .print-title {
+    font-family: var(--font-display);
+    font-size: 22pt;
+    font-weight: 500;
+    margin: 0 0 4pt;
+  }
+
+  .print-meta {
+    font-size: 13pt;
+    color: var(--color-muted);
+    margin: 0 0 2pt;
+  }
+
+  .print-section {
+    margin-top: 20pt;
+  }
+
+  .print-heading {
+    font-size: 15pt;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    border-bottom: 1pt solid var(--color-rule);
+    padding-bottom: 6pt;
+    margin: 0 0 8pt;
+  }
+
+  .print-list {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10pt;
+  }
+
+  .print-row {
+    display: flex;
+    flex-direction: column;
+    border-top: 1pt solid var(--color-rule);
+    padding-top: 8pt;
+  }
+
+  .print-row-name {
+    font-size: 14pt;
+    font-weight: 700;
+  }
+
+  .print-row-when,
+  .print-row-where {
+    font-size: 12pt;
+    color: var(--color-muted);
+  }
+
+  .print-copy {
+    font-size: 13pt;
+    line-height: 1.5;
+  }
+}

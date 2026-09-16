@@ -1,6 +1,5 @@
 import uuid
 from datetime import UTC, datetime, timedelta
-from typing import Any
 
 import pytest
 from alembic import command
@@ -10,84 +9,9 @@ from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from tests.conftest import alembic_config
+from tests.factories import add_guest, add_segments, create_event
 
 PREVIOUS_REVISION = "34c3f17d487b"
-
-
-def _create_event(
-    client: TestClient,
-    *,
-    slug: str = "bill-and-lisa",
-    timezone: str = "America/Chicago",
-    rsvp_opens_at: datetime | None = None,
-    rsvp_deadline: datetime | None = None,
-) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "slug": slug,
-        "title": "Bill & Lisa",
-        "host_name": "Bill Thornton and Lisa Gorden",
-        "event_date": "2028-02-13",
-        "location": "Port Aransas, TX",
-        "timezone": timezone,
-    }
-    if rsvp_opens_at is not None:
-        payload["rsvp_opens_at"] = rsvp_opens_at.isoformat()
-    if rsvp_deadline is not None:
-        payload["rsvp_deadline"] = rsvp_deadline.isoformat()
-
-    response = client.post("/events", json=payload)
-    assert response.status_code == 201, response.text
-    body: dict[str, Any] = response.json()
-    return body
-
-
-def _add_guest(client: TestClient, event_id: str, name: str, party_size: int = 2) -> dict[str, Any]:
-    response = client.post(
-        f"/events/{event_id}/guests",
-        json={"name": name, "email": "guest@example.com", "party_size": party_size},
-    )
-    assert response.status_code == 201, response.text
-    body: dict[str, Any] = response.json()
-    return body
-
-
-def _add_segments(db_session: Session, event_id: str) -> dict[str, str]:
-    """The parts of the weekend a guest answers separately.
-
-    There is no host-facing endpoint for these yet — that belongs to TAP-7730 — so
-    the fixture writes them directly.
-    """
-    from app.models import Segment
-
-    welcome = Segment(
-        event_id=uuid.UUID(event_id),
-        name="Welcome party on the beach",
-        starts_at=datetime(2028, 2, 12, 0, tzinfo=UTC),
-        ends_at=datetime(2028, 2, 12, 3, tzinfo=UTC),
-        location="Port Aransas beach",
-        sort_order=1,
-    )
-    golf = Segment(
-        event_id=uuid.UUID(event_id),
-        name="Golf at Palmilla",
-        starts_at=datetime(2028, 2, 12, 15, tzinfo=UTC),
-        is_optional=True,
-        booking_url="https://example.invalid/golf",
-        sort_order=2,
-    )
-    ceremony = Segment(
-        event_id=uuid.UUID(event_id),
-        name="Ceremony and reception",
-        starts_at=datetime(2028, 2, 13, 21, tzinfo=UTC),
-        sort_order=3,
-    )
-    db_session.add_all([welcome, golf, ceremony])
-    db_session.commit()
-    return {
-        "welcome": str(welcome.id),
-        "golf": str(golf.id),
-        "ceremony": str(ceremony.id),
-    }
 
 
 def test_health(client: TestClient) -> None:
@@ -95,7 +19,7 @@ def test_health(client: TestClient) -> None:
 
 
 def test_duplicate_slug_is_rejected(client: TestClient) -> None:
-    _create_event(client)
+    create_event(client)
     response = client.post(
         "/events",
         json={"slug": "bill-and-lisa", "title": "Other", "host_name": "Other"},
@@ -104,17 +28,17 @@ def test_duplicate_slug_is_rejected(client: TestClient) -> None:
 
 
 def test_unknown_invite_token_is_404(client: TestClient) -> None:
-    assert client.get("/invites/not-a-real-token").status_code == 404
+    assert client.get("/api/invites/not-a-real-token").status_code == 404
 
 
 def test_invite_shows_the_schedule_before_anyone_answers(
     client: TestClient, db_session: Session
 ) -> None:
-    event = _create_event(client)
-    _add_segments(db_session, event["id"])
-    guest = _add_guest(client, event["id"], "Jordan Lee")
+    event = create_event(client)
+    add_segments(db_session, event["id"])
+    guest = add_guest(client, event["id"], "Jordan Lee")
 
-    body = client.get(f"/invites/{guest['invite_token']}").json()
+    body = client.get(f"/api/invites/{guest['invite_token']}").json()
 
     assert body["guest_name"] == "Jordan Lee"
     assert body["rsvp"] is None
@@ -133,12 +57,12 @@ def test_invite_shows_the_schedule_before_anyone_answers(
 def test_one_person_can_attend_while_their_plus_one_declines(
     client: TestClient, db_session: Session
 ) -> None:
-    event = _create_event(client)
-    segments = _add_segments(db_session, event["id"])
-    guest = _add_guest(client, event["id"], "Alex Rivera", party_size=2)
+    event = create_event(client)
+    segments = add_segments(db_session, event["id"])
+    guest = add_guest(client, event["id"], "Alex Rivera", party_size=2)
 
     response = client.put(
-        f"/invites/{guest['invite_token']}/rsvp",
+        f"/api/invites/{guest['invite_token']}/rsvp",
         json={
             "note": "Sam can't get the Friday off.",
             "attendees": [
@@ -169,12 +93,12 @@ def test_one_person_can_attend_while_their_plus_one_declines(
 
 
 def test_dietary_needs_are_captured_per_person(client: TestClient, db_session: Session) -> None:
-    event = _create_event(client)
-    segments = _add_segments(db_session, event["id"])
-    guest = _add_guest(client, event["id"], "Robin Fox", party_size=2)
+    event = create_event(client)
+    segments = add_segments(db_session, event["id"])
+    guest = add_guest(client, event["id"], "Robin Fox", party_size=2)
 
     response = client.put(
-        f"/invites/{guest['invite_token']}/rsvp",
+        f"/api/invites/{guest['invite_token']}/rsvp",
         json={
             "attendees": [
                 {
@@ -207,12 +131,12 @@ def test_dietary_needs_are_captured_per_person(client: TestClient, db_session: S
 def test_dietary_tag_outside_the_vocabulary_is_rejected(
     client: TestClient, db_session: Session
 ) -> None:
-    event = _create_event(client)
-    segments = _add_segments(db_session, event["id"])
-    guest = _add_guest(client, event["id"], "Robin Fox", party_size=1)
+    event = create_event(client)
+    segments = add_segments(db_session, event["id"])
+    guest = add_guest(client, event["id"], "Robin Fox", party_size=1)
 
     response = client.put(
-        f"/invites/{guest['invite_token']}/rsvp",
+        f"/api/invites/{guest['invite_token']}/rsvp",
         json={
             "attendees": [
                 {
@@ -228,12 +152,12 @@ def test_dietary_tag_outside_the_vocabulary_is_rejected(
 
 
 def test_rsvp_cannot_exceed_invited_party_size(client: TestClient, db_session: Session) -> None:
-    event = _create_event(client)
-    segments = _add_segments(db_session, event["id"])
-    guest = _add_guest(client, event["id"], "Casey Kim", party_size=2)
+    event = create_event(client)
+    segments = add_segments(db_session, event["id"])
+    guest = add_guest(client, event["id"], "Casey Kim", party_size=2)
 
     response = client.put(
-        f"/invites/{guest['invite_token']}/rsvp",
+        f"/api/invites/{guest['invite_token']}/rsvp",
         json={
             "attendees": [
                 {
@@ -252,12 +176,12 @@ def test_rsvp_cannot_exceed_invited_party_size(client: TestClient, db_session: S
 def test_attending_person_must_be_coming_to_something(
     client: TestClient, db_session: Session
 ) -> None:
-    event = _create_event(client)
-    segments = _add_segments(db_session, event["id"])
-    guest = _add_guest(client, event["id"], "Casey Kim", party_size=1)
+    event = create_event(client)
+    segments = add_segments(db_session, event["id"])
+    guest = add_guest(client, event["id"], "Casey Kim", party_size=1)
 
     response = client.put(
-        f"/invites/{guest['invite_token']}/rsvp",
+        f"/api/invites/{guest['invite_token']}/rsvp",
         json={
             "attendees": [
                 {
@@ -275,12 +199,12 @@ def test_attending_person_must_be_coming_to_something(
 def test_declining_person_cannot_also_be_coming_to_something(
     client: TestClient, db_session: Session
 ) -> None:
-    event = _create_event(client)
-    segments = _add_segments(db_session, event["id"])
-    guest = _add_guest(client, event["id"], "Casey Kim", party_size=1)
+    event = create_event(client)
+    segments = add_segments(db_session, event["id"])
+    guest = add_guest(client, event["id"], "Casey Kim", party_size=1)
 
     response = client.put(
-        f"/invites/{guest['invite_token']}/rsvp",
+        f"/api/invites/{guest['invite_token']}/rsvp",
         json={
             "attendees": [
                 {
@@ -295,13 +219,13 @@ def test_declining_person_cannot_also_be_coming_to_something(
 
 
 def test_guest_can_change_their_mind(client: TestClient, db_session: Session) -> None:
-    event = _create_event(client)
-    segments = _add_segments(db_session, event["id"])
-    guest = _add_guest(client, event["id"], "Jordan Lee", party_size=2)
+    event = create_event(client)
+    segments = add_segments(db_session, event["id"])
+    guest = add_guest(client, event["id"], "Jordan Lee", party_size=2)
     token = guest["invite_token"]
 
     first = client.put(
-        f"/invites/{token}/rsvp",
+        f"/api/invites/{token}/rsvp",
         json={
             "attendees": [
                 {
@@ -315,7 +239,7 @@ def test_guest_can_change_their_mind(client: TestClient, db_session: Session) ->
     assert first.status_code == 200
 
     second = client.put(
-        f"/invites/{token}/rsvp",
+        f"/api/invites/{token}/rsvp",
         json={
             "note": "So sorry — we can't make it after all.",
             "attendees": [{"name": "Jordan Lee", "attending": False, "attendance": []}],
@@ -323,7 +247,7 @@ def test_guest_can_change_their_mind(client: TestClient, db_session: Session) ->
     )
     assert second.status_code == 200
 
-    body = client.get(f"/invites/{token}").json()
+    body = client.get(f"/api/invites/{token}").json()
     assert len(body["rsvp"]["attendees"]) == 1
     assert body["rsvp"]["attendees"][0]["attending"] is False
     assert body["rsvp"]["note"] == "So sorry — we can't make it after all."
@@ -333,14 +257,14 @@ def test_form_is_closed_before_the_rsvp_window_opens(
     client: TestClient, db_session: Session
 ) -> None:
     opens = datetime.now(UTC) + timedelta(days=30)
-    event = _create_event(client, rsvp_opens_at=opens)
-    segments = _add_segments(db_session, event["id"])
-    guest = _add_guest(client, event["id"], "Jordan Lee", party_size=1)
+    event = create_event(client, rsvp_opens_at=opens)
+    segments = add_segments(db_session, event["id"])
+    guest = add_guest(client, event["id"], "Jordan Lee", party_size=1)
 
-    assert client.get(f"/invites/{guest['invite_token']}").json()["phase"] == "before_open"
+    assert client.get(f"/api/invites/{guest['invite_token']}").json()["phase"] == "before_open"
 
     response = client.put(
-        f"/invites/{guest['invite_token']}/rsvp",
+        f"/api/invites/{guest['invite_token']}/rsvp",
         json={
             "attendees": [
                 {
@@ -358,18 +282,18 @@ def test_form_is_closed_before_the_rsvp_window_opens(
 def test_form_is_live_between_the_open_date_and_the_deadline(
     client: TestClient, db_session: Session
 ) -> None:
-    event = _create_event(
+    event = create_event(
         client,
         rsvp_opens_at=datetime.now(UTC) - timedelta(days=1),
         rsvp_deadline=datetime.now(UTC) + timedelta(days=30),
     )
-    segments = _add_segments(db_session, event["id"])
-    guest = _add_guest(client, event["id"], "Jordan Lee", party_size=1)
+    segments = add_segments(db_session, event["id"])
+    guest = add_guest(client, event["id"], "Jordan Lee", party_size=1)
 
-    assert client.get(f"/invites/{guest['invite_token']}").json()["phase"] == "open"
+    assert client.get(f"/api/invites/{guest['invite_token']}").json()["phase"] == "open"
 
     response = client.put(
-        f"/invites/{guest['invite_token']}/rsvp",
+        f"/api/invites/{guest['invite_token']}/rsvp",
         json={
             "attendees": [
                 {
@@ -388,13 +312,13 @@ def test_after_the_deadline_the_answer_is_read_only(
 ) -> None:
     from app.models import Event
 
-    event = _create_event(client, rsvp_deadline=datetime.now(UTC) + timedelta(days=1))
-    segments = _add_segments(db_session, event["id"])
-    guest = _add_guest(client, event["id"], "Jordan Lee", party_size=1)
+    event = create_event(client, rsvp_deadline=datetime.now(UTC) + timedelta(days=1))
+    segments = add_segments(db_session, event["id"])
+    guest = add_guest(client, event["id"], "Jordan Lee", party_size=1)
     token = guest["invite_token"]
 
     accepted = client.put(
-        f"/invites/{token}/rsvp",
+        f"/api/invites/{token}/rsvp",
         json={
             "attendees": [
                 {
@@ -413,13 +337,13 @@ def test_after_the_deadline_the_answer_is_read_only(
     stored.rsvp_deadline = datetime.now(UTC) - timedelta(minutes=1)
     db_session.commit()
 
-    body = client.get(f"/invites/{token}").json()
+    body = client.get(f"/api/invites/{token}").json()
     assert body["phase"] == "closed"
     # The answer they already gave is still there to read.
     assert body["rsvp"]["attendees"][0]["name"] == "Jordan Lee"
 
     late = client.put(
-        f"/invites/{token}/rsvp",
+        f"/api/invites/{token}/rsvp",
         json={"attendees": [{"name": "Jordan Lee", "attending": False, "attendance": []}]},
     )
     assert late.status_code == 403

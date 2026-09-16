@@ -1,0 +1,117 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.title }} — Welcome{% endblock %}
+
+{% block content %}
+
+  <section class="flex flex-col gap-5" aria-label="Save the date">
+    <div class="photo-slot h-56">
+      <span class="photo-slot-eyebrow">Photograph to come</span>
+    </div>
+
+    <div class="quote-card flex flex-col items-center gap-3">
+      <p class="eyebrow eyebrow-invert">Save the date</p>
+      <h1 class="hero-title">
+        {{ event.title }}
+      </h1>
+      <p class="hero-date">
+        {% if event.event_date %}{{ event.event_date | formal_date }}{% else %}Date to follow{% endif %}
+      </p>
+      {% if event.location %}
+        <p class="eyebrow eyebrow-invert">{{ event.location }}</p>
+      {% endif %}
+    </div>
+  </section>
+
+  <section class="flex flex-col gap-3">
+    <h2 class="display-lg">We are so glad you are here</h2>
+    <p class="lede">
+      There is plenty of practical detail on the next page — schedule, times, what
+      to bring for a beach in February. First we wanted to tell you why we are
+      asking you to come all this way to a small island in Texas.
+    </p>
+    <p class="body-copy">
+      This invitation is for {{ guest.name }}{% if guest.party_size > 1 %} and guest{% endif %}.
+    </p>
+  </section>
+
+  <div class="section-divider">
+    <div class="section-divider-line"></div>
+    <span class="eyebrow">Why Port Aransas</span>
+    <div class="section-divider-line"></div>
+  </div>
+
+  <section class="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
+    <div class="photo-slot h-28">
+      <span class="photo-slot-eyebrow">The Gulf at sunset</span>
+    </div>
+    <div class="flex flex-col gap-2">
+      <p class="beat-roman">I</p>
+      <h3 class="display-md">It began as a family vacation</h3>
+      <p class="body-copy">
+        Long before any of this, this was where Lisa's family came on vacation.
+        Her parents loading up the car, the wait for the ferry, the same stretch
+        of sand year after year. It was never just a trip — it was the place they
+        came back to, and they have been coming back for as long as she can
+        remember.
+      </p>
+    </div>
+  </section>
+
+  <div class="section-divider-line"></div>
+
+  <section class="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
+    <div class="photo-slot h-28">
+      <span class="photo-slot-eyebrow">A Shore Thing</span>
+    </div>
+    <div class="flex flex-col gap-2">
+      <p class="beat-roman">II</p>
+      <h3 class="display-md">Then Jason built a place</h3>
+      <p class="body-copy">
+        Some years ago Lisa's brother Jason bought a piece of the island and built
+        a house on it — A Shore Thing — and what had been a vacation turned into
+        something steadier. Birthdays, holidays, long weekends for no particular
+        reason — the family kept coming down, and kept bringing more people with
+        them. It has been full ever since.
+      </p>
+    </div>
+  </section>
+
+  <div class="section-divider-line"></div>
+
+  <section class="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
+    <div class="photo-slot h-28">
+      <span class="photo-slot-eyebrow">The Gulf at sunset</span>
+    </div>
+    <div class="flex flex-col gap-2">
+      <p class="beat-roman">III</p>
+      <h3 class="display-md">And now we would like you to see it</h3>
+      <p class="body-copy">
+        This is not a venue we found in a brochure. It is a place that has held
+        this family for decades, and when we asked ourselves where we ought to
+        marry, there was never really a second answer.
+      </p>
+      <p class="body-copy">
+        We would like to hand you the whole island for a few days — the beach,
+        the ferry, the fire, the bad jokes at dinner — and then marry each other
+        in front of you.
+      </p>
+    </div>
+  </section>
+
+  <div class="quote-card">
+    <p class="quote-text">
+      Thank you for coming so far. It means a great deal more than we can fit on
+      a website.
+    </p>
+    <p class="eyebrow-signature">
+      {{ event.host_name }}
+    </p>
+  </div>
+
+  <section class="flex flex-col gap-3">
+    <a class="btn-primary btn-block" href="/invites/{{ token }}/wedding">The ceremony &amp; the weekend</a>
+    <a class="btn-outline btn-block" href="/invites/{{ token }}/rsvp">RSVP</a>
+  </section>
+
+{% endblock %}

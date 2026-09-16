@@ -1,0 +1,98 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.title }} — The Wedding{% endblock %}
+
+{% block content %}
+
+  <section class="flex flex-col items-center gap-2 text-center">
+    <h1 class="display-lg">{{ event.title }}</h1>
+    <p class="eyebrow">
+      {% if event.event_date %}{{ event.event_date | plain_date }}{% else %}Date to follow{% endif %}
+      {% if event.location %} · {{ event.location }}{% endif %}
+    </p>
+  </section>
+
+  <section class="flex flex-col gap-3">
+    <h2 class="display-md">The weekend</h2>
+    {% if required_segments %}
+      <div class="flex flex-col gap-3">
+        {% for segment in required_segments %}
+          <div class="card flex flex-col gap-1 p-4">
+            <p class="schedule-title">{{ segment.name }}</p>
+            <p class="tap-row-meta">
+              {{ local_day(segment.starts_at, event.timezone) }} ·
+              {{ local_range(segment.starts_at, segment.ends_at, event.timezone) }}
+              {% if segment.location %} · {{ segment.location }}{% endif %}
+            </p>
+            {% if segment.description %}
+              <p class="body-copy">{{ segment.description }}</p>
+            {% endif %}
+          </div>
+        {% endfor %}
+      </div>
+    {% else %}
+      <p class="body-copy">The schedule is still coming together — check back soon.</p>
+    {% endif %}
+  </section>
+
+  {% if optional_segments %}
+    <section class="flex flex-col gap-3">
+      <h2 class="display-md">Optional extras</h2>
+      <p class="muted-copy">Entirely optional, booked separately, paid on the day.</p>
+      <div class="flex flex-col gap-3">
+        {% for segment in optional_segments %}
+          <div class="paid-card">
+            <p class="schedule-title">{{ segment.name }}</p>
+            <p class="tap-row-meta">
+              {{ local_day(segment.starts_at, event.timezone) }} ·
+              {{ local_range(segment.starts_at, segment.ends_at, event.timezone) }}
+              {% if segment.location %} · {{ segment.location }}{% endif %}
+            </p>
+            {% if segment.description %}
+              <p class="body-copy">{{ segment.description }}</p>
+            {% endif %}
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              {% if segment.price %}
+                <span class="paid-price">${{ segment.price }} per person</span>
+              {% else %}
+                <span class="paid-price">Price to be confirmed</span>
+              {% endif %}
+              {% if segment.booking_url %}
+                <a class="paid-link" href="{{ segment.booking_url }}">Book separately &rarr;</a>
+              {% endif %}
+            </div>
+          </div>
+        {% endfor %}
+      </div>
+    </section>
+  {% endif %}
+
+  <section class="flex flex-col gap-3">
+    <h2 class="display-md">Getting there</h2>
+    <p class="body-copy">
+      Port Aransas sits on a barrier island on the Texas Gulf Coast. It is reached
+      by a short car ferry from Aransas Pass, or by a passenger-only water taxi
+      from the same dock. The nearest airport is Corpus Christi International,
+      about forty minutes away including the ferry; San Antonio is a further
+      option if fares run better, at roughly three hours by car.
+    </p>
+    <p class="body-copy">
+      The ferry runs continuously and does not take reservations — on a busy
+      weekend, budget an extra half hour either way.
+    </p>
+  </section>
+
+  <section class="flex flex-col gap-3">
+    <h2 class="display-md">Where to stay</h2>
+    <p class="body-copy">
+      We have held a block of rooms at a few places on the island within walking
+      or golf-cart distance of {{ event.location }}. Details and booking links
+      will follow with your paper invitation.
+    </p>
+  </section>
+
+  <section class="flex flex-col gap-3">
+    <a class="btn-outline btn-block" href="/invites/{{ token }}/print">Printable itinerary</a>
+  </section>
+
+{% endblock %}

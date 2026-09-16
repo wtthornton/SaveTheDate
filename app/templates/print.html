@@ -1,0 +1,52 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.title }} — Itinerary{% endblock %}
+
+{% block nav %}{% endblock %}
+
+{% block content %}
+
+  <article class="print-page">
+    <h1 class="print-title">{{ event.title }}</h1>
+    <p class="print-meta">
+      {% if event.event_date %}{{ event.event_date | plain_date }}{% else %}Date to follow{% endif %}
+    </p>
+    {% if event.location %}
+      <p class="print-meta">{{ event.location }}</p>
+    {% endif %}
+
+    <section class="print-section">
+      <h2 class="print-heading">Schedule</h2>
+      {% if segments %}
+        <ul class="print-list">
+          {% for segment in segments %}
+            <li class="print-row">
+              <span class="print-row-name">{{ segment.name }}</span>
+              <span class="print-row-when">
+                {{ local_day(segment.starts_at, event.timezone) }},
+                {{ local_range(segment.starts_at, segment.ends_at, event.timezone) }}
+                {% if segment.is_optional %} (optional, booked separately){% endif %}
+              </span>
+              {% if segment.location %}
+                <span class="print-row-where">{{ segment.location }}</span>
+              {% endif %}
+            </li>
+          {% endfor %}
+        </ul>
+      {% else %}
+        <p class="print-copy">The schedule is still coming together.</p>
+      {% endif %}
+    </section>
+
+    <section class="print-section">
+      <h2 class="print-heading">Directions</h2>
+      <p class="print-copy">
+        Port Aransas is reached by car ferry from Aransas Pass, or by driving the
+        JFK Causeway from Corpus Christi.
+        {% if event.location %}{{ event.location }} is the meeting point for the weekend; {% endif %}
+        specific addresses will follow with your paper invitation.
+      </p>
+    </section>
+  </article>
+
+{% endblock %}

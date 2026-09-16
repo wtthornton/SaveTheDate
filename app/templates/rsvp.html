@@ -1,0 +1,229 @@
+{% extends "base.html" %}
+
+{% block title %}{{ event.title }} — RSVP{% endblock %}
+
+{% macro answer_summary(rows, segments) %}
+  <section class="card flex flex-col gap-1 p-5" aria-labelledby="summary-heading">
+    <h2 id="summary-heading" class="eyebrow eyebrow-muted">Who is coming</h2>
+    {% for row in rows if row.answered %}
+      <div class="answer-row">
+        <span class="answer-name">{{ row.name }}</span>
+        <span class="status-pill {{ 'status-yes' if row.attending else 'status-no' }}">
+          {{ 'Coming' if row.attending else 'Not coming' }}
+        </span>
+      </div>
+      {% if row.attending and segments %}
+        <ul class="flex flex-col gap-1 pb-2 pl-0">
+          {% for segment in segments %}
+            <li class="flex items-center justify-between gap-3 py-1">
+              <span class="body-copy">{{ segment.name }}</span>
+              <span class="status-pill {{ 'status-yes' if row.is_coming_to(segment) else 'status-no' }}">
+                {{ 'Yes' if row.is_coming_to(segment) else 'No' }}
+              </span>
+            </li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if row.dietary_tags %}
+        <p class="muted-copy pb-2">Dietary: {{ row.dietary_tags | join(', ') }}</p>
+      {% endif %}
+    {% endfor %}
+  </section>
+{% endmacro %}
+
+{% macro segments_and_diet(row, segments, dietary_options, event) %}
+  {% if segments %}
+    <div class="flex flex-col gap-2">
+      <p class="field-label">How much of the weekend can they join?</p>
+      {% for segment in segments %}
+        <label class="tap-row">
+          <input
+            type="checkbox"
+            name="attendee-{{ row.index }}-segments"
+            value="{{ segment.id }}"
+            {% if row.is_coming_to(segment) %}checked{% endif %}>
+          <span>
+            <span class="tap-row-title">{{ segment.name }}</span>
+            <span class="tap-row-meta">
+              {{ local_day(segment.starts_at, event.timezone) }} ·
+              {{ local_range(segment.starts_at, segment.ends_at, event.timezone) }}
+              {% if segment.is_optional %} · optional, booked separately{% endif %}
+            </span>
+          </span>
+        </label>
+      {% endfor %}
+    </div>
+  {% endif %}
+
+  {% if dietary_options %}
+    <div class="flex flex-col gap-2">
+      <p class="field-label">Anything we should know about them?</p>
+      <div class="flex flex-wrap gap-2">
+        {% for tag, label in dietary_options %}
+          <label class="chip-tap">
+            <input
+              type="checkbox"
+              name="attendee-{{ row.index }}-diet"
+              value="{{ tag.value }}"
+              {% if tag.value in row.dietary_tags %}checked{% endif %}>
+            {{ label }}
+          </label>
+        {% endfor %}
+      </div>
+    </div>
+  {% endif %}
+{% endmacro %}
+
+{% block content %}
+
+  <section class="flex flex-col items-center gap-2 text-center">
+    <h1 class="display-lg">{{ event.title }}</h1>
+    <p class="eyebrow">
+      {% if event.event_date %}{{ event.event_date | plain_date }}{% else %}Date to follow{% endif %}
+      {% if event.location %} · {{ event.location }}{% endif %}
+    </p>
+  </section>
+
+  {% if phase == "before_open" %}
+
+    <section class="flex flex-col gap-3">
+      <h2 class="display-lg">Save the date</h2>
+      <p class="body-copy">
+        We are so glad you will be part of it, {{ guest.name }}. RSVPs are not
+        open quite yet — please check back after
+        {{ local_day(event.rsvp_opens_at, event.timezone) }}.
+      </p>
+    </section>
+
+  {% elif phase == "closed" %}
+
+    <section class="flex flex-col gap-3">
+      <h2 class="display-lg">RSVPs are closed</h2>
+      <p class="body-copy">
+        The window for replies has closed
+        {% if event.rsvp_deadline %} — it passed on {{ deadline_date(event.rsvp_deadline, event.timezone) }}{% endif %}.
+      </p>
+      {% if not answer %}
+        <p class="body-copy">
+          We did not receive a reply before the deadline. If anything has
+          changed, please get in touch with us directly.
+        </p>
+      {% endif %}
+    </section>
+
+    {% if answer %}
+      {{ answer_summary(rows, segments) }}
+    {% endif %}
+
+  {% else %}
+
+    {% if answer %}
+      <section class="flex flex-col gap-3">
+        <h2 class="display-lg">Thank you, {{ guest.name }}</h2>
+        <p class="body-copy">We have your reply. You can change it any time before the deadline.</p>
+      </section>
+      {{ answer_summary(rows, segments) }}
+    {% else %}
+      <section class="flex flex-col gap-2">
+        <h1 class="display-lg">We hope you can be there</h1>
+        <p class="body-copy">
+          Your invitation is for {{ guest.party_size }}
+          {{ 'guest' if guest.party_size == 1 else 'guests' }}.
+          {% if event.rsvp_deadline %}
+            Please reply for each of you by
+            <strong>{{ deadline_date(event.rsvp_deadline, event.timezone) }}</strong>.
+          {% endif %}
+        </p>
+      </section>
+    {% endif %}
+
+    <form method="post" action="/invites/{{ token }}/rsvp" hx-boost="true" class="flex flex-col gap-6">
+
+      {% if error %}
+        <p class="form-error" role="alert">{{ error }}</p>
+      {% endif %}
+
+      <input type="hidden" name="attendee-count" value="{{ rows | length }}">
+
+      {% set fold_rows = rows | length >= 3 %}
+
+      {% for row in rows %}
+        <fieldset class="rsvp-fieldset">
+          <legend class="eyebrow">Guest {{ loop.index }}</legend>
+
+          <div>
+            <label class="field-label" for="attendee-{{ row.index }}-name">
+              {% if row.index == 0 %}Your name{% else %}Their name{% endif %}
+            </label>
+            <input
+              class="field"
+              type="text"
+              id="attendee-{{ row.index }}-name"
+              name="attendee-{{ row.index }}-name"
+              value="{{ row.name }}"
+              placeholder="Who will be joining?">
+          </div>
+
+          <div class="flex flex-wrap gap-3">
+            <label class="opt-tile">
+              <input
+                type="radio"
+                name="attendee-{{ row.index }}-attending"
+                value="yes"
+                {% if row.attending %}checked{% endif %}>
+              Will be there
+            </label>
+            <label class="opt-tile">
+              <input
+                type="radio"
+                name="attendee-{{ row.index }}-attending"
+                value="no"
+                {% if not row.attending %}checked{% endif %}>
+              Sadly cannot
+            </label>
+          </div>
+
+          {% if fold_rows %}
+            <details class="fold-panel" {% if loop.first %}open{% endif %}>
+              <summary class="fold-tap">
+                Which parts of the weekend, and anything we should know
+                <span class="fold-marker" aria-hidden="true">&#9662;</span>
+              </summary>
+              <div class="flex flex-col gap-4 pt-4">
+                {{ segments_and_diet(row, segments, dietary_options, event) }}
+              </div>
+            </details>
+          {% else %}
+            {{ segments_and_diet(row, segments, dietary_options, event) }}
+          {% endif %}
+
+          <div>
+            <label class="field-label" for="attendee-{{ row.index }}-notes">Anything else for them?</label>
+            <textarea
+              class="field"
+              id="attendee-{{ row.index }}-notes"
+              name="attendee-{{ row.index }}-notes"
+              rows="2">{{ row.dietary_notes }}</textarea>
+          </div>
+        </fieldset>
+      {% endfor %}
+
+      <div>
+        <label class="field-label" for="note">A note for us (optional)</label>
+        <textarea class="field" id="note" name="note" rows="3">{{ answer.note if answer else "" }}</textarea>
+      </div>
+
+      <button type="submit" class="btn-primary btn-block">Send our reply</button>
+
+      {% if event.rsvp_deadline %}
+        <p class="muted-copy text-center">
+          You can change your reply at any time before
+          {{ deadline_date(event.rsvp_deadline, event.timezone) }}.
+        </p>
+      {% endif %}
+
+    </form>
+
+  {% endif %}
+
+{% endblock %}

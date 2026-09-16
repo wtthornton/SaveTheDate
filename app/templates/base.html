@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}SaveTheDate{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+  {% block extra_head %}{% endblock %}
+</head>
+<body class="bg-ground text-ink">
+  {% block nav %}
+  <nav class="pgnav" aria-label="Invitation sections">
+    <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path == '/invites/' ~ token else '' }}"
+       href="/invites/{{ token }}">Welcome</a>
+    <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path.endswith('/wedding') else '' }}"
+       href="/invites/{{ token }}/wedding">The Wedding</a>
+    <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path.endswith('/rsvp') else '' }}"
+       href="/invites/{{ token }}/rsvp">RSVP</a>
+  </nav>
+  {% endblock %}
+
+  <main class="mx-auto flex max-w-2xl flex-col gap-8 px-5 py-8">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="/static/vendor/htmx-2.0.10.min.js" defer></script>
+  {% block extra_scripts %}{% endblock %}
+</body>
+</html>

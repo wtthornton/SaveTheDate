@@ -6,9 +6,10 @@ Hosts create an event, add their guest list, and hand each guest a private invit
 link. Guests open the link, see the event, and RSVP — no account, no password.
 Hosts read the responses back off the guest list.
 
-**Status:** early. The API below works end to end and is covered by tests. It is
-an API only — there is no web client yet, and the host-facing endpoints are not
-yet authenticated (see [Known gaps](#known-gaps)).
+**Status:** early. The API below works end to end and is covered by tests. The
+guest-facing pages are built — an invite link opens a real page, not JSON — but the
+host-facing endpoints are still unauthenticated (see [Known gaps](#known-gaps)), so
+only invented guests may exist on any running instance.
 
 ## Stack
 
@@ -17,11 +18,28 @@ yet authenticated (see [Known gaps](#known-gaps)).
 - Pydantic v2 for request/response schemas
 - pytest, ruff, mypy (strict)
 
-### Front end — decided, not yet built
+### Front end — built
 
-Server-rendered **Jinja2 templates + htmx + Tailwind**, served by FastAPI itself.
+Server-rendered **Jinja2 templates + htmx 2.x + Tailwind**, served by FastAPI itself.
 No separate JavaScript application, and no Node toolchain: Tailwind is used via its
 standalone binary.
+
+```bash
+# One-time: install the Tailwind v4 standalone CLI (no Node, no package.json)
+curl -sSL -o ~/.local/bin/tailwindcss \
+  https://github.com/tailwindlabs/tailwindcss/releases/download/v4.3.3/tailwindcss-linux-x64
+chmod +x ~/.local/bin/tailwindcss
+
+# Rebuild the stylesheet after editing app/static/src/app.css
+~/.local/bin/tailwindcss -i app/static/src/app.css -o app/static/app.css
+```
+
+The built `app/static/app.css` is **committed on purpose.** Render does not run your
+build step — a new `import` once broke a sibling project in production while CI stayed
+green — so nothing about a deploy is allowed to depend on the binary being present.
+
+htmx is vendored at `app/static/vendor/htmx-2.0.10.min.js` rather than loaded from a
+CDN, so the version is whatever is in the repo and a test asserts it.
 
 Why, in short:
 
@@ -156,12 +174,30 @@ not live the whole time. `GET /invites/{token}` reports which phase the event is
 | `GET` | `/events/{slug}` | Fetch an event by slug |
 | `POST` | `/events/{event_id}/guests` | Add an invitation to the guest list |
 | `GET` | `/events/{event_id}/guests` | List the guest list, with invite tokens |
-| `GET` | `/invites/{token}` | What a guest sees: event, their name, their current RSVP |
-| `PUT` | `/invites/{token}/rsvp` | Submit or change an RSVP |
+| `GET` | `/api/invites/{token}` | What a guest sees, as JSON: event, their name, their current RSVP |
+| `PUT` | `/api/invites/{token}/rsvp` | Submit or change an RSVP |
 
 An RSVP is rejected with `422` if it names more people than the invitation covers, if a
 person is marked attending but is coming to nothing, or if a person is marked not
 attending while coming to something. It is rejected with `403` outside the RSVP window.
+
+### Guest pages
+
+`/invites/{token}` serves HTML, because that URL is the one that goes in somebody's
+inbox. The JSON view of the same data moved to `/api/invites/{token}`. **The token is
+unchanged** — only what the URL renders is different, which is the point: a `guests`
+row is never re-keyed.
+
+| Method | Path | Purpose |
+| --- | --- | --- |
+| `GET` | `/invites/{token}` | Welcome — who is getting married, where, and why there |
+| `GET` | `/invites/{token}/wedding` | The schedule, travel and lodging |
+| `GET` | `/invites/{token}/rsvp` | Save-the-date, the form, or the read-only answer, by phase |
+| `POST` | `/invites/{token}/rsvp` | The form's own submission — works with htmx absent |
+| `GET` | `/invites/{token}/print` | A plain page for the fridge: no photos, no nav |
+
+Every one of these is anonymous and carries `noindex, nofollow`. There is no guest
+login and there must never be one: the link *is* the credential.
 
 ### Seeding a review instance
 
@@ -194,7 +230,7 @@ and are deliberately not stubbed out:
 - **Host endpoints are unauthenticated.** Anyone who can reach the API can create
   events and read any guest list, including invite tokens. This must be closed
   before the service is exposed publicly.
-- **No web client.** The invite page and host dashboard do not exist yet.
+- **No host dashboard.** The guest pages exist; the host-facing side does not.
 - **No email/SMS delivery.** Invite links have to be distributed by hand.
 - **No rate limiting** on invite-token lookups.
 
