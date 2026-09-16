@@ -49,10 +49,15 @@ jobs:
           ruff format --check .
 
       - name: Type check
-        run: mypy app migrations tests
+        run: mypy app migrations scripts tests
 
-      - name: Migrations apply cleanly
-        run: alembic upgrade head
+      # The definition of done requires migrations to roll back, not just apply,
+      # so the round trip is what gets checked.
+      - name: Migrations apply and roll back
+        run: |
+          alembic upgrade head
+          alembic downgrade base
+          alembic upgrade head
 
       - name: Test
         run: pytest -q

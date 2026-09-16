@@ -1,0 +1,170 @@
+"""Seed a database with the Port Aransas schedule and INVENTED guests.
+
+    .venv/bin/python -m scripts.seed_review_data
+
+The schedule is real. Every guest below is fictional, and must stay that way until
+host authentication lands (TAP-7725): the host endpoints are unauthenticated, so
+anyone who can reach this instance can read the whole guest list and its tokens.
+
+Segments are seeded here rather than in the TAP-7739 migration so that one wedding's
+details stay out of version-controlled schema history.
+"""
+
+from dataclasses import dataclass
+from datetime import datetime
+from decimal import Decimal
+from zoneinfo import ZoneInfo
+
+from sqlalchemy import select
+from sqlalchemy.orm import Session
+
+from app.config import get_settings
+from app.db import engine
+from app.models import Event, Guest, Segment
+
+CENTRAL = ZoneInfo("America/Chicago")
+SLUG = "bill-and-lisa"
+
+
+def _at(day: int, hour: int, minute: int = 0) -> datetime:
+    """A moment during the wedding weekend, in Port Aransas local time."""
+    return datetime(2028, 2, day, hour, minute, tzinfo=CENTRAL)
+
+
+@dataclass(frozen=True)
+class SegmentSpec:
+    name: str
+    description: str
+    starts_at: datetime
+    location: str
+    sort_order: int
+    ends_at: datetime | None = None
+    is_optional: bool = False
+    # Prices for golf and the fishing charter are still unconfirmed, so they stay
+    # null rather than being invented.
+    price: Decimal | None = None
+    booking_url: str | None = None
+
+
+SEGMENTS: list[SegmentSpec] = [
+    SegmentSpec(
+        name="Welcome party on the beach",
+        description="Drinks and a catered supper on the sand. Come as you are.",
+        starts_at=_at(11, 18),
+        ends_at=_at(11, 21),
+        location="Port Aransas beach",
+        sort_order=1,
+    ),
+    SegmentSpec(
+        name="Golf at Palmilla Beach",
+        description="Optional, paid, and booked directly with the course.",
+        starts_at=_at(12, 8),
+        location="Palmilla Beach Golf Course",
+        is_optional=True,
+        booking_url="https://palmillabeachgolf.com/",
+        sort_order=2,
+    ),
+    SegmentSpec(
+        name="Dinner in town and a bar crawl",
+        description="Dinner on the strip, then whoever is still standing.",
+        starts_at=_at(12, 19),
+        location="Downtown Port Aransas",
+        sort_order=3,
+    ),
+    SegmentSpec(
+        name="Bay fishing",
+        description="Optional, paid, and booked directly with the charter.",
+        starts_at=_at(13, 6, 30),
+        location="Fisherman's Wharf",
+        is_optional=True,
+        booking_url="https://www.fishermanswharfportaransas.com/",
+        sort_order=4,
+    ),
+    SegmentSpec(
+        name="Ceremony and reception",
+        description="The main event. Catered dinner, cash bar.",
+        starts_at=_at(13, 15),
+        location="Port Aransas",
+        sort_order=5,
+    ),
+    SegmentSpec(
+        name="Departure breakfast",
+        description="Catered breakfast before everyone scatters.",
+        starts_at=_at(14, 8),
+        ends_at=_at(14, 12),
+        location="Port Aransas",
+        sort_order=6,
+    ),
+]
+
+# Fictional. See the module docstring.
+FAKE_GUESTS: list[tuple[str, int]] = [
+    ("Dana Whitfield", 2),
+    ("Marcus Ellery", 1),
+    ("Priya and Tom Raghunathan", 4),
+    ("Eleanor Boyd", 2),
+    ("The Calloway family", 5),
+]
+
+
+def seed(session: Session) -> Event:
+    existing = session.scalar(select(Event).where(Event.slug == SLUG))
+    if existing is not None:
+        # Cascades to guests, segments, attendees and attendance.
+        session.delete(existing)
+        session.flush()
+
+    event = Event(
+        slug=SLUG,
+        title="Bill & Lisa",
+        host_name="Bill Thornton and Lisa Gorden",
+        event_date=_at(13, 15).date(),
+        location="Port Aransas, Texas",
+        details="Four days on Mustang Island. Come for the weekend, or come for the day.",
+        timezone="America/Chicago",
+        # Invitations go out in October 2027; the form opens with them.
+        rsvp_opens_at=datetime(2027, 10, 1, 0, 0, tzinfo=CENTRAL),
+        # "RSVP by 15 December 2027" means the end of that day, in Texas.
+        rsvp_deadline=datetime(2027, 12, 16, 0, 0, tzinfo=CENTRAL),
+    )
+    session.add(event)
+    session.flush()
+
+    for spec in SEGMENTS:
+        session.add(
+            Segment(
+                event_id=event.id,
+                name=spec.name,
+                description=spec.description,
+                starts_at=spec.starts_at,
+                ends_at=spec.ends_at,
+                location=spec.location,
+                is_optional=spec.is_optional,
+                price=spec.price,
+                booking_url=spec.booking_url,
+                sort_order=spec.sort_order,
+            )
+        )
+
+    for name, party_size in FAKE_GUESTS:
+        session.add(Guest(event_id=event.id, name=name, party_size=party_size))
+
+    session.commit()
+    return event
+
+
+def main() -> None:
+    base_url = get_settings().public_base_url.rstrip("/")
+    with Session(engine) as session:
+        event = seed(session)
+        guests = list(session.scalars(select(Guest).where(Guest.event_id == event.id)))
+        segments = list(session.scalars(select(Segment).where(Segment.event_id == event.id)))
+
+        print(f"Seeded {event.title} ({event.slug}) with {len(segments)} segments.")
+        print("Invite links — every one of these guests is invented:")
+        for guest in sorted(guests, key=lambda g: g.name):
+            print(f"  {guest.name:<32} {base_url}/invites/{guest.invite_token}")
+
+
+if __name__ == "__main__":
+    main()

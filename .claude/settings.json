@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "PostToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "if [ -d \"${CLAUDE_PROJECT_DIR}/migrations/versions\" ] && [ -x \"${CLAUDE_PROJECT_DIR}/.venv/bin/ruff\" ]; then \"${CLAUDE_PROJECT_DIR}/.venv/bin/ruff\" check --fix -q \"${CLAUDE_PROJECT_DIR}/migrations/versions/\"; \"${CLAUDE_PROJECT_DIR}/.venv/bin/ruff\" format -q \"${CLAUDE_PROJECT_DIR}/migrations/versions/\"; fi"
+          }
+        ]
+      }
+    ]
+  }
+}
