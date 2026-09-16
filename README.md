@@ -17,6 +17,30 @@ yet authenticated (see [Known gaps](#known-gaps)).
 - Pydantic v2 for request/response schemas
 - pytest, ruff, mypy (strict)
 
+### Front end — decided, not yet built
+
+Server-rendered **Jinja2 templates + htmx + Tailwind**, served by FastAPI itself.
+No separate JavaScript application, and no Node toolchain: Tailwind is used via its
+standalone binary.
+
+Why, in short:
+
+- Invite URLs are bearer-token secrets and must be `noindex`, so the SEO advantage
+  of Astro or Next.js does not apply here.
+- Nothing in the product needs real-time or collaborative client state. The heaviest
+  interaction is an RSVP form with a seat counter.
+- One language and one quality gate (ruff + mypy + pytest) beats maintaining a second
+  dependency ecosystem, CORS, and a second deploy target for a project this size.
+
+**Pin htmx 2.x, not 4.x.** htmx 4 made attribute inheritance explicit, and `latest`
+deliberately stays on 2.x until early 2027. Under htmx 4 an un-inherited `hx-headers`
+silently fails to reach the child request — a failure mode that is easy to miss when
+templates are generated or edited by tooling.
+
+**Revisit if** the host dashboard grows something like a drag-and-drop seating chart.
+That is the case where a React front end (Next.js, with a typed client generated from
+`/openapi.json`) earns its overhead.
+
 ## Quick start
 
 ```bash
