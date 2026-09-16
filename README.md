@@ -41,6 +41,32 @@ templates are generated or edited by tooling.
 That is the case where a React front end (Next.js, with a typed client generated from
 `/openapi.json`) earns its overhead.
 
+## Scale ceiling — under 100 guests
+
+Sized for a single wedding: under 100 invitations, perhaps 180 seats, a burst of about
+100 page opens when invites land, and a few thousand requests over the project's life.
+
+Nothing here is a performance problem. The consequence is that the engineering budget
+goes to **availability and not losing the guest list** — a wedding has an immovable
+date, and losing 100 people's responses has no recovery path. Postgres is kept for
+managed backups, not for throughput.
+
+Deliberately ruled out at this size: Redis, a task queue or worker process, pagination,
+and streaming CSV import. Staying at one service is also the main lever on hosting cost.
+
+## Hosting
+
+**Now:** self-hosted on the dev box and published with
+[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
+— outbound-only, so no open ports, no static IP, and TLS at the edge. This is for design
+review on real phones, with **fake guest data only**, because the host endpoints are
+still unauthenticated.
+
+**Later:** a managed host (Railway or Render, paid tier). Render's *free* tier is
+disqualified for this project on two counts: free Postgres is deleted 30 days after
+creation, and free web services cold-start for 30–60 seconds — fatal for a link a guest
+opens exactly once.
+
 ## Quick start
 
 ```bash
