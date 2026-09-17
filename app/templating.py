@@ -153,7 +153,67 @@ def deadline_date(moment: datetime, timezone: str) -> str:
     return plain_date((_in_zone(moment, timezone) - timedelta(seconds=1)).date())
 
 
+# Every scheduled item gets a picture. Photographs where an openly-licensed one
+# genuinely matches; otherwise an engraved plate drawn in the site's own line-and-
+# diamond language, which reads as stationery rather than as a missing photograph.
+#
+# Matched on keywords rather than a column, because `segments` is host-entered content
+# and a wedding's schedule is not a fixed vocabulary. Anything unrecognised still gets
+# a picture — see DEFAULT_SEGMENT_IMAGE — so no card can render blank.
+SEGMENT_IMAGES: tuple[tuple[tuple[str, ...], str, str], ...] = (
+    (
+        ("ceremony", "reception", "vows"),
+        "/static/img/gulf-evening.jpg",
+        "The Gulf at dusk, the sunset reflected in the wet sand",
+    ),
+    (
+        ("welcome", "beach party", "bonfire", "fire"),
+        "/static/img/beach-fire.jpg",
+        "A driftwood fire burning on the sand as the light goes",
+    ),
+    (
+        ("golf",),
+        "/static/img/golf-course.jpg",
+        "A golf course in the late afternoon, water along the fairway",
+    ),
+    (
+        ("fishing", "charter", "boat", "bay"),
+        "/static/img/plate-bay-fishing.svg",
+        "An engraved drawing of a small fishing skiff on the bay at first light",
+    ),
+    (
+        ("dinner", "bar", "town", "crawl"),
+        "/static/img/plate-dinner-in-town.svg",
+        "An engraved drawing of a row of storefronts under strung lights",
+    ),
+    (
+        ("breakfast", "brunch", "departure", "coffee"),
+        "/static/img/plate-departure-breakfast.svg",
+        "An engraved drawing of a coffee pot and two cups in the morning sun",
+    ),
+)
+
+DEFAULT_SEGMENT_IMAGE = (
+    "/static/img/plate-a-shore-thing.svg",
+    "An engraved drawing of a beach house raised on pilings above the dunes",
+)
+
+
+def segment_image(name: str) -> tuple[str, str]:
+    """The picture and alt text for one scheduled item, as (src, alt).
+
+    Never returns nothing: an unrecognised segment falls back to the house plate, so a
+    schedule the hosts change later cannot leave a grey rectangle on the page.
+    """
+    lowered = name.casefold()
+    for keywords, src, alt in SEGMENT_IMAGES:
+        if any(word in lowered for word in keywords):
+            return src, alt
+    return DEFAULT_SEGMENT_IMAGE
+
+
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+templates.env.globals["segment_image"] = segment_image
 templates.env.filters["formal_date"] = formal_date
 templates.env.filters["plain_date"] = plain_date
 templates.env.globals["local_day"] = local_day

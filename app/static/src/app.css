@@ -89,6 +89,31 @@
     letter-spacing: 0.02em;
   }
 
+  /* The one attribution the site is obliged to show. Quiet, but present and legible —
+     an 18px floor applies to it like everything else a guest can read. */
+  /* A photograph can be cropped; a drawing cannot. The plates carry their own
+     engraved frame, so object-cover slices it off and the whole thing reads as a
+     mistake. Letterbox them instead, on the plate's own ground colour so the seam
+     does not show. */
+  img.beat-media[src$=".svg"] {
+    object-fit: contain;
+    background: var(--color-photo-slot, #EDE2D2);
+  }
+
+  .photo-credit {
+    margin: 0;
+    padding: 20px;
+    font-size: 18px;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--color-muted);
+  }
+
+  .photo-credit a {
+    color: var(--color-accent);
+    text-decoration: underline;
+  }
+
   .pgnav {
     display: flex;
     flex-wrap: wrap;

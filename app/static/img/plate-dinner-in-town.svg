@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 300" role="img"
+     aria-label="An engraved drawing of a row of storefronts under strung lights">
+  <rect width="400" height="300" fill="#EDE2D2"/>
+  <rect x="10" y="10" width="380" height="280" fill="none" stroke="#A94E2B" stroke-opacity="0.34"/>
+  <rect x="15" y="15" width="370" height="270" fill="none" stroke="#A94E2B" stroke-opacity="0.14"/>
+
+  <g stroke="#22303A" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <!-- Two swags of strung lights over the street -->
+    <path d="M28 54q84 46 172 0" stroke-width="1.3" stroke-opacity="0.8"/>
+    <path d="M200 54q84 46 172 0" stroke-width="1.3" stroke-opacity="0.8"/>
+    <g fill="#E3B9A4" stroke="#A94E2B" stroke-opacity="0.55" stroke-width="0.9">
+      <circle cx="62" cy="70" r="4.5"/><circle cx="98" cy="78" r="4.5"/>
+      <circle cx="136" cy="80" r="4.5"/><circle cx="172" cy="74" r="4.5"/>
+      <circle cx="234" cy="70" r="4.5"/><circle cx="270" cy="78" r="4.5"/>
+      <circle cx="308" cy="80" r="4.5"/><circle cx="344" cy="74" r="4.5"/>
+    </g>
+    <g stroke-width="0.9" stroke-opacity="0.5">
+      <path d="M62 62v4M98 71v3M136 74v2M172 66v4M234 62v4M270 71v3M308 74v2M344 66v4"/>
+    </g>
+
+    <!-- Storefronts along the strip -->
+    <g stroke-width="1.8">
+      <path d="M44 236V128h78v108"/>
+      <path d="M130 236V148h64v88"/>
+      <path d="M202 236V118h72v118"/>
+      <path d="M282 236V156h74v80"/>
+    </g>
+
+    <!-- Awnings, the one thing every building on the strip has -->
+    <g stroke-width="1.3" stroke-opacity="0.8">
+      <path d="M38 166h90l-6 18H44z"/>
+      <path d="M124 182h76l-5 16h-66z"/>
+      <path d="M196 156h84l-6 18h-72z"/>
+      <path d="M276 190h86l-5 16h-76z"/>
+    </g>
+    <g stroke-width="0.8" stroke-opacity="0.45">
+      <path d="M56 166v18M74 166v18M92 166v18M110 166v18"/>
+      <path d="M142 182v16M160 182v16M178 182v16"/>
+      <path d="M214 156v18M232 156v18M250 156v18M268 156v18"/>
+      <path d="M294 190v16M312 190v16M330 190v16M348 190v16"/>
+    </g>
+
+    <!-- Lit windows and doorways -->
+    <g stroke-width="1.2" stroke-opacity="0.7">
+      <rect x="58" y="196" width="22" height="26"/>
+      <rect x="92" y="196" width="22" height="26"/>
+      <rect x="146" y="206" width="20" height="24"/>
+      <rect x="216" y="188" width="22" height="30"/>
+      <rect x="248" y="188" width="18" height="30"/>
+      <rect x="300" y="214" width="20" height="22"/>
+      <rect x="332" y="214" width="18" height="22"/>
+    </g>
+    <g stroke-width="1.6">
+      <path d="M170 236v-22h18v22"/>
+      <path d="M96 236v-10h16v10"/>
+    </g>
+
+    <!-- Street -->
+    <path d="M22 236h356" stroke-width="2"/>
+    <g stroke-width="1.1" stroke-opacity="0.4">
+      <path d="M40 248h44M104 248h44M168 248h44M232 248h44M296 248h44"/>
+    </g>
+
+    <path d="M200 272l6 6-6 6-6-6z" fill="#E3B9A4" stroke="none"/>
+  </g>
+</svg>

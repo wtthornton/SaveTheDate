@@ -275,6 +275,33 @@ meant to prevent it. The rule holds and is easy to forget: **a new test must be 
 failing against the actual defect** before it is trusted. Not against a mutation, not
 in principle — against the real broken thing in front of you.
 
+### Jinja reloads templates. It does not reload Python.
+
+A helper was added to `app/templating.py` and called from a template. The whole suite
+went green — and the published review instance started returning **HTTP 500** on The
+Wedding page, because the running uvicorn had imported that module before the helper
+existed. Jinja re-reads templates from disk on every request; a Python module is
+imported once.
+
+The tests could not catch it, and never will: they start a fresh server. Only the
+long-lived process was wrong, and only the person reloading the public URL would have
+found out.
+
+`scripts/review-instance.sh reload` now restarts the app **on the same port**, so the
+tunnel — and therefore the URL, and every invite token already sent — survives. Use it
+after any change under `app/*.py`. `up` would also work and would re-key every link.
+
+**And the fix itself broke the site a second time**, which is the more useful half of
+the story. The first version of `reload` parsed the port out of `/proc/<pid>/cmdline`
+with `tr ' ' '\n' | tr -d '\0'` — but that file is NUL-separated, not space-separated,
+so the whole command line collapsed into one token and uvicorn was handed a garbage
+port. Running it took the live instance down. `shellcheck` was clean throughout,
+because the bug was in what the pipeline *meant*, not in its syntax.
+
+**Generalize:** a command that restarts a service is itself a thing that has to be run
+before it is trusted, ideally while watching what it does to the service. "It passed
+shellcheck" says nothing about whether it works.
+
 ### A green CI is not the same as the definition of done
 
 The project's stated definition of done required migrations to apply **and roll back**.

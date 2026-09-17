@@ -308,6 +308,9 @@
   .bg-ground {
     background-color: var(--color-ground);
   }
+  .object-contain {
+    object-fit: contain;
+  }
   .object-cover {
     object-fit: cover;
   }
@@ -690,6 +693,22 @@
   .draft-banner strong {
     color: var(--color-blush);
     letter-spacing: 0.02em;
+  }
+  img.beat-media[src$=".svg"] {
+    object-fit: contain;
+    background: var(--color-photo-slot, #EDE2D2);
+  }
+  .photo-credit {
+    margin: 0;
+    padding: 20px;
+    font-size: 18px;
+    line-height: 1.5;
+    text-align: center;
+    color: var(--color-muted);
+  }
+  .photo-credit a {
+    color: var(--color-accent);
+    text-decoration: underline;
   }
   .pgnav {
     display: flex;

@@ -302,6 +302,78 @@ def test_every_page_offers_the_print_view(client: TestClient, db_session: Sessio
     )
 
 
+# -- No blank picture slots -----------------------------------------------
+
+
+def test_every_scheduled_item_has_a_picture() -> None:
+    """A schedule is host-entered text, so the mapping must never come up empty.
+
+    Photographs where one genuinely matches, an engraved plate otherwise, and a
+    fallback for anything the hosts invent later.
+    """
+    from app.templating import segment_image
+
+    for name in (
+        "Ceremony and reception",
+        "Welcome party on the beach",
+        "Golf at Palmilla Beach",
+        "Bay fishing",
+        "Dinner in town and a bar crawl",
+        "Departure breakfast",
+        "Something nobody has thought of yet",
+    ):
+        src, alt = segment_image(name)
+        assert src.startswith("/static/img/"), f"{name} got no picture"
+        assert len(alt) > 15, f"{name} got a thin alt text: {alt!r}"
+
+
+def test_the_picture_for_an_item_suits_it(client: TestClient, db_session: Session) -> None:
+    """A fishing photograph beside golf copy is worse than no photograph at all."""
+    from app.templating import segment_image
+
+    assert "fishing" in segment_image("Bay fishing")[0]
+    assert "golf" in segment_image("Golf at Palmilla Beach")[0]
+    assert "dinner" in segment_image("Dinner in town and a bar crawl")[0]
+    assert "breakfast" in segment_image("Departure breakfast")[0]
+
+
+def test_no_page_renders_an_empty_picture_slot(client: TestClient, db_session: Session) -> None:
+    """The grey "Photo — ..." rectangles are gone, everywhere.
+
+    They were honest while nothing existed to put there, but a page of them reads as
+    unfinished rather than as tasteful restraint.
+    """
+    _, token = _open_event_with_guest(client, db_session)
+
+    for path in ("", "/wedding", "/rsvp"):
+        page = Document(client.get(f"/invites/{token}{path}").text)
+        blanks = [
+            element
+            for element in page.all
+            if "photo-slot" in element.attrs.get("class", "") or "Photo —" in element.deep_text
+        ]
+        assert not blanks, f"/invites/{{token}}{path} still has {len(blanks)} empty slot(s)"
+
+
+def test_every_picture_on_a_page_is_actually_served(
+    client: TestClient, db_session: Session
+) -> None:
+    """A src that 404s is a blank spot with extra steps."""
+    _, token = _open_event_with_guest(client, db_session)
+
+    seen = 0
+    for path in ("", "/wedding", "/rsvp"):
+        page = Document(client.get(f"/invites/{token}{path}").text)
+        for image in page.find_all("img"):
+            src = image.attrs.get("src", "")
+            if not src.startswith("/static/"):
+                continue
+            seen += 1
+            assert client.get(src).status_code == 200, f"{src} is referenced but not served"
+            assert image.attrs.get("alt"), f"{src} has no alt text"
+    assert seen >= 4, f"only {seen} pictures found across the guest pages"
+
+
 # -- Accessibility, as a requirement rather than an aspiration ------------
 
 

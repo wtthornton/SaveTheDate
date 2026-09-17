@@ -154,16 +154,10 @@
     <div class="lg:grid lg:grid-cols-3 lg:gap-7">
       {% for segment in required_segments if ns.ceremony is none or segment.id != ns.ceremony.id %}
         <div class="card flex h-full flex-col">
-          {% if loop.first %}
-            <img
-              class="h-[150px] w-full object-cover"
-              src="/static/img/gulf-sunset.jpg"
-              alt="An orange and purple sunset over the Gulf of Mexico, waves breaking on the shore.">
-          {% else %}
-            <div class="photo-slot h-[150px]">
-              <span class="photo-slot-eyebrow">Photo — {{ segment.name }}</span>
-            </div>
-          {% endif %}
+          {% set picture = segment_image(segment.name) %}
+          <img class="beat-media h-[150px] w-full
+                      {{ 'object-contain' if picture[0].endswith('.svg') else 'object-cover' }}"
+               src="{{ picture[0] }}" alt="{{ picture[1] }}.">
           <div class="flex flex-grow flex-col gap-2.5 p-[26px]">
             <p class="eyebrow-card-when">
               {{ local_day(segment.starts_at, event.timezone) }} ·
@@ -200,9 +194,10 @@
       <div class="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:gap-7">
         {% for segment in optional_segments %}
           <div class="paid-card lg:flex-row lg:overflow-hidden lg:p-0">
-            <div class="photo-slot hidden lg:flex lg:h-auto lg:w-[250px] lg:flex-shrink-0 lg:rounded-none lg:p-0">
-              <span class="photo-slot-eyebrow">Photo — {{ segment.name }}</span>
-            </div>
+            {% set picture = segment_image(segment.name) %}
+            <img class="beat-media hidden lg:block lg:h-auto lg:w-[250px] lg:flex-shrink-0
+                        {{ 'object-contain' if picture[0].endswith('.svg') else 'object-cover' }}"
+                 src="{{ picture[0] }}" alt="{{ picture[1] }}.">
             <div class="flex flex-1 flex-col gap-2 lg:p-6">
               <p class="schedule-title">{{ segment.name }}</p>
               <p class="tap-row-meta">
@@ -315,5 +310,14 @@
     </div>
     <a class="btn-outline lg:min-h-[54px] lg:px-9" href="/invites/{{ token }}/print">Printable itinerary</a>
   </section>
+
+  {# `beach-fire.jpg` is CC BY 4.0, which requires the credit to be visible to a reader
+     rather than filed in the repository. It is the only image on the whole site that
+     carries an attribution obligation. Remove this line if that image goes — and see
+     img/CREDITS.md, which says the same thing next to the file. #}
+  <p class="photo-credit">
+    Placeholder photography. Beach fire by Mike Dickison,
+    <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener">CC BY 4.0</a>.
+  </p>
 
 {% endblock %}

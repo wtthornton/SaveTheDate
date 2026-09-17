@@ -104,12 +104,62 @@ s = socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1]); s.clos
   echo "Stop it with: scripts/review-instance.sh down"
 }
 
+reload() {
+  # Jinja reloads templates on its own, but NOT Python. A change to app/*.py leaves the
+  # running process serving the old code — which showed up once as a live 500 on the
+  # published URL while the whole test suite was green, because the tests start a fresh
+  # server and the review instance does not.
+  #
+  # Restarting only the app, on the same port, keeps the tunnel and therefore the URL,
+  # and does not re-seed — so every invite link already sent stays valid.
+  if ! _pid_alive "$RUN/app.pid"; then
+    echo "Nothing is running. Use 'up'." >&2
+    exit 1
+  fi
+  # /proc/<pid>/cmdline is NUL-separated, so NUL is what has to become a newline.
+  local port
+  port="$(tr '\0' '\n' <"/proc/$(cat "$RUN/app.pid")/cmdline" 2>/dev/null |
+          grep -A1 -x -- '--port' | tail -1)"
+  case "$port" in
+    ''|*[!0-9]*) port="$(ps -o args= -p "$(cat "$RUN/app.pid")" |
+                         grep -oE '\-\-port[ =][0-9]+' | grep -oE '[0-9]+' | head -1)" ;;
+  esac
+  case "$port" in
+    ''|*[!0-9]*) port="" ;;
+  esac
+  if [ -z "$port" ]; then
+    echo "Could not work out which port the app is on; use 'down' then 'up'." >&2
+    exit 1
+  fi
+
+  kill "$(cat "$RUN/app.pid")" 2>/dev/null || true
+  sleep 1
+  REVIEW_INSTANCE=true nohup "${ROOT}/.venv/bin/uvicorn" app.main:app \
+    --host 127.0.0.1 --port "$port" --log-level warning \
+    >"$RUN/app.log" 2>&1 &
+  echo $! >"$RUN/app.pid"
+
+  local i=0
+  until curl -fsS "http://127.0.0.1:$port/health" >/dev/null 2>&1 || [ $i -ge 40 ]; do
+    i=$((i + 1)); sleep 0.5
+  done
+  if ! curl -fsS "http://127.0.0.1:$port/health" >/dev/null 2>&1; then
+    echo "The app did not come back. Last lines of $RUN/app.log:" >&2
+    tail -20 "$RUN/app.log" >&2
+    exit 1
+  fi
+  echo "Reloaded on port $port. URL and invite links are unchanged:"
+  [ -f "$RUN/url" ] && cat "$RUN/url"
+}
+
 case "${1:-}" in
   up) up ;;
   down) down ;;
+  reload) reload ;;
   status) status ;;
   *)
-    echo "usage: $0 {up|status|down}" >&2
+    echo "usage: $0 {up|reload|status|down}" >&2
+    echo "  reload  restart the app after a Python change, keeping the URL and tokens" >&2
     echo "  PHASE=before-open|open|closed|real  which RSVP phase to seed (default: open)" >&2
     exit 2
     ;;

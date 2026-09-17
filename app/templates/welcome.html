@@ -125,9 +125,13 @@
   <div class="section-divider-line lg:mx-[60px]"></div>
 
   <section class="beat grid grid-cols-[96px_minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_470px] lg:items-center lg:gap-12 lg:px-[60px] lg:py-[26px]">
-    <div class="photo-slot h-[122px] lg:order-2 lg:h-[300px]">
-      <span class="photo-slot-eyebrow">A Shore Thing</span>
-    </div>
+    {# No photograph of A Shore Thing exists, and no stock beach house should stand
+       in for somebody's actual home. An engraved plate in the site's own line-and-
+       diamond language reads as stationery rather than as a missing picture. #}
+    <img
+      class="beat-media h-[122px] w-full object-contain lg:order-2 lg:h-[300px]"
+      src="/static/img/plate-a-shore-thing.svg"
+      alt="An engraved drawing of a beach house raised on pilings above the dunes.">
     <div class="flex flex-col gap-2 lg:order-1 lg:gap-3">
       <p class="beat-roman">II</p>
       <h3 class="display-md lg:text-[40px]">Then Jason built a place</h3>
