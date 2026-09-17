@@ -768,3 +768,131 @@ The replacement costs nothing: browsers resolve every `*.localhost` name to loop
 `savethedate.localhost` gives local review a second hostname with no DNS, no hosts file
 and no second process — and the visual tests now drive the real Host-header dispatch in
 a real browser instead of a path that only existed for them.
+
+---
+
+## 8. Production, 2026-09-17
+
+TAP-7733: the production stack, the tunnel cutover, and the backup pipeline. Most of
+what follows is about verification that looked like it worked and did not.
+
+### Three attempts to prove the restart policy, and the first two proved nothing
+
+`restart: unless-stopped` is the line that decides whether the site returns after a
+power cut with nobody logged in. It is worth actually testing, and testing it took
+three goes.
+
+**`docker kill` proved the opposite of what I read into it.** The container went to
+`exited`, `RestartCount` stayed 0, and for a moment that looked like a broken restart
+policy. It is not: Docker treats a CLI-issued kill as an *operator* stop, and
+`unless-stopped` means exactly "do not restart something a human stopped". The test
+was wrong, not the config.
+
+**`docker exec ... kill -9 1` failed to run at all.** `kill` is not in
+`python:3.12-slim`. The exec errored, nothing died, and the very next line of my own
+script printed "app recovered on its own after 1s" — because the app had never gone
+down. That is the §7 lesson repeating verbatim: **a mutation that does not apply has
+proved nothing**, and the check that catches it is watching a counter move, not
+watching a request succeed.
+
+**`os.kill(1, SIGKILL)` from inside the container silently did nothing either.** The
+kernel protects the init process of a PID namespace from signals it has no handler
+for, including SIGKILL, when they come from inside that namespace. `RestartCount`
+stayed 0 and the state stayed `running`.
+
+SIGTERM worked, because uvicorn installs a handler for it, so the signal is delivered
+and the process exits. `RestartCount` went **0 → 1** and the app answered again in
+about a second. The proof is the counter moving; every earlier run had a plausible
+success message and a counter that had not moved.
+
+### A drill that cries wolf on an empty database gets ignored
+
+The restore drill failed if the restored database had no guests, which is right: a
+backup that restores an empty guest list is the catastrophe this whole exercise
+exists to catch.
+
+Then production was truncated back to empty — correctly, since the invented data had
+served its purpose — and the weekly drill would have failed every week until the real
+guest list is loaded, which could be months.
+
+That is worse than no drill. **A check that is red for a known and acceptable reason
+teaches whoever reads it to skip the whole class of message**, and the day it goes red
+for a real reason, nobody looks.
+
+The rule is now split by where the claim comes from. The manifest is read from the
+*live* database moments before the dump, so a backup that held 40 guests and restored
+0 is still a shortfall and still fails. A backup that held 0 and restored 0 is a
+faithful backup of an empty database: it warns loudly that it proved nothing about
+guest data, and passes. It becomes a real check by itself the day guests exist.
+
+### Compose substitutes nothing for an unset variable
+
+`${POSTGRES_PASSWORD}` with no `--env-file` does not fail. It expands to the empty
+string, and Postgres starts with a blank password. The failure is silent, and it
+produces a *running* stack, which is the worst kind.
+
+Two defences, because either alone is thin: `:?` guards in the compose file so an
+unset variable is an error, and `scripts/prod.sh` as the only supported way in, so
+the flag cannot be forgotten. The script also rejects a `POSTGRES_PASSWORD=` line
+with nothing after it — the `:?` guard catches *unset*, not *empty*, and an example
+file that was copied but never filled in produces exactly the empty case.
+
+### Production settings belong where they can be reviewed
+
+The handoff listed the production environment as things to put in `.env.prod`:
+`SAVE_THE_DATE_HOSTS`, `TRUSTED_CLIENT_IP_HEADER`, `REVIEW_INSTANCE`, and the rest.
+It called them "where the easy-to-miss items are", which is the argument against
+putting them there.
+
+A gitignored file cannot be reviewed, cannot be diffed, and cannot be asserted. Every
+one of those values has a specific failure — the card on the wedding hostname, one
+rate-limit bucket for the whole world, a draft banner on a real invitation — and all
+of them are invisible until a guest hits them.
+
+They went into `docker-compose.prod.yml` instead, with only true secrets left in
+`.env.prod`, and `tests/test_production_stack.py` asserts each one against the
+breakage it causes. Fourteen tests, each mutated and confirmed red. **The test could
+only be written because the value was committed**, which is the actual argument: a
+setting you cannot test is a setting you are hoping about.
+
+### An ephemeral port is fine for a throwaway and not for production
+
+The review instance picks a free port by binding port 0, which lands somewhere in
+32768–60999. That is `/proc/sys/net/ipv4/ip_local_port_range` — the range the kernel
+draws *outbound* source ports from. A long-lived listener there can collide with an
+outbound connection after a restart.
+
+Survivable for an instance whose URL changes anyway. Not for the one behind a
+hostname printed in an ingress file. Production is on 8100, deliberately outside the
+range.
+
+### Checking the method before trusting the result
+
+Two small ones, both the same shape as §6's "watch what your test client actually
+sends".
+
+The RSVP endpoint is `PUT /api/invites/{token}/rsvp`. I posted to it, got 405, and
+only then read the router. A 405 is a cheap way to find out; a 200 against the wrong
+assumption would not have been.
+
+And `rclone` printed `Config file not found - using defaults` on every call, which is
+accurate and harmless and would have made up most of the timer's journal. Silenced
+by pointing `RCLONE_CONFIG` at `/dev/null`, because the remote is configured entirely
+from environment variables. **A log that is mostly noise is a log nobody reads**, and
+these two units are the only warning that the guest list is not recoverable.
+
+### Proving a restore needs something to restore
+
+The drill compares restored row counts against a manifest. Against an empty
+production database it compared 0 to 0 and passed — the exact vacuous green §6
+warned about.
+
+So production was temporarily seeded by restoring the dev database into it, which had
+the side benefit of exercising the disaster-recovery path itself, and the drill then
+read back 5 guests, 2 RSVPs and 3 attendees. Production was truncated afterwards and
+verified empty, table by table.
+
+It also settled a claim §12 makes and nothing had tested: both public pages render on
+an empty production database. They do — they hard-code the couple, the date and the
+place, so they never touch a row. That is the state production is in right now, and
+it is the state it will be in on its first day.

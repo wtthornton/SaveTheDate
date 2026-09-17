@@ -11,11 +11,15 @@ disciplined without burning the token pool.
 
 ## 1. Where this stands
 
-> **Updated 2026-09-17.** Phases 0-3 are done: **13 of 17 issues closed** (one
-> canceled), **254 tests**. Two issues remain open — TAP-7733's production stack and
-> backups, and TAP-7734's observability — plus TAP-7762, which needs a camera rather
-> than a keyboard. See §13 for the most recent session, §10 and §11 for the two before
-> it, and `LESSONS_LEARNED.md` for the things that cost time.
+> **Updated 2026-09-17.** Phases 0-3 are done and **Phase 4 is most of the way**:
+> **13 of 17 issues closed** (one canceled), **268 tests**. Production is live on
+> `wedding.tapphouse.co` and `savethedate.tapphouse.co` with its own database, and the
+> backup pipeline is built with its restore proven — **but the dumps are not yet
+> leaving this machine**, because the R2 bucket is Bill's to create. That is the one
+> thing standing between TAP-7733 and done. TAP-7734's observability is still open, as
+> is TAP-7762, which needs a camera rather than a keyboard. See §14 for the most recent
+> session, §13 and §11 for the two before it, and `LESSONS_LEARNED.md` for the things
+> that cost time.
 
 **Shipped.** A FastAPI + PostgreSQL API with events, invitations, token-based invite
 links and RSVPs. Alembic migrations apply and roll back. CI runs ruff, `mypy --strict`
@@ -61,8 +65,8 @@ go out ~6–8 weeks ahead; save-the-dates 6–12 months ahead. RSVP deadline 15 
 | Linear | Project **SaveTheDate**, team TappsCodingAgents (TAP) |
 | Backlog | TAP-7725 … TAP-7763, 15 issues, 4 milestones. **11 done as of 2026-09-17**; TAP-7733, 7734, 7740 and 7762 remain |
 | Postgres | host port **5434** (5432/5433 are taken by other local projects) |
-| Hosting | **The home lab.** One Compose stack behind a named Cloudflare Tunnel. See §8.1. |
-| Hostnames | **`tapphouse.co`**, on Cloudflare since 2026-09-17. `dev-wedding` live, `wedding` and `savethedate` reserved. See §7.1. |
+| Hosting | **The home lab.** Two Compose stacks — dev and `savethedate-prod` — behind one named Cloudflare Tunnel. See §8.1 and §14. |
+| Hostnames | **`tapphouse.co`**, on Cloudflare since 2026-09-17. All four live since 2026-09-17: `wedding` and `savethedate` on production, `dev-wedding` and `dev-savethedate` on the review instance. See §7.1. |
 | Claude Code | **2.1.258** installed. Feature notes below were checked against 2.1.271+ docs, so verify anything exotic before relying on it. |
 
 ---
@@ -525,18 +529,30 @@ storage, and attention.
    running as the systemd user service `cloudflared-tapphouse` with `Restart=always`
    and lingering on, so it returns unattended after a reboot. Three hostnames routed:
    `dev-wedding` → the review instance on :50681, `wedding` and `savethedate` → 503.
-3. **Compose stack** with `restart: unless-stopped`, so the whole thing returns by
-   itself after a power cut without anyone logging in. **This is the next piece of
-   work**, and it is what `wedding.tapphouse.co` is waiting for — its own Compose
-   project and its own database, separate from development.
-4. **Migrations as a release step**, not on app boot. Two app instances racing
-   `alembic upgrade` on start is a bad way to find out about locking.
+3. ~~**Compose stack** with `restart: unless-stopped`.~~ **DONE 2026-09-17.** Project
+   `savethedate-prod` in `docker-compose.prod.yml`: its own volume
+   (`savethedate-prod_pgdata`), its own database, and **no published Postgres port at
+   all** — a stronger form of the plan's "a different port", since the app reaches it
+   over the Compose network and `pg_dump` runs inside the container. The app is
+   published on `127.0.0.1:8100` only. Driven by `scripts/prod.sh`.
+4. ~~**Migrations as a release step**, not on app boot.~~ **DONE 2026-09-17.** A
+   one-shot `migrate` service that the app waits on via
+   `service_completed_successfully`. Exactly one container runs the upgrade, so there
+   is no race, and a failed migration stops the release rather than producing an app
+   against a half-migrated schema.
 5. **Automated backups off this machine**, and a **restore that has actually been
-   performed**. See below — this is the deliverable.
-6. **Set `TRUSTED_CLIENT_IP_HEADER=CF-Connecting-IP`.** Behind the tunnel every request
-   arrives from the tunnel's local end, so without this the whole world shares one
-   rate-limit bucket and the first few guests throttle everyone else.
-7. **Set `SESSION_COOKIE_SECURE`** (or a `https://` `PUBLIC_BASE_URL`, which it follows).
+   performed**. **Built and proven 2026-09-17, with one leg outstanding**:
+   `scripts/backup.sh` + `scripts/restore-drill.sh` on systemd user timers, the full
+   dump → verify → upload → download → restore → count cycle exercised end to end
+   against a stand-in remote, and five deliberate failures confirmed caught. The
+   destination is **Cloudflare R2, pending Bill creating the bucket and token** — until
+   `.env.backup` holds real credentials the dumps are not actually off the machine.
+6. ~~**Set `TRUSTED_CLIENT_IP_HEADER=CF-Connecting-IP`.**~~ **DONE 2026-09-17**, in
+   `docker-compose.prod.yml`, and **verified behaviorally**: one address was throttled
+   at its 61st request while a second address requesting in the same instant got a
+   clean 404.
+7. ~~**Set `SESSION_COOKIE_SECURE`**~~ **DONE 2026-09-17** by way of
+   `PUBLIC_BASE_URL=https://wedding.tapphouse.co`, which it follows.
 
 ### The backup is not the deliverable; the restore is
 
@@ -795,6 +811,10 @@ a convenience.
 | `savethedate.tapphouse.co` | Production — the save-the-date card. **503 until the production stack exists** |
 | `dev-savethedate.tapphouse.co` | The card on the review instance on :50681 — **live** |
 
+> **Superseded 2026-09-17 by §14.** The production stack now exists, so both
+> production hostnames point at `127.0.0.1:8100` and serve real pages. They still
+> answer 502 while production is down, for the reason given below.
+
 `wedding` returns 503 rather than pointing at the development instance. A guest-facing
 hostname quietly serving the development database is how invented guests start looking
 real, and how a genuine RSVP lands somewhere disposable.
@@ -915,6 +935,10 @@ Four hostnames, two stacks. Dev and production keep separate databases:
 | Wedding | `dev-wedding.tapphouse.co` — live | `wedding.tapphouse.co` — 503 |
 | Save-the-date | `dev-savethedate.tapphouse.co` — live | `savethedate.tapphouse.co` — 503 |
 
+> **Superseded later the same day.** The two production hostnames went live when the
+> stack was built; see §14. The 503s were never a design, only the absence of an
+> origin.
+
 **Both pages live at `/`, and the hostname decides which one you get** —
 `SAVE_THE_DATE_HOSTS` is an explicit list, not a substring test, because this project is
 itself called savethedate and `dev-wedding` would be one careless `in` away from serving
@@ -967,3 +991,94 @@ to bite again, because it presents as "the design is broken" rather than as a ca
 - The card's background photographs are CC0 placeholders of the Gulf, not of Port
   Aransas specifically. TAP-7762.
 
+
+---
+
+## 14. Production, 2026-09-17
+
+**TAP-7733.** `wedding.tapphouse.co` and `savethedate.tapphouse.co` are live, served by
+a Compose stack with its own database, and the backup pipeline exists with its restore
+path proven. One leg is outstanding: the dumps are not yet leaving this machine.
+
+### The stack
+
+| | dev (`docker-compose.yml`) | production (`docker-compose.prod.yml`) |
+| --- | --- | --- |
+| Compose project | `savethedate` | `savethedate-prod` |
+| Volume | `savethedate_pgdata` | `savethedate-prod_pgdata` |
+| Postgres host port | 5434 | **none** |
+| App host port | ephemeral, 50681 today | `127.0.0.1:8100`, fixed |
+
+Two decisions deviate from what §8.1 originally specified, both in the same direction:
+
+**Postgres publishes no port at all**, rather than "a different port". The app reaches
+it as `db:5432` over the Compose network and `pg_dump` runs inside the container, so
+nothing on the host ever needs to connect. A port that does not exist cannot be
+confused with 5434 and cannot be reached from the LAN.
+
+**8100 is fixed and deliberately outside the ephemeral range.** The review instance's
+50681 sits inside `/proc/sys/net/ipv4/ip_local_port_range` (32768–60999), where the
+kernel may hand the same number to an outbound connection. Survivable for a throwaway
+instance; not for the guest-facing one.
+
+### The production settings are committed, not in a `.env`
+
+The handoff called these "the environment, where the easy-to-miss items are" and listed
+them for a `.env.prod`. They went into `docker-compose.prod.yml` instead —
+`SAVE_THE_DATE_HOSTS`, `TRUSTED_CLIENT_IP_HEADER`, `PUBLIC_BASE_URL`,
+`REVIEW_INSTANCE`, `EMAIL_PROVIDER`, `CORS_ORIGINS`, `HOST_REGISTRATION_TOKEN`'s
+interpolation — with only secrets left in the gitignored `.env.prod`.
+
+The reason is that a value which can be forgotten eventually is. In a gitignored file
+nobody can review it, no test can read it, and rebuilding the environment from memory
+gets it silently wrong. Committed, `tests/test_production_stack.py` asserts each one
+and names the specific breakage — fourteen tests, each of which was mutated and
+confirmed to go red.
+
+`app` binds `127.0.0.1` only, and that is what makes trusting `CF-Connecting-IP` and
+`X-Forwarded-Proto` defensible: nothing off this box can open the socket to forge
+either. `--proxy-headers` is required rather than decorative, because `routers/host.py`
+builds the invite links a host copies out of `request.base_url`.
+
+### The restore, which is the deliverable
+
+`scripts/backup.sh` dumps, **verifies the archive parses**, uploads, **confirms the
+uploaded byte count**, and prunes past 365 days. It writes a manifest of row counts
+taken from the live database moments before the dump.
+
+`scripts/restore-drill.sh` downloads the newest dump **from the remote** — not from
+local staging, which would prove nothing about whether anything ever left the machine —
+restores it into a scratch database, and compares against that manifest.
+
+Five deliberate failures were confirmed caught: a manifest claiming more guests than
+the dump holds, a truncated archive, a restore producing an empty guest list, a newest
+backup 40 days old, and a remote holding nothing at all. Both units were then run
+through systemd rather than only from a shell.
+
+**Proving it needed data, so production was temporarily seeded** by restoring the dev
+database into it — which also exercised the disaster-recovery path — and the drill read
+back 5 guests, 2 RSVPs, 3 attendees. Production was then truncated and verified empty.
+
+One rule changed while cleaning up: an empty database that backs up empty now **warns
+and passes** rather than failing. The shortfall check still catches a backup that held
+guests and restored none, because the manifest comes from the live database. Failing
+weekly on an honestly-empty database would only teach whoever reads the journal to
+ignore it, which is how the real failure gets missed later.
+
+### Still open
+
+- **The R2 bucket and token.** Bill's to create; `.env.backup.example` has the exact
+  steps. Until then `BACKUP_REMOTE` points at a local directory, which is **not a
+  backup** — it is on the same disk as the database.
+- **No dependency lockfile.** CI installs with `uv pip install -e ".[dev]"` and the
+  image resolves at build time, so an image rebuilt in 2028 may pull newer versions
+  than were tested. The built image is what runs and a rebuild is deliberate, so this
+  is a rebuild-time risk rather than a running one — but it is real over a 17-month
+  deployment. `uv lock` is the fix, and it touches CI, so it is its own piece of work.
+- **A UPS, and what happens if the line drops while the household is in Texas.**
+  Hardware, not software. Everything that can return unattended does: `unless-stopped`
+  was verified by killing the app (RestartCount 0 → 1, back in about a second), and
+  `docker.service`, `cloudflared-tapphouse` and both timers are enabled with lingering
+  on.
+- **Observability.** TAP-7734. A failed drill is currently only visible to
+  `scripts/prod.sh status`, which now reports timer state and failed units.

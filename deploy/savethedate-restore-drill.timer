@@ -1,0 +1,14 @@
+# Weekly, Sunday 04:30 local — an hour after a nightly backup, so it drills a dump
+# taken that morning. TAP-7733.
+
+[Unit]
+Description=SaveTheDate: weekly restore drill
+Documentation=file:///home/wtthornton/code/SaveTheDate/docs/RUNBOOK.md
+
+[Timer]
+OnCalendar=Sun *-*-* 04:30:00
+Persistent=true
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

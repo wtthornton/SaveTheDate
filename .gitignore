@@ -5,6 +5,13 @@ __pycache__/
 venv/
 .env
 .env.local
+
+# The production environment (TAP-7733): the Postgres password, and briefly the
+# host-registration token. This repository is PUBLIC. `.env.prod.example` carries
+# the shape with no values and is committed; the real file must never be.
+.env.prod
+# Off-machine backup credentials: the R2 access key and secret.
+.env.backup
 *.db
 *.sqlite3
 .pytest_cache/
@@ -23,3 +30,7 @@ build/
 
 # Visual-test output: regenerated on every run, reviewed by eye, not committed.
 tests/screenshots/
+
+# Local staging for the production backups (TAP-7733). The real copy lives
+# off this machine; these are a convenience for the restore drill.
+.backups/

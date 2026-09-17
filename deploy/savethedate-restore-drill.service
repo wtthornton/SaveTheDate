@@ -1,0 +1,20 @@
+# Weekly proof that the backups can actually be restored. TAP-7733.
+#
+# This is the unit that matters. A nightly backup that succeeds forever and has never
+# been restored is a hypothesis, and every way it can rot — an expired R2 token, a
+# bucket that silently accepts nothing, a schema the dump no longer matches, a timer
+# that stopped — looks identical to a healthy one from the backup side alone.
+#
+# It restores into a scratch database named `restore_drill_*` and drops it again. It
+# never writes to the production database.
+
+[Unit]
+Description=SaveTheDate: restore the newest backup and count the guests
+Documentation=file:///home/wtthornton/code/SaveTheDate/docs/RUNBOOK.md
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/wtthornton/code/SaveTheDate
+ExecStart=/home/wtthornton/code/SaveTheDate/scripts/restore-drill.sh
+TimeoutStartSec=900

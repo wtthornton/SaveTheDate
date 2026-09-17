@@ -1,0 +1,34 @@
+# Keep the build context to what the wheel is actually built from. Everything here
+# either cannot work inside the image (a venv built against this host's Python) or
+# must never enter it (.env holds credentials, .review holds live invite tokens).
+
+.git
+.github
+.venv
+venv
+.env
+.env.*
+!.env.example
+!.env.prod.example
+.review
+tests
+docs
+*.md
+!README.md
+__pycache__
+*.py[cod]
+*.egg-info
+.pytest_cache
+.ruff_cache
+.mypy_cache
+.coverage
+htmlcov
+dist
+build
+.idea
+.vscode
+.DS_Store
+
+# The Tailwind source. The built app/static/app.css is committed and is what ships;
+# the image has no Node and no standalone binary to rebuild it with.
+app/static/src

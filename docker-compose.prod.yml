@@ -1,0 +1,134 @@
+# The production stack. TAP-7733.
+#
+# Always drive this through `scripts/prod.sh`, never `docker compose -f` by hand:
+# the script supplies `--env-file .env.prod`, and without it every `${...}` below
+# resolves to empty. Compose does not fail on an unset variable, it substitutes
+# nothing — so a forgotten flag produces a Postgres with a blank password rather
+# than an error.
+#
+# This shares a machine with the development stack in `docker-compose.yml`, so the
+# two are kept apart on every axis that can collide:
+#
+#   | | dev (docker-compose.yml) | production (this file) |
+#   | project | savethedate       | savethedate-prod       |
+#   | volume  | savethedate_pgdata| savethedate-prod_pgdata|
+#   | host db port | 5434         | none — see `db` below  |
+#   | database| savethedate       | savethedate            |
+#
+# Every non-secret production setting is written HERE rather than in `.env.prod`,
+# which is deliberate. These are the values the handoff called easy to miss, and a
+# value in a committed file cannot be missing on the day somebody rebuilds the
+# environment from memory. `tests/test_production_stack.py` asserts each one.
+# `.env.prod` holds only what must not be committed.
+
+name: savethedate-prod
+
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: savethedate
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}
+      POSTGRES_DB: savethedate
+    # NO published port, which is a deviation from the plan's "a different port"
+    # and a stronger form of the same intent. The application reaches Postgres over
+    # the Compose network as `db:5432`, and `scripts/backup.sh` runs `pg_dump`
+    # inside this container, so nothing on the host ever needs to connect. A port
+    # that does not exist cannot be confused with 5434 and cannot be reached from
+    # the LAN.
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U savethedate -d savethedate"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+      start_period: 10s
+
+  # Migrations as a release step, not on app boot. TAP-7733 item 2.
+  #
+  # A one-shot service the app WAITS for, rather than an `alembic upgrade` inside
+  # the app's own entrypoint. Two app instances racing the upgrade at start is a bad
+  # way to find out about locking; exactly one container runs this, and the app
+  # cannot start until it has exited 0. A failed migration therefore stops the
+  # release instead of producing an app talking to a half-migrated schema.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: savethedate-prod:latest
+    restart: "no"
+    command: ["alembic", "upgrade", "head"]
+    environment:
+      DATABASE_URL: postgresql+psycopg://savethedate:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}@db:5432/savethedate
+    depends_on:
+      db:
+        condition: service_healthy
+
+  app:
+    # Same image as `migrate`, built once. Declaring the build here as well lets
+    # `docker compose build` name either service without building twice.
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: savethedate-prod:latest
+    restart: unless-stopped
+    ports:
+      # 127.0.0.1 ONLY. The named Cloudflare Tunnel runs on this box and dials out,
+      # so loopback is all it needs — and binding loopback is what makes
+      # `--forwarded-allow-ips *` and `TRUSTED_CLIENT_IP_HEADER` safe, because no
+      # host off this machine can open the socket to forge either header.
+      #
+      # 8100, not an ephemeral port. The review instance's 50681 sits inside
+      # /proc/sys/net/ipv4/ip_local_port_range (32768-60999), where the kernel may
+      # hand the same number to an outbound connection; that is survivable for a
+      # throwaway instance and is not survivable for the guest-facing one.
+      - "127.0.0.1:${APP_PORT:-8100}:8000"
+    environment:
+      DATABASE_URL: postgresql+psycopg://savethedate:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD in .env.prod}@db:5432/savethedate
+
+      # Invite links and the session cookie's Secure flag both follow this.
+      PUBLIC_BASE_URL: https://wedding.tapphouse.co
+
+      # Without this the card's hostname would serve the wedding welcome. An
+      # explicit list, never a substring test — this project is itself called
+      # savethedate, so a match on the name would put the card on `wedding`.
+      SAVE_THE_DATE_HOSTS: savethedate.tapphouse.co
+
+      # Behind the tunnel every request arrives from the tunnel's local end, so
+      # without this the whole world shares one rate-limit bucket and the first few
+      # guests throttle everyone else. Safe only because the socket above is bound
+      # to loopback: a header a caller can set is otherwise an unlimited supply of
+      # fresh buckets, which turns the limiter off rather than on.
+      TRUSTED_CLIENT_IP_HEADER: CF-Connecting-IP
+
+      # Production must not wear the draft banner. Explicitly false rather than
+      # merely unset, so reading this file answers the question.
+      REVIEW_INSTANCE: "false"
+
+      # Console until mail is deliberately configured. An unconfigured deployment
+      # that prints is obvious; one that silently succeeds is a lie. Switching this
+      # to `resend` also needs RESEND_API_KEY and EMAIL_FROM, and the transport
+      # stays inert without the key.
+      EMAIL_PROVIDER: console
+
+      # There is no web client. The default is http://localhost:3000, which would be
+      # a nonsense origin to allow on a guest-facing host.
+      CORS_ORIGINS: ""
+
+      # Registration is CLOSED unless this is set. Set it in .env.prod once, create
+      # the single real host, then remove it and redeploy. `:-` and not `:?` on
+      # purpose: unset is the correct steady state.
+      HOST_REGISTRATION_TOKEN: ${HOST_REGISTRATION_TOKEN:-}
+    depends_on:
+      db:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+
+volumes:
+  # Becomes `savethedate-prod_pgdata` under the project name above, so it cannot be
+  # confused with the development stack's `savethedate_pgdata`. This volume is the
+  # only copy of the guest list that lives on this machine.
+  pgdata:

@@ -9,13 +9,14 @@ Hosts read the responses back off the guest list.
 It also serves **two pages that need no token**: a public save-the-date card, and a
 welcome at the root of the wedding site for anyone who arrives without their link.
 
-**Status:** working. Guest pages, host authentication, per-host scoping, rate
+**Status:** live. Guest pages, host authentication, per-host scoping, rate
 limiting, a host dashboard with per-day headcounts, CSV import and export, email
-delivery with per-guest delivery state, and the two public pages. 254 tests against a
-real Postgres.
+delivery with per-guest delivery state, and the two public pages — running in
+production on `wedding.tapphouse.co` and `savethedate.tapphouse.co` since 2026-09-17,
+on their own database. 268 tests against a real Postgres.
 
-What is left is not code: a durable home-lab deployment, error reporting, and real
-photographs. Until it has a durable home with a tested restore, keep invented guests
+What is left is mostly not code: an off-machine home for the backups, error reporting,
+and real photographs. Until the backups actually leave this machine, keep invented guests
 only — losing the guest list has no recovery path.
 
 ## Stack
@@ -117,9 +118,9 @@ a named tunnel from the home lab.
 
 | Hostname | Serves | State |
 | --- | --- | --- |
-| `wedding.tapphouse.co` | Production — the wedding site | Reserved — 503 until the production stack exists |
+| `wedding.tapphouse.co` | Production — the wedding site | **Live** since 2026-09-17 |
 | `dev-wedding.tapphouse.co` | The review instance | **Live** |
-| `savethedate.tapphouse.co` | Production — the save-the-date card | Reserved — 503 until the production stack exists |
+| `savethedate.tapphouse.co` | Production — the save-the-date card | **Live** since 2026-09-17 |
 | `dev-savethedate.tapphouse.co` | The save-the-date card on the review instance | **Live** |
 | `home.tapphouse.co` | Home Assistant (Nabu Casa) | Pre-existing, untouched |
 
@@ -133,9 +134,11 @@ There is deliberately **no `/save-the-date` path**. The card is reviewed locally
 `savethedate.localhost`, which every browser resolves to loopback, so it needs no DNS
 entry and is still reachable under one name only.
 
-`wedding.tapphouse.co` deliberately returns 503 rather than pointing at the development
-instance. A guest-facing hostname quietly serving the development database is how
-invented guests start looking real, and how a genuine RSVP lands somewhere disposable.
+The two production hostnames reach the `savethedate-prod` Compose stack on
+`127.0.0.1:8100`, which has **its own database**, separate from development. While that
+stack is down they return 502 rather than falling through to the review instance — a
+guest-facing hostname quietly serving the development database is how invented guests
+start looking real, and how a genuine RSVP lands somewhere disposable.
 
 ### The two pages that need no token — built 2026-09-17
 
@@ -213,13 +216,33 @@ Losing the guest list is the one failure here with no recovery path, and a weddi
 cannot move. Self-hosting means these are yours to get right rather than somebody
 else's:
 
-- **Automated Postgres backups, off this machine**, and a **restore that has actually
-  been performed**. The restore is the deliverable, not the backup.
+- ~~**Automated Postgres backups, off this machine**, and a **restore that has actually
+  been performed**.~~ Built 2026-09-17: `scripts/backup.sh` nightly and
+  `scripts/restore-drill.sh` weekly, both on systemd user timers, with the drill
+  restoring the newest dump into a scratch database and comparing row counts against a
+  manifest taken at dump time. **One leg outstanding** — the destination is Cloudflare
+  R2 and the bucket is not created yet, so until `.env.backup` holds real credentials
+  the dumps have not actually left the machine.
+- ~~**Unattended restart**: the stack comes back on its own after a power cut.~~ Done:
+  `restart: unless-stopped` throughout, Docker, the tunnel and both timers enabled at
+  boot, and lingering on so the user units survive logout.
 - **Power and network continuity** through the RSVP window — a UPS, and a plan for what
-  happens if the house loses internet while you are in Texas.
-- **Unattended restart**: the stack comes back on its own after a power cut.
+  happens if the house loses internet while you are in Texas. Still open; hardware.
 
-Tracked as TAP-7733.
+Tracked as TAP-7733. The operational procedures are in [docs/RUNBOOK.md](docs/RUNBOOK.md),
+written to be followable by someone who has never seen this project.
+
+### Running production
+
+```bash
+cp .env.prod.example .env.prod     # fill in POSTGRES_PASSWORD; it is gitignored
+./scripts/prod.sh deploy           # build, migrate, start, wait for /health
+./scripts/prod.sh status           # containers, health, and backup timer state
+```
+
+Always go through `scripts/prod.sh`. It supplies `--env-file .env.prod`, and Compose
+substitutes *nothing* for an unset variable rather than failing — so running the compose
+file directly starts Postgres with a blank password instead of erroring.
 
 ## Quick start
 
@@ -424,17 +447,20 @@ These are tracked as epics in the
 [Linear project](https://linear.app/tappscodingagents/project/savethedate-6d14ff49f534)
 and are deliberately not stubbed out:
 
-- **Not deployed anywhere durable.** It runs on a dev box against a docker-compose
-  Postgres, plus a throwaway Cloudflare Quick Tunnel for review. A proper home-lab
-  deployment with **automated backups and a tested restore** is TAP-7733, and it is the
-  only gap that could cost the guest list.
-- **No production stack yet.** `wedding.tapphouse.co` and `savethedate.tapphouse.co` are
-  both reserved and both return 503. They need a Compose project and a database of their
-  own, separate from development. TAP-7733.
-- **The save-the-date card has no production home yet.** It is live for review at
-  `dev-savethedate.tapphouse.co`, which reaches the same review instance as
-  `dev-wedding` and is told apart by the Host header. `savethedate.tapphouse.co` stays
-  at 503 until the production stack exists.
+- **The backups have not left this machine yet.** The pipeline is built and its restore
+  path is proven end to end, but the destination is a Cloudflare R2 bucket that does not
+  exist yet, so `BACKUP_REMOTE` still points at a local directory — which is on the same
+  disk as the database, and therefore not a backup. `.env.backup.example` has the steps.
+  **This is the only remaining gap that could cost the guest list**, and it is the last
+  thing standing between TAP-7733 and done.
+- **No dependency lockfile.** CI installs with `uv pip install -e ".[dev]"` and the
+  production image resolves at build time, so an image rebuilt in 2028 may pull newer
+  libraries than were tested here. The built image is what runs and rebuilding is
+  deliberate, so this is a rebuild-time risk rather than a running one — but it is real
+  across a 17-month deployment.
+- **No UPS.** Everything that can return unattended does, but a power cut long enough to
+  outlast the battery that does not exist still takes the site down until the line comes
+  back. TAP-7733.
 - **No error reporting**, and `/health` says the process is up rather than that the
   service works. TAP-7734.
 - **Every photograph is a placeholder**, and the hero is a stock photograph of another

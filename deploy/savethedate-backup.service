@@ -1,0 +1,26 @@
+# Nightly off-machine backup of the production database. TAP-7733.
+#
+# A systemd USER unit, like cloudflared-tapphouse, and it depends on the same thing:
+# `loginctl enable-linger wtthornton`, already on. Without lingering these stop the
+# moment the last session ends, which on a box nobody logs into means they would run
+# once and never again.
+#
+# Install with `deploy/install-timers.sh`.
+
+[Unit]
+Description=SaveTheDate: back up the production database off this machine
+Documentation=file:///home/wtthornton/code/SaveTheDate/docs/RUNBOOK.md
+# The dump runs `pg_dump` inside the running db container, so there is nothing to do
+# if Docker is not up yet. A failure here is loud rather than silent; see the drill.
+After=docker.service
+
+[Service]
+Type=oneshot
+WorkingDirectory=/home/wtthornton/code/SaveTheDate
+ExecStart=/home/wtthornton/code/SaveTheDate/scripts/backup.sh
+
+# The database may be mid-write when this starts; a dump is a consistent snapshot, so
+# it does not need the app stopped. Generous timeout anyway: a dump that is killed
+# halfway produces exactly the truncated archive the verify step exists to catch, and
+# failing the whole run is better than uploading it.
+TimeoutStartSec=900

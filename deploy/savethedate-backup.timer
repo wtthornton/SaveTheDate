@@ -1,0 +1,21 @@
+# Nightly, at 03:30 local. TAP-7733.
+
+[Unit]
+Description=SaveTheDate: nightly database backup
+Documentation=file:///home/wtthornton/code/SaveTheDate/docs/RUNBOOK.md
+
+[Timer]
+OnCalendar=*-*-* 03:30:00
+
+# Persistent is the load-bearing line. Without it, a backup missed because the box
+# was off — a power cut, exactly the scenario `restart: unless-stopped` exists for —
+# is simply skipped, and the gap is invisible until a restore needs it. With it, the
+# run happens shortly after the machine comes back.
+Persistent=true
+
+# Spread the start so a dump never lands exactly on the hour alongside whatever else
+# this box runs.
+RandomizedDelaySec=300
+
+[Install]
+WantedBy=timers.target

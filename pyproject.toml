@@ -32,6 +32,12 @@ dev = [
     # Layout and visual tests drive a real browser: a stylesheet scan cannot see
     # cascade, and no non-visual test caught the hero rendering as an empty box.
     "playwright>=1.55",
+    # `tests/test_production_stack.py` reads docker-compose.prod.yml, which holds
+    # every non-secret production setting. PyYAML arrives anyway as a transitive
+    # dependency of uvicorn[standard], and is named here so the tests do not rest on
+    # that staying true; the stubs are what let it pass mypy --strict.
+    "pyyaml>=6.0",
+    "types-PyYAML>=6.0",
 ]
 
 [build-system]
