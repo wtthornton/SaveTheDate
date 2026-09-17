@@ -17,12 +17,18 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 
 from app import rsvp as rsvp_domain
+from app.config import get_settings
 from app.deps import DbSession
 from app.models import Guest
 from app.schemas import DIETARY_LABELS
 from app.templating import templates
 
 router = APIRouter(prefix="/invites", tags=["guest pages"])
+
+
+def _is_review() -> bool:
+    """Read per request, not at import, so a test can flip the deployment."""
+    return get_settings().review_instance
 
 
 def _not_found(request: Request) -> Response:
@@ -34,7 +40,7 @@ def _not_found(request: Request) -> Response:
     return templates.TemplateResponse(
         request=request,
         name="not_found.html",
-        context={},
+        context={"review_instance": _is_review()},
         status_code=status.HTTP_404_NOT_FOUND,
     )
 
@@ -42,6 +48,7 @@ def _not_found(request: Request) -> Response:
 def _context(request: Request, guest: Guest, db: DbSession) -> dict[str, Any]:
     segments = rsvp_domain.segments_for(guest.event_id, db)
     return {
+        "review_instance": _is_review(),
         "event": guest.event,
         "guest": guest,
         "token": guest.invite_token,

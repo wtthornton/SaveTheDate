@@ -202,12 +202,53 @@ login and there must never be one: the link *is* the credential.
 ### Seeding a review instance
 
 ```bash
-.venv/bin/python -m scripts.seed_review_data
+.venv/bin/python -m scripts.seed_review_data                    # RSVP window open
+.venv/bin/python -m scripts.seed_review_data --phase real       # the true Oct 2027 dates
+.venv/bin/python -m scripts.seed_review_data --phase before-open
+.venv/bin/python -m scripts.seed_review_data --phase closed
 ```
 
 Creates the event, the six schedule segments and a handful of **invented** guests,
-printing an invite link for each. Guest data stays fictional until host authentication
-lands (TAP-7725) — until then anyone who can reach the API can read the whole list.
+printing an invite link for each. `--phase` decides which of the three RSVP states the
+event is in: it defaults to `open`, because on the real dates the form stays shut until
+October 2027 and a reviewer could not complete anything. `--base-url` prefixes the
+printed links, for when the instance is behind a tunnel.
+
+Guest data stays fictional until host authentication lands (TAP-7725) — until then
+anyone who can reach the API can read the whole list.
+
+**Re-seeding issues new invite tokens.** Any link already shared stops working. That is
+fine for invented guests and is exactly what must never happen once the real list
+exists.
+
+### Showing it to reviewers — the public review instance
+
+```bash
+scripts/review-instance.sh up       # start, seed, and print the links
+scripts/review-instance.sh status   # running? on what URL?
+scripts/review-instance.sh down     # stop everything
+```
+
+Runs the app on this box and publishes it through a **Cloudflare Quick Tunnel** —
+outbound-only, so no open ports, no static IP and no DNS change, which is why this does
+not wait on the `nltlabs.ai` zone move. Needs `cloudflared`:
+
+```bash
+curl -sSL -o ~/.local/bin/cloudflared \
+  https://github.com/cloudflare/cloudflared/releases/latest/download/cloudflared-linux-amd64
+chmod +x ~/.local/bin/cloudflared
+```
+
+Three things to know before sending anyone a link:
+
+- **The URL is random and does not survive a restart.** Every `up` prints a new one, and
+  this box reboots roughly daily. Re-send the links after any restart.
+- **Every page says `Draft preview`**, driven by `REVIEW_INSTANCE=true`, so nobody
+  mistakes it for the invitation that was really sent. It defaults off.
+- **The host endpoints are still unauthenticated.** Anyone with the URL can read every
+  invite token and create junk events. That is survivable only because every guest is
+  invented; `noindex` headers and a `robots.txt` deny keep the URLs out of search
+  indexes, but they are not access control. TAP-7725 is the actual fix.
 
 ## Tests
 

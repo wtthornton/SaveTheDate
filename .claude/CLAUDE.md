@@ -8,6 +8,11 @@ FastAPI + PostgreSQL. Server-rendered Jinja2 + htmx 2.x + Tailwind. No Node tool
 - Gate: `.venv/bin/ruff check . && .venv/bin/ruff format --check . && \
          .venv/bin/mypy app migrations scripts tests && .venv/bin/pytest -q`
 - Migrations: `.venv/bin/alembic upgrade head` / `downgrade base`
+  **`downgrade base` drops every table in whatever `DATABASE_URL` points at, which
+  defaults to the DEV database.** Run the up→down→up round trip against the test DB:
+  `DATABASE_URL="$TEST_DATABASE_URL" .venv/bin/alembic …`, or it will wipe local data
+  and re-key every invite token behind a running review instance.
+- Review instance: `scripts/review-instance.sh up | status | down` (TAP-7738)
 - Seed fake review data: `.venv/bin/python -m scripts.seed_review_data`
 - CSS: `~/.local/bin/tailwindcss -i app/static/src/app.css -o app/static/app.css`
   Tailwind v4 standalone binary, no Node, no `package.json`. The built

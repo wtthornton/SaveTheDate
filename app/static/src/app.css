@@ -70,6 +70,25 @@
 
   /* -- Navigation ------------------------------------------------------- */
 
+  /* -- Review-instance draft banner (TAP-7738) ---------------------------- */
+
+  .draft-banner {
+    margin: 0;
+    padding: 12px 20px;
+    background: var(--color-ink);
+    color: var(--color-ground);
+    font-size: 18px;
+    line-height: 1.45;
+    text-align: center;
+    text-wrap: pretty;
+    border-bottom: 3px solid var(--color-accent);
+  }
+
+  .draft-banner strong {
+    color: var(--color-blush);
+    letter-spacing: 0.02em;
+  }
+
   .pgnav {
     display: flex;
     flex-wrap: wrap;
@@ -235,14 +254,124 @@
     color: #FFFFFF;
   }
 
-  .hero-title {
+  /* -- The full-bleed welcome hero ---------------------------------------------
+   * A photograph, not a placeholder. The scrim is deliberately stronger than the
+   * approved artboard: the source photo runs very light (an overcast sky across
+   * most of the frame), and white text over it must still clear 4.5:1. Contrast
+   * wins over pixel-for-pixel fidelity here.
+   */
+
+  .hero {
     position: relative;
+    height: 520px;
+    overflow: hidden;
+  }
+
+  .hero-photo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 30%;
+    display: block;
+  }
+
+  .hero-scrim {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      rgba(34, 48, 58, 0.74) 0%,
+      rgba(34, 48, 58, 0.72) 42%,
+      rgba(34, 48, 58, 0.92) 100%
+    );
+  }
+
+  .hero-frame-outer {
+    position: absolute;
+    inset: 14px;
+    border: 1px solid rgba(255, 255, 255, 0.42);
+  }
+
+  .hero-frame-inner {
+    position: absolute;
+    inset: 19px;
+    border: 1px solid rgba(255, 255, 255, 0.18);
+  }
+
+  .hero-mark {
+    position: absolute;
+    top: 40px;
+    left: 0;
+    right: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 9px;
+  }
+
+  .hero-monogram {
+    width: 52px;
+    height: 52px;
+    box-sizing: border-box;
+    border: 1px solid rgba(255, 255, 255, 0.65);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .hero-monogram-text {
     font-family: var(--font-display);
-    font-weight: 300;
-    font-size: 40px;
-    line-height: 1.1;
+    font-size: 21px;
     color: #FFFFFF;
+    letter-spacing: 0.02em;
+  }
+
+  .eyebrow-hero-tag {
+    display: block;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.36em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.88);
+  }
+
+  .hero-copy {
+    position: absolute;
+    left: 30px;
+    right: 30px;
+    bottom: 34px;
     text-align: center;
+  }
+
+  .hero-names {
+    font-family: var(--font-display);
+    font-size: 54px;
+    font-weight: 300;
+    line-height: 1;
+    color: #FFFFFF;
+  }
+
+  .hero-and {
+    font-size: 23px;
+    font-style: italic;
+  }
+
+  .hero-ornament {
+    padding: 12px 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 9px;
+  }
+
+  .hero-ornament-line {
+    flex-shrink: 0;
+    height: 1px;
+    width: 40px;
+    background-color: rgba(255, 255, 255, 0.5);
   }
 
   .hero-date {
@@ -253,6 +382,43 @@
     line-height: 1.4;
     color: #FFFFFF;
     text-align: center;
+  }
+
+  .eyebrow-hero-location {
+    display: block;
+    padding-top: 9px;
+    font-size: 12px;
+    font-weight: 700;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.9);
+  }
+
+  /* -- Beat thumbnails: real photography for beats I and III --------------- */
+
+  .beat-thumb {
+    position: relative;
+    height: 122px;
+    overflow: hidden;
+    border-radius: 2px;
+  }
+
+  .beat-thumb-img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .beat-thumb-warm {
+    position: absolute;
+    inset: 0;
+    background-color: rgba(169, 78, 43, 0.16);
+    mix-blend-mode: multiply;
+  }
+
+  .section-divider-diamond {
+    flex-shrink: 0;
   }
 
   .photo-slot {

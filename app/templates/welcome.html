@@ -2,26 +2,45 @@
 
 {% block title %}{{ event.title }} — Welcome{% endblock %}
 
-{% block content %}
+{% block hero %}
+  <section class="hero" aria-label="Save the date — {{ event.title }}">
+    <img
+      class="hero-photo"
+      src="/static/img/hero-couple.jpg"
+      {# NOT Bill and Lisa. This is an openly-licensed stock photograph of another
+         couple, standing in until there are real pictures — see img/CREDITS.md. Saying
+         otherwise here would tell a screen-reader user something untrue about who is
+         in the picture, and is the kind of thing nobody would notice for a year. #}
+      alt="A couple on the beach at dusk, the bride's veil lifted by the wind.">
+    <div class="hero-scrim" aria-hidden="true"></div>
+    <div class="hero-frame-outer" aria-hidden="true"></div>
+    <div class="hero-frame-inner" aria-hidden="true"></div>
 
-  <section class="flex flex-col gap-5" aria-label="Save the date">
-    <div class="photo-slot h-56">
-      <span class="photo-slot-eyebrow">Photograph to come</span>
+    <div class="hero-mark">
+      <span class="hero-monogram" aria-hidden="true">
+        <span class="hero-monogram-text">B&nbsp;&amp;&nbsp;L</span>
+      </span>
+      <span class="eyebrow-hero-tag">Save the date</span>
     </div>
 
-    <div class="quote-card flex flex-col items-center gap-3">
-      <p class="eyebrow eyebrow-invert">Save the date</p>
-      <h1 class="hero-title">
-        {{ event.title }}
-      </h1>
+    <div class="hero-copy">
+      <h1 class="hero-names">Bill <span class="hero-and">and</span> Lisa</h1>
+      <div class="hero-ornament" aria-hidden="true">
+        <span class="hero-ornament-line"></span>
+        <svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 L10 5 L5 10 L0 5 Z" fill="#E3B9A4"/></svg>
+        <span class="hero-ornament-line"></span>
+      </div>
       <p class="hero-date">
         {% if event.event_date %}{{ event.event_date | formal_date }}{% else %}Date to follow{% endif %}
       </p>
       {% if event.location %}
-        <p class="eyebrow eyebrow-invert">{{ event.location }}</p>
+        <p class="eyebrow-hero-location">{{ event.location }}</p>
       {% endif %}
     </div>
   </section>
+{% endblock %}
+
+{% block content %}
 
   <section class="flex flex-col gap-3">
     <h2 class="display-lg">We are so glad you are here</h2>
@@ -37,13 +56,19 @@
 
   <div class="section-divider">
     <div class="section-divider-line"></div>
+    <svg class="section-divider-diamond" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 L10 5 L5 10 L0 5 Z" fill="#A94E2B"/></svg>
     <span class="eyebrow">Why Port Aransas</span>
+    <svg class="section-divider-diamond" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 L10 5 L5 10 L0 5 Z" fill="#A94E2B"/></svg>
     <div class="section-divider-line"></div>
   </div>
 
-  <section class="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
-    <div class="photo-slot h-28">
-      <span class="photo-slot-eyebrow">The Gulf at sunset</span>
+  <section class="grid grid-cols-[96px_minmax(0,1fr)] items-start gap-4">
+    <div class="beat-thumb">
+      <img
+        class="beat-thumb-img"
+        src="/static/img/gulf-sunset.jpg"
+        alt="An orange and purple sunset over the Gulf of Mexico, waves breaking on the sand.">
+      <div class="beat-thumb-warm" aria-hidden="true"></div>
     </div>
     <div class="flex flex-col gap-2">
       <p class="beat-roman">I</p>
@@ -60,8 +85,8 @@
 
   <div class="section-divider-line"></div>
 
-  <section class="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
-    <div class="photo-slot h-28">
+  <section class="grid grid-cols-[96px_minmax(0,1fr)] items-start gap-4">
+    <div class="photo-slot h-[122px]">
       <span class="photo-slot-eyebrow">A Shore Thing</span>
     </div>
     <div class="flex flex-col gap-2">
@@ -79,9 +104,13 @@
 
   <div class="section-divider-line"></div>
 
-  <section class="grid grid-cols-[88px_minmax(0,1fr)] items-start gap-4">
-    <div class="photo-slot h-28">
-      <span class="photo-slot-eyebrow">The Gulf at sunset</span>
+  <section class="grid grid-cols-[96px_minmax(0,1fr)] items-start gap-4">
+    <div class="beat-thumb">
+      <img
+        class="beat-thumb-img"
+        src="/static/img/gulf-evening.jpg"
+        alt="A silhouette wading into the surf at dusk, the sunset reflected in the wet sand.">
+      <div class="beat-thumb-warm" aria-hidden="true"></div>
     </div>
     <div class="flex flex-col gap-2">
       <p class="beat-roman">III</p>
