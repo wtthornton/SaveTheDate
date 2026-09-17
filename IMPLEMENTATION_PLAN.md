@@ -1,7 +1,7 @@
 # SaveTheDate — Implementation Plan
 
 A build plan for the wedding site of Bill Thornton & Lisa Gorden, Port Aransas, Texas,
-Sunday 13 February 2028.
+Sunday 20 February 2028.
 
 This document is written to be handed to a fresh Claude Code session. It says what to
 build, in what order, and how to set up the repo's Claude harness so the work stays
@@ -12,7 +12,7 @@ disciplined without burning the token pool.
 ## 1. Where this stands
 
 > **Updated 2026-09-17.** Phases 0-3 are done and **Phase 4 is most of the way**:
-> **13 of 17 issues closed** (one canceled), **268 tests**. Production is live on
+> **13 of 17 issues closed** (one canceled), **270 tests**. Production is live on
 > `wedding.tapphouse.co` and `savethedate.tapphouse.co` with its own database, and the
 > backup pipeline is built with its restore proven — **but the dumps are not yet
 > leaving this machine**, because the R2 bucket is Bill's to create. That is the one
@@ -55,7 +55,7 @@ behind a fake-able transport, with per-guest delivery state and a bounce webhook
 **Not started.** Only M4: hosting (TAP-7733) and observability (TAP-7734). Both need
 Bill's accounts, which is why they stop here.
 
-**The immovable fact.** The wedding is **Sunday 13 February 2028 at 3pm**. Invitations
+**The immovable fact.** The wedding is **Sunday 20 February 2028 at 3pm**. Invitations
 go out ~6–8 weeks ahead; save-the-dates 6–12 months ahead. RSVP deadline 15 December
 2027. Work backwards from those, not from today.
 
@@ -1092,3 +1092,81 @@ ignore it, which is how the real failure gets missed later.
   enough to matter, and about whether anyone would know.
 - **Observability.** TAP-7734. A failed drill is currently only visible to
   `scripts/prod.sh status`, which now reports timer state and failed units.
+
+---
+
+## 15. The date moved, and the front door got bigger, 2026-09-17
+
+Two changes from Bill, and one question that turned out to have the opposite answer
+from the one it implied.
+
+### The wedding moved a week, to Sunday 20 February 2028
+
+Bill's correction. Both dates are Sundays, so the whole weekend shifted by exactly
+seven days and no weekday changed.
+
+The seed script had **nine separate day numbers** scattered through its schedule —
+`_at(11, 18)`, `_at(12, 8)`, `_at(13, 15)` and so on. Editing nine places is how a
+weekend ends up half-shifted, with the welcome party on the wrong Friday and nothing
+failing. It now has **one** date, `WEDDING_DAY`, and every segment is an offset from
+it: `_at(-2, 18)` is the Friday, `_at(0, 15)` the ceremony. Moving the wedding again
+is a one-line change.
+
+**The dev database was shifted in place rather than re-seeded.** Re-seeding deletes
+the event and mints new invite tokens, which would have invalidated every review link
+already sent. A `+ interval '7 days'` on `events.event_date` and on every segment's
+`starts_at`/`ends_at` left the `guests` rows untouched — the md5 of all invite tokens
+was identical before and after. Production needed nothing; it is empty.
+
+### The save-the-date card is bigger
+
+520px of stage on a 1440px screen read as a postcard on a beach rather than as the
+only thing on the page. The stage is now 680px at desktop with type to match — names
+82px, the date 54px — and modestly larger on a phone.
+
+The envelope needed almost nothing: it is laid out in percentages of the stage, so it
+grew on its own. Only three pieces are fixed pixels — the addressee, the stamp and the
+wax seal — and those were scaled by hand.
+
+The ceiling is the phone, not the laptop: the card must fit inside 844px, because a
+save-the-date whose date needs scrolling is a date nobody read.
+
+### The welcome page now fits a laptop without scrolling
+
+`wedding.tapphouse.co` was 1224px tall on a 900px screen, so what a stranger came for
+— that the invitation is a personal link — started below the fold behind a 702px hero.
+The hero is now 340px, and `main` uses a tighter rhythm than the site default.
+
+Two things were found only by looking at the page:
+
+- **The monogram landed on the names.** `.hero-mark` is absolutely positioned at
+  `top: 40px` and `.hero-copy` is pinned to the bottom; at 702px they never met, and
+  at 340px they collided. `welcome.html` already carried `hero-mark lg:hidden` — the
+  monogram is a **mobile-only** element everywhere else, replaced at desktop by the
+  hero nav. This page had no nav and so had kept it at every width. Adding the same
+  `lg:hidden` was the fix, and it was the design system's own answer.
+- **The measurements said "fits" while the picture showed a collision.** Nothing about
+  a scrollHeight of 900 could have revealed it.
+
+### "The paragraphs look skinny" was the opposite of the problem
+
+Asked whether the column was too narrow, the measurement said it was too **wide** in
+the only unit that matters. At 18px in a 632px column the two `body-copy` paragraphs
+ran **85 and 95 characters** a line, past the ~75 where the eye starts losing its place
+returning to the left margin. Widening the column — the obvious response to "skinny" —
+would have made the real problem worse while fixing the apparent one.
+
+The cause of the thin *look* was the type size, not the column. 20px brings all three
+paragraphs to 76-78 characters and matches the lede above them. **18px is the floor,
+and was never a target.** Applied only above 768px, because a phone's ~350px column is
+about 45 characters at 18px and has no measure problem to fix — raising it there would
+only make a page that already scrolls scroll further.
+
+Two new tests hold both results, each confirmed by mutation: the welcome page fits
+1440x900, and no paragraph on it exceeds 85 characters a line.
+
+### Still true afterwards
+
+The welcome page **still scrolls on a phone**, by about 190px — down from 414px. Its
+text alone is roughly 610px in a 390px column, and the 18px floor is not negotiable, so
+the remaining gap can only be closed by cutting copy. That is a content decision.

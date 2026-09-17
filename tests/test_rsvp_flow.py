@@ -369,7 +369,7 @@ def test_database_rejects_an_attendee_who_attends_nothing(db_session: Session, h
         Segment(
             event_id=event.id,
             name="Ceremony",
-            starts_at=datetime(2028, 2, 13, 21, tzinfo=UTC),
+            starts_at=datetime(2028, 2, 20, 21, tzinfo=UTC),
         )
     )
     guest = Guest(event_id=event.id, name="Jordan Lee", party_size=1)
@@ -391,7 +391,7 @@ def test_database_accepts_a_consistent_attendee(db_session: Session, host: Host)
     segment = Segment(
         event_id=event.id,
         name="Ceremony",
-        starts_at=datetime(2028, 2, 13, 21, tzinfo=UTC),
+        starts_at=datetime(2028, 2, 20, 21, tzinfo=UTC),
     )
     guest = Guest(event_id=event.id, name="Jordan Lee", party_size=1)
     db_session.add_all([segment, guest])

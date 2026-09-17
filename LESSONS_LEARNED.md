@@ -896,3 +896,84 @@ It also settled a claim §12 makes and nothing had tested: both public pages ren
 an empty production database. They do — they hard-code the couple, the date and the
 place, so they never touch a row. That is the state production is in right now, and
 it is the state it will be in on its first day.
+
+---
+
+## 9. Moving the date, and two visual asks, 2026-09-17
+
+### A value repeated nine times is a value that will be changed eight times
+
+The wedding moved a week. The seed script expressed its schedule as nine absolute day
+numbers — `_at(11, 18)` for the welcome party, `_at(13, 15)` for the ceremony, and so
+on — so shifting it meant nine correct edits with no test that would notice a missed
+one. A welcome party left on the wrong Friday renders perfectly.
+
+It is now one constant and eight offsets: `_at(-2, 18)` is the Friday, `_at(0, 15)` the
+ceremony. The next move is a one-line change, and a partial move is not expressible.
+
+**The general form:** when a change requires the same edit in N places, the bug is not
+the change, it is the N. Fix the N first, while you are already in the file and the
+correct values are in front of you.
+
+### Shift the data, do not re-seed it
+
+The dev database had to show the new date. The documented way to change seeded data is
+to re-seed — and `seed()` deletes the event and mints new invite tokens, which would
+have invalidated every review link already sent.
+
+An `UPDATE … + interval '7 days'` on the event and its segments did the same job and
+never touched a `guests` row. The check that it worked was the md5 of every invite
+token, taken before and after: identical.
+
+The project's hardest invariant is that a `guests` row is never re-keyed. That rule is
+written about production, but the review instance has real links in real inboxes too.
+**Ask what a "refresh" destroys before reaching for it**, and prefer the narrow write.
+
+### "Too skinny" meant "too wide", and the measurement said so
+
+Asked whether the welcome page's paragraphs were the right width, the obvious response
+is to widen them. The measurement said the opposite: at 18px in a 632px column the two
+body paragraphs were already running **85 and 95 characters** a line, well past the ~75
+where the eye starts losing its place on the return sweep. Widening would have made the
+real problem worse while appearing to address the complaint.
+
+The thin *look* came from the type size, not the column. 20px brought all three
+paragraphs to 76-78 characters. **18px is the floor and was never a target** — the same
+mistake the "eyebrow" loophole made in the other direction.
+
+Two things worth keeping. **Readability is measured in characters, not pixels**: the
+same column is right at 20px and wrong at 16px, so a test that asserts a column width
+asserts the wrong thing. And **when a complaint names a cause, measure the cause before
+acting on it** — the complaint was accurate about the symptom and wrong about the
+reason, which is the normal case.
+
+### The numbers said it fit; the picture showed a collision
+
+Shortening the welcome hero from 702px to 340px made the page fit a laptop exactly:
+`scrollHeight` 900, viewport 900, zero overflow. Every assertion passed.
+
+The monogram was sitting on top of "Lisa and Bill". `.hero-mark` is absolutely
+positioned at `top: 40px` and `.hero-copy` is pinned to the bottom; in a 702px hero
+they never met, and in a 340px one they overlapped. No height measurement can see that,
+because both elements are exactly where they were told to be.
+
+**Two elements that do not collide are not "safe" — they are untested.** Absolute
+positioning from opposite edges of a container has a collision height, and shortening
+the container is the operation that finds it.
+
+The fix was already in the codebase: `welcome.html` carries `hero-mark lg:hidden`,
+because the monogram is a mobile-only element that the hero nav replaces at desktop.
+The public welcome has no nav and had quietly kept it at every width. **Before
+inventing a fix, check what the sibling page does** — a design system that already
+answered the question is cheaper and more consistent than a new rule.
+
+### Say which viewport you fixed
+
+The welcome page now fits a 1440x900 laptop with nothing to spare, and still scrolls
+about 190px on a 390px phone — down from 414px, but still scrolling. Its text alone is
+roughly 610px in a phone column and the 18px floor is not negotiable, so closing the
+rest means cutting copy, which is a content decision rather than a CSS one.
+
+Reporting "it fits now" would have been true of the screen it was checked on and false
+of the one most guests will use. **A layout claim without a viewport attached is not a
+claim.**

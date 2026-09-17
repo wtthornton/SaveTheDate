@@ -84,7 +84,7 @@ def test_the_root_names_the_couple_and_the_date(anonymous_client: TestClient) ->
 
     assert "Lisa" in text
     assert "Bill" in text
-    assert "February 13, 2028" in text
+    assert "February 20, 2028" in text
 
 
 def test_the_root_says_the_invitation_is_a_personal_link(
@@ -214,7 +214,7 @@ def test_the_card_carries_the_four_things_it_is_for(
 
     assert "Lisa" in text
     assert "Bill" in text
-    assert "February 13, 2028" in text
+    assert "February 20, 2028" in text
     assert "Port Aransas" in text
 
 

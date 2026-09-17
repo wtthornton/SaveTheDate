@@ -8,10 +8,10 @@
    all not a box to type a name into — that would be a guest-list oracle on an
    anonymous page. See app/routers/public.py. #}
 
-{% block title %}Lisa and Bill — February 13, 2028{% endblock %}
+{% block title %}Lisa and Bill — February 20, 2028{% endblock %}
 
 {% block hero %}
-  <section class="hero" aria-label="Lisa and Bill, February 13, 2028">
+  <section class="hero pw-hero" aria-label="Lisa and Bill, February 20, 2028">
     {# CC0, and of the Gulf rather than of a couple: the stock wedding photograph on
        the invitation pages is somebody else's wedding, which is tolerable behind a
        token and not on the open internet. #}
@@ -23,7 +23,12 @@
     <div class="hero-frame-outer" aria-hidden="true"></div>
     <div class="hero-frame-inner" aria-hidden="true"></div>
 
-    <div class="hero-mark">
+    {# Mobile only, which is what `.hero-mark` is everywhere else — `welcome.html`
+       carries the same `lg:hidden`, because at desktop the hero nav takes the top of
+       the photograph instead. This page has no nav (there is no token), so it had
+       been showing the monogram at every width. Harmless in a 702px hero; in the
+       340px one above it landed directly on top of "Lisa and Bill". #}
+    <div class="hero-mark lg:hidden">
       <span class="hero-monogram" aria-hidden="true">
         <span class="hero-monogram-text">L&nbsp;&amp;&nbsp;B</span>
       </span>
@@ -50,6 +55,11 @@
 
 {# base.html's default tab bar is built from an invite token, and there is none here. #}
 {% block nav %}{% endblock %}
+
+{# Tighter than base.html's `gap-8 py-8`. This page is short enough to read in one
+   screen and is the only page where that is a goal, so it buys back the vertical
+   space the default rhythm spends. Every other page keeps the default. #}
+{% block main_class %}pw-main mx-auto flex max-w-2xl flex-col gap-5 px-5 py-6{% endblock %}
 
 {% block content %}
 

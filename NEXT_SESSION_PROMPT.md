@@ -1,5 +1,5 @@
 Picking up SaveTheDate — the wedding site for Lisa Gorden & Bill Thornton, Port
-Aransas, Texas, Sunday 13 February 2028.
+Aransas, Texas, Sunday 20 February 2028.
 
 Read these first, in order: `IMPLEMENTATION_PLAN.md` — §12 (what this actually is), §14
 (the production stack, the most recent session), §8.1 (what TAP-7733 set out to build
@@ -15,7 +15,7 @@ is most of the way: schema, guest pages, the review instance, the RSVP window, h
 auth, ownership scoping, rate limiting, the host dashboard, CSV import, email delivery,
 the two public pages, **and now the production stack**.
 
-268 tests. Gate green: ruff, ruff format, mypy --strict over 51 files, migrations
+270 tests. Gate green: ruff, ruff format, mypy --strict over 51 files, migrations
 up→down→up against the test database. Zero `noqa`, zero `type: ignore`, zero skipped
 tests, zero swallowed exceptions. Keep it that way.
 

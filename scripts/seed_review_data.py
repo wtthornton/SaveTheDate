@@ -12,7 +12,7 @@ details stay out of version-controlled schema history.
 
 import argparse
 from dataclasses import dataclass
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, date, datetime, timedelta
 from decimal import Decimal
 from zoneinfo import ZoneInfo
 
@@ -33,9 +33,25 @@ REVIEW_HOST_EMAIL = "review@invalid.localhost"
 UNUSABLE_PASSWORD = "!no-login-review-instance"
 
 
-def _at(day: int, hour: int, minute: int = 0) -> datetime:
-    """A moment during the wedding weekend, in Port Aransas local time."""
-    return datetime(2028, 2, day, hour, minute, tzinfo=CENTRAL)
+# The wedding day, and the only calendar date written in this file. Every other
+# moment in the weekend is expressed as an offset from it, so moving the wedding
+# moves the whole schedule with it.
+#
+# That is not hypothetical tidiness: this date moved once already, from Sunday the
+# 13th to Sunday the 20th, and the schedule had nine separate day numbers scattered
+# through it. Nine places to edit is how a weekend ends up half-shifted, with the
+# welcome party on the wrong Friday and nothing failing.
+WEDDING_DAY = date(2028, 2, 20)
+
+
+def _at(days_from_wedding: int, hour: int, minute: int = 0) -> datetime:
+    """A moment during the wedding weekend, in Port Aransas local time.
+
+    `days_from_wedding` is relative to the wedding itself: -2 is the Friday before,
+    0 is the wedding day, +1 the morning after.
+    """
+    day = WEDDING_DAY + timedelta(days=days_from_wedding)
+    return datetime(day.year, day.month, day.day, hour, minute, tzinfo=CENTRAL)
 
 
 # The dates production will really run on: invitations go out in October 2027 and
@@ -85,15 +101,15 @@ SEGMENTS: list[SegmentSpec] = [
     SegmentSpec(
         name="Welcome party on the beach",
         description="Drinks and a catered supper on the sand. Come as you are.",
-        starts_at=_at(11, 18),
-        ends_at=_at(11, 21),
+        starts_at=_at(-2, 18),
+        ends_at=_at(-2, 21),
         location="Port Aransas beach",
         sort_order=1,
     ),
     SegmentSpec(
         name="Golf at Palmilla Beach",
         description="Optional, paid, and booked directly with the course.",
-        starts_at=_at(12, 8),
+        starts_at=_at(-1, 8),
         location="Palmilla Beach Golf Course",
         is_optional=True,
         booking_url="https://palmillabeachgolf.com/",
@@ -102,14 +118,14 @@ SEGMENTS: list[SegmentSpec] = [
     SegmentSpec(
         name="Dinner in town and a bar crawl",
         description="Dinner on the strip, then whoever is still standing.",
-        starts_at=_at(12, 19),
+        starts_at=_at(-1, 19),
         location="Downtown Port Aransas",
         sort_order=3,
     ),
     SegmentSpec(
         name="Bay fishing",
         description="Optional, paid, and booked directly with the charter.",
-        starts_at=_at(13, 6, 30),
+        starts_at=_at(0, 6, 30),
         location="Fisherman's Wharf",
         is_optional=True,
         booking_url="https://www.fishermanswharfportaransas.com/",
@@ -118,15 +134,15 @@ SEGMENTS: list[SegmentSpec] = [
     SegmentSpec(
         name="Ceremony and reception",
         description="The main event. Catered dinner, cash bar.",
-        starts_at=_at(13, 15),
+        starts_at=_at(0, 15),
         location="Port Aransas",
         sort_order=5,
     ),
     SegmentSpec(
         name="Departure breakfast",
         description="Catered breakfast before everyone scatters.",
-        starts_at=_at(14, 8),
-        ends_at=_at(14, 12),
+        starts_at=_at(1, 8),
+        ends_at=_at(1, 12),
         location="Port Aransas",
         sort_order=6,
     ),
@@ -171,7 +187,7 @@ def seed(session: Session, phase: str = "open") -> Event:
         slug=SLUG,
         title="Lisa & Bill",
         host_name="Lisa Gorden and Bill Thornton",
-        event_date=_at(13, 15).date(),
+        event_date=WEDDING_DAY,
         location="Port Aransas, Texas",
         details="Four days on Mustang Island. Come for the weekend, or come for the day.",
         timezone="America/Chicago",

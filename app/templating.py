@@ -163,7 +163,7 @@ def _year_in_words(year: int) -> str:
 
 
 def formal_date(day: date) -> str:
-    """`Sunday, the thirteenth of February, two thousand twenty-eight`."""
+    """`Sunday, the twentieth of February, two thousand twenty-eight`."""
     return (
         f"{day.strftime('%A')}, the {ORDINAL_WORDS[day.day]} of "
         f"{day.strftime('%B')}, {_year_in_words(day.year)}"
@@ -171,7 +171,7 @@ def formal_date(day: date) -> str:
 
 
 def plain_date(day: date) -> str:
-    """`February 13, 2028` — American order, for the print view and running text."""
+    """`February 20, 2028` — American order, for the print view and running text."""
     return day.strftime("%B %-d, %Y")
 
 

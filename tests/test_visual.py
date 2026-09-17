@@ -806,6 +806,87 @@ def test_the_whole_card_is_visible_without_scrolling_on_a_phone(
     page.context.close()
 
 
+def test_the_public_welcome_fits_a_laptop_without_scrolling(
+    browser: Browser, live_url: str
+) -> None:
+    """The whole page, on a 1440x900 laptop, with no scrollbar.
+
+    Somebody who types the domain gets this page, and what they came for — that the
+    invitation is a personal link — used to start below the fold behind a 702px hero.
+    Bill asked for the hero and the banner to come down so the page fits, so "fits" is
+    asserted rather than eyeballed once and left to rot.
+
+    This is the assertion most likely to be broken by an innocent edit: one more
+    paragraph, or a heading that wraps to a second line, silently puts it back over.
+    Phone is deliberately NOT asserted — see the test below.
+    """
+    page = _page(browser, DESKTOP)
+    page.goto(_public_url(live_url, "public-welcome"), wait_until="networkidle")
+
+    scroll_height = page.evaluate("() => document.documentElement.scrollHeight")
+    viewport_height = page.evaluate("() => window.innerHeight")
+    assert scroll_height <= viewport_height, (
+        f"the welcome page runs {scroll_height - viewport_height}px past a "
+        f"{DESKTOP['width']}x{DESKTOP['height']} screen"
+    )
+    page.context.close()
+
+
+# Where a line stops being comfortable to track. The classic range is 45-75
+# characters; this allows a little slack for a long word landing badly, because the
+# point is to catch a column that is wrong by twenty characters, not by two.
+MAX_CHARACTERS_PER_LINE = 85
+
+
+def test_no_paragraph_on_the_public_welcome_runs_too_long_a_line(
+    browser: Browser, live_url: str
+) -> None:
+    """Measured from where the browser actually broke each line, not from the column width.
+
+    Asked whether these paragraphs were too narrow, the measurement said the opposite:
+    at 18px in a 632px column they ran 85 and 95 characters, past the point where the
+    eye loses its place returning to the left margin. The fix was larger type rather
+    than a wider column — a wider column would have made the real problem worse while
+    fixing the apparent one.
+
+    Character counts, not pixels, because that is the unit readability is actually
+    measured in: the same column is fine at 20px and too wide at 16px.
+    """
+    page = _page(browser, DESKTOP)
+    page.goto(_public_url(live_url, "public-welcome"), wait_until="networkidle")
+
+    # Walk the text node one character at a time and watch for the top of its box to
+    # change; that is where the browser wrapped, whatever the CSS says it should have.
+    longest = page.evaluate(
+        """() => Array.from(document.querySelectorAll('main p')).map(p => {
+             const node = p.firstChild;
+             if (!node || node.nodeType !== Node.TEXT_NODE) return null;
+             const range = document.createRange();
+             const lines = [];
+             let start = 0, previousTop = null;
+             for (let i = 0; i < node.length; i++) {
+               range.setStart(node, i);
+               range.setEnd(node, i + 1);
+               const top = Math.round(range.getBoundingClientRect().top);
+               if (previousTop === null) previousTop = top;
+               else if (top !== previousTop) {
+                 lines.push(i - start);
+                 start = i;
+                 previousTop = top;
+               }
+             }
+             lines.push(node.length - start);
+             return {text: node.textContent.trim().slice(0, 40), longest: Math.max(...lines)};
+           }).filter(Boolean)"""
+    )
+    assert longest, "no paragraphs were measured; the page or the selector changed"
+
+    too_long = [p for p in longest if p["longest"] > MAX_CHARACTERS_PER_LINE]
+    offenders = "\n  ".join(f"{p['longest']}ch — {p['text']}…" for p in too_long)
+    assert not too_long, f"lines longer than {MAX_CHARACTERS_PER_LINE} characters:\n  {offenders}"
+    page.context.close()
+
+
 def test_the_card_needs_no_javascript(browser: Browser, live_url: str) -> None:
     """The envelope is CSS. With scripting off the card is simply there, open.
 
@@ -818,7 +899,7 @@ def test_the_card_needs_no_javascript(browser: Browser, live_url: str) -> None:
     _shoot(page, "save-the-date-no-javascript")
 
     body = page.content()
-    assert "February 13, 2028" in body
+    assert "February 20, 2028" in body
     assert "Port Aransas" in body
     card = _box(page, ".std-card")
     assert card["height"] > 200, "the card did not render without scripting"

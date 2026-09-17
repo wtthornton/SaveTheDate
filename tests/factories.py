@@ -15,7 +15,7 @@ def create_event(
     *,
     slug: str = "bill-and-lisa",
     timezone: str = "America/Chicago",
-    event_date: str | None = "2028-02-13",
+    event_date: str | None = "2028-02-20",
     # A `str` goes to the API verbatim, so a test can post the bare calendar date or
     # the naive value a host might type and see what the API makes of it. TAP-7729.
     rsvp_opens_at: datetime | str | None = None,
@@ -65,15 +65,15 @@ def add_segments(db_session: Session, event_id: str) -> dict[str, str]:
     welcome = Segment(
         event_id=uuid.UUID(event_id),
         name="Welcome party on the beach",
-        starts_at=datetime(2028, 2, 12, 0, tzinfo=UTC),
-        ends_at=datetime(2028, 2, 12, 3, tzinfo=UTC),
+        starts_at=datetime(2028, 2, 19, 0, tzinfo=UTC),
+        ends_at=datetime(2028, 2, 19, 3, tzinfo=UTC),
         location="Port Aransas beach",
         sort_order=1,
     )
     golf = Segment(
         event_id=uuid.UUID(event_id),
         name="Golf at Palmilla",
-        starts_at=datetime(2028, 2, 12, 15, tzinfo=UTC),
+        starts_at=datetime(2028, 2, 19, 15, tzinfo=UTC),
         is_optional=True,
         booking_url="https://example.invalid/golf",
         sort_order=2,
@@ -81,7 +81,7 @@ def add_segments(db_session: Session, event_id: str) -> dict[str, str]:
     ceremony = Segment(
         event_id=uuid.UUID(event_id),
         name="Ceremony and reception",
-        starts_at=datetime(2028, 2, 13, 21, tzinfo=UTC),
+        starts_at=datetime(2028, 2, 20, 21, tzinfo=UTC),
         sort_order=3,
     )
     db_session.add_all([welcome, golf, ceremony])

@@ -49,7 +49,7 @@ router = APIRouter(tags=["public pages"])
 
 # One wedding's facts, on one wedding's domain. See the module docstring.
 COUPLE = ("Lisa", "Bill")
-WEDDING_DAY = date(2028, 2, 13)
+WEDDING_DAY = date(2028, 2, 20)
 
 # The island, and nothing finer. 183 Stargrass Ln is a private home; it appears on no
 # page that does not require a token.

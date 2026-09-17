@@ -272,6 +272,26 @@
     color: var(--color-body);
   }
 
+  /* The public welcome reads its body copy at the lede's size, not the floor.
+     Asked whether its paragraphs were the right width, the measurement said the
+     column was not too narrow — it was too WIDE in the only unit that matters:
+     at 18px the two `body-copy` paragraphs ran 85 and 95 characters a line, well
+     past the ~75 where a line stops being comfortable to track. Widening the column
+     would have made the real problem worse while fixing the apparent one.
+     20px brings all three paragraphs to 76-78 characters, matches the lede above
+     them, and is why small text in a wide column looked thin in the first place.
+     18px remains the floor everywhere; it was never a target.
+
+     Only once the column is actually wide. `max-w-2xl` stops binding below about a
+     712px viewport, and on a phone the column is ~350px — about 45 characters at
+     18px, which has no measure problem to fix. Applying it there would only make a
+     page that already scrolls scroll further, which is the opposite of the ask. */
+  @media (min-width: 768px) {
+    .pw-main .body-copy {
+      font-size: 20px;
+    }
+  }
+
   .muted-copy {
     font-size: 18px;
     line-height: 1.55;
@@ -345,6 +365,20 @@
        screens and changes nothing on a large phone. */
     height: min(520px, 62vh);
     overflow: hidden;
+  }
+
+  /* The public welcome at the root of the wedding site, and ONLY that page.
+     `.hero` is shared with the two guest pages behind a token, which are long
+     documents that scroll no matter what their hero does — shortening theirs would
+     be changing a design to solve a problem they do not have.
+
+     This page is different: it is four short paragraphs, and it is the page a
+     stranger lands on having typed the domain. A 702px hero on a 900px screen meant
+     the thing they came to read started below the fold. Scoped with a second class
+     rather than a new rule, so the specificity is `.hero.pw-hero` and it wins over
+     the `min-width: 1024px` override further down without depending on source order. */
+  .hero.pw-hero {
+    height: min(340px, 40vh);
   }
 
   .hero-photo {
@@ -1838,7 +1872,7 @@
        reader scrolls — on a page that is meant to be one glance. */
     min-height: 100vh;
     min-height: 100svh;
-    padding: 32px 20px;
+    padding: 28px 16px;
     overflow: hidden;
     background-color: #101B22;
   }
@@ -1947,7 +1981,7 @@
 
   .std-stage {
     position: relative;
-    width: min(100%, 460px);
+    width: min(100%, 500px);
     /* The flap rotates in three dimensions; without a perspective it reads as a
        rectangle getting shorter rather than as a flap lifting. */
     perspective: 1400px;
@@ -1962,8 +1996,8 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    gap: 14px;
-    padding: 34px 26px 30px;
+    gap: 16px;
+    padding: 40px 28px 36px;
     text-align: center;
     background-color: var(--color-card);
     border-radius: 3px;
@@ -1985,7 +2019,7 @@
 
   .std-tag {
     position: relative;
-    font-size: 18px;
+    font-size: 19px;
     font-weight: 700;
     letter-spacing: 0.26em;
     text-transform: uppercase;
@@ -1995,7 +2029,7 @@
   .std-names {
     position: relative;
     font-family: var(--font-display);
-    font-size: 52px;
+    font-size: 58px;
     font-weight: 300;
     line-height: 1.04;
     color: var(--color-ink);
@@ -2003,7 +2037,7 @@
 
   .std-and {
     display: block;
-    font-size: 26px;
+    font-size: 28px;
     font-style: italic;
     color: var(--color-muted);
   }
@@ -2030,7 +2064,7 @@
   }
 
   .std-weekday {
-    font-size: 19px;
+    font-size: 20px;
     font-weight: 500;
     letter-spacing: 0.22em;
     text-transform: uppercase;
@@ -2042,7 +2076,7 @@
      measures x-height, not the nominal number. */
   .std-day {
     font-family: var(--font-display);
-    font-size: 36px;
+    font-size: 41px;
     font-weight: 500;
     line-height: 1.15;
     color: var(--color-ink);
@@ -2050,14 +2084,14 @@
 
   .std-place {
     position: relative;
-    font-size: 20px;
+    font-size: 21px;
     line-height: 1.5;
     color: var(--color-body);
   }
 
   .std-note {
     position: relative;
-    font-size: 18px;
+    font-size: 19px;
     font-style: italic;
     line-height: 1.5;
     color: var(--color-muted);
@@ -2070,8 +2104,8 @@
     justify-content: center;
     min-height: 48px;
     margin-top: 6px;
-    padding: 10px 26px;
-    font-size: 18px;
+    padding: 12px 30px;
+    font-size: 19px;
     font-weight: 700;
     color: #FFFFFF;
     text-decoration: none;
@@ -2152,7 +2186,7 @@
      floor — decorative to a screen reader, but a sighted reader still reads it. */
   .std-addressee {
     font-family: var(--font-display);
-    font-size: 30px;
+    font-size: 33px;
     font-style: italic;
     font-weight: 400;
     color: #6B5637;
@@ -2162,8 +2196,8 @@
      would sit under the 18px floor, and the answer to that is not smaller text, it
      is no text. The perforation is a row of notches bitten out of every edge. */
   .std-stamp {
-    width: 52px;
-    height: 62px;
+    width: 58px;
+    height: 69px;
     background:
       linear-gradient(160deg, rgba(169, 78, 43, 0.92) 0%, rgba(227, 185, 164, 0.95) 62%,
                       rgba(46, 95, 99, 0.55) 100%);
@@ -2228,13 +2262,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 58px;
-    height: 58px;
+    width: 64px;
+    height: 64px;
     border-radius: 50%;
     background: radial-gradient(circle at 34% 30%, #C4623A 0%, #A94E2B 55%, #83391C 100%);
     color: #F7EDE2;
     font-family: var(--font-display);
-    font-size: 19px;
+    font-size: 21px;
     letter-spacing: 0.04em;
     box-shadow: 0 3px 12px rgba(8, 14, 19, 0.45), inset 0 -2px 6px rgba(0, 0, 0, 0.3);
     animation: std-seal-break 420ms ease-in 620ms forwards;
@@ -2308,26 +2342,72 @@
     }
   }
 
+  /* On a laptop the card had been a 520px postcard in the middle of 1440px of beach,
+     which read as small rather than as intimate. It is the only thing on the page, so
+     it should behave like the only thing on the page.
+
+     The ceiling is the phone, not the laptop: `test_the_whole_card_is_visible_without
+     _scrolling_on_a_phone` requires the whole card inside 844px, and a save-the-date
+     whose date needs scrolling is a date nobody read. At these sizes the card is
+     roughly 700px tall in a 900px viewport here, and comfortably shorter on a phone. */
   @media (min-width: 1024px) {
     .std-stage {
-      width: min(100%, 520px);
+      width: min(100%, 680px);
     }
 
     .std-card {
-      gap: 16px;
-      padding: 44px 36px 40px;
+      gap: 20px;
+      padding: 58px 52px 54px;
+    }
+
+    .std-tag {
+      font-size: 20px;
     }
 
     .std-names {
-      font-size: 64px;
+      font-size: 82px;
+    }
+
+    .std-and {
+      font-size: 34px;
+    }
+
+    .std-weekday {
+      font-size: 22px;
     }
 
     .std-day {
-      font-size: 42px;
+      font-size: 54px;
     }
 
     .std-place {
-      font-size: 21px;
+      font-size: 23px;
+    }
+
+    .std-note {
+      font-size: 20px;
+    }
+
+    .std-link {
+      font-size: 20px;
+    }
+
+    /* The envelope is laid out in percentages of the stage, so it grows on its own.
+       These three are the exceptions — fixed pixel furniture that would otherwise
+       look like a child's stamp on an adult's envelope. */
+    .std-addressee {
+      font-size: 42px;
+    }
+
+    .std-stamp {
+      width: 68px;
+      height: 81px;
+    }
+
+    .std-seal {
+      width: 78px;
+      height: 78px;
+      font-size: 26px;
     }
   }
 }

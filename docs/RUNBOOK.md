@@ -4,7 +4,7 @@
 you are comfortable with Linux, Docker and SSH, and assumes you have never seen this
 project before. You do not need to understand the application to follow it.
 
-**The wedding is Sunday 13 February 2028, in Port Aransas, Texas.** The date cannot
+**The wedding is Sunday 20 February 2028, in Port Aransas, Texas.** The date cannot
 move.
 
 ---

@@ -27,7 +27,7 @@ def _open_event_with_guest(
     db_session: Session,
     *,
     party_size: int = 2,
-    event_date: str | None = "2028-02-13",
+    event_date: str | None = "2028-02-20",
 ) -> tuple[dict[str, str], str]:
     """An event whose RSVP window is open right now, plus one guest's token."""
     event = create_event(
