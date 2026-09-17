@@ -822,3 +822,64 @@ address space is blocklisted and SPF/DKIM/DMARC will not rescue it.
 - `it13` has no IPv6 internet — only ULAs and no default route — so outbound checks from
   the box flap between IPv4 and IPv6. It does not affect guests. Tailscale depends on
   IPv6 ULAs, so nothing may disable IPv6 wholesale.
+
+---
+
+## 12. What this actually is: product bones, one wedding's skin
+
+**Established 2026-09-17 by reading the code**, because nothing in the repository said
+so and the README's own subtitle ("a service for weddings and events") implies something
+the templates do not deliver. Anyone asking "is this multi-tenant?" had to go and find
+out. Now they do not.
+
+### The data layer is genuinely multi-tenant, and it is enforced
+
+Not nominally — tested and constrained:
+
+- `hosts`, and `events.host_id` NOT NULL with a foreign key and `RESTRICT`.
+- **Four ownership-scoped queries** across `routers/events.py` and `routers/host.py`.
+  Every host-facing read filters `Event.host_id == host.id`; the filter is in the WHERE
+  clause, so no path loads another host's row and then decides what to do with it.
+- **Nine tests** in `tests/test_event_ownership.py`, including that another host's event
+  answers **404 rather than 403**, so ids are not enumerable.
+- `/host` lists events and auto-redirects only when there is exactly one. Written for
+  the many case.
+- `POST /events` creates arbitrary events with unique slugs.
+
+### The presentation layer is one couple's wedding
+
+Exactly **seven values** reach the templates from the database:
+
+| From | Fields |
+| --- | --- |
+| `event` | `title`, `host_name`, `event_date`, `location`, `id` |
+| `guest` | `name`, `party_size` |
+
+Everything else is hard-coded: the story about Lisa's family and Jason's house, Port
+Aransas and Mustang Island, the `L & B` monogram in three templates, `segment_image()`
+matching on Port Aransas keywords (*ferry*, *golf*, *fishing/charter/bay*),
+`PHOTO_CREDITS` as a fixed list of ten photographs, and every measured type size and
+scrim ratio in `tests/test_visual.py`.
+
+### Why that is the right place to be
+
+The **expensive-to-change** parts — schema, authentication, ownership scoping, the RSVP
+phase logic — are general. The **cheap-to-change** parts — copy, photographs, one
+monogram — are specific. A second wedding would mean forking templates or adding a
+content model. It would not mean redoing migrations or auth.
+
+It happened honestly rather than by plan: TAP-7739, TAP-7725 and TAP-7726 were written
+as product-shaped issues; TAP-7728 built one couple's wedding.
+
+**Do not "fix" this by generalising the templates.** There is no second wedding, and
+building for a customer who does not exist is how a four-page site acquires a CMS.
+
+### What it means in practice
+
+- This deployment serves **one** wedding, on **their own** domain, so guest-facing pages
+  may name Lisa and Bill directly. That is not a multi-tenancy leak.
+- If a second event is ever wanted, the cheapest honest route is a **second deployment**
+  — its own Compose project, its own database, its own templates — not a content model.
+  The tunnel already supports more hostnames; `savethedate.tapphouse.co` is routed and
+  could be exactly that.
+

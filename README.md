@@ -113,6 +113,26 @@ a named tunnel from the home lab.
 instance. A guest-facing hostname quietly serving the development database is how
 invented guests start looking real, and how a genuine RSVP lands somewhere disposable.
 
+### What the root of the guest site shows — decided 2026-09-17
+
+A **welcome page**, not an error. It names the couple and the date, says the invitation
+is a personal link, and tells a guest how to get theirs resent. It does **not** show the
+schedule, the address, or anything else behind a token, and it is `noindex` like every
+other page.
+
+Two things it must never become:
+
+- **A "find your invitation" lookup form.** Zola and Minted both do this and TAP-7725
+  rejects the pattern on friction grounds — but it is also a guest-list oracle, letting
+  anyone test names to learn who was invited.
+- **A guest login.** The link is the credential. This is the invariant the whole schema
+  hangs off.
+
+The existing "We could not find that invitation" page stays for *bad tokens* and unknown
+paths, where it is accurate. It is the wrong thing to show someone who merely typed the
+domain: they never submitted an invitation, so telling them one could not be found reads
+as their mistake.
+
 **Why a separate domain and not `invite.nltlabs.ai`.** A named Cloudflare Tunnel needs
 its zone on Cloudflare nameservers — the partial (CNAME) setup that would let a zone stay
 at GoDaddy is Business-plan only, around $200/month. So `invite.nltlabs.ai` would have

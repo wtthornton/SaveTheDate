@@ -9,89 +9,128 @@ lands, or it will start lying.
 Picking up SaveTheDate — the wedding site for Lisa Gorden & Bill Thornton,
 Port Aransas, Texas, Sunday 13 February 2028.
 
-Read these three first, in order: IMPLEMENTATION_PLAN.md (build order, harness,
-definition of done — note §7.1 on DNS, §8.1 on deployment, and §10 for what last
-shipped), LESSONS_LEARNED.md (traps already paid for — read §6 before writing a test),
-and .claude/CLAUDE.md (always-on invariants).
+Read these first, in order: **IMPLEMENTATION_PLAN.md** — especially §12 (what this
+actually is), §11 (how it got hosted), §8.1 (what TAP-7733 still has to build) and §7.1
+(why the domain is what it is). Then **LESSONS_LEARNED.md** §6, which is mostly about
+how to write a test that is worth anything here. Then **.claude/CLAUDE.md** for the
+always-on invariants.
 
-Where things stand as of 2026-09-17 (second update that day — hosting):
-- **11 of 15 Linear issues are Done.** Phases 0 through 3 are complete: the schema, the
-  guest pages, the review instance, the RSVP window, host auth, ownership scoping, rate
-  limiting, the host dashboard, CSV import and email delivery.
-- 199 tests. Gate green: ruff, ruff format, mypy --strict over 48 files, migrations
-  up→down→up against the test database.
-- The review instance is live and has been looked at on a real phone.
-- **Four issues remain, and none of them is blocked on code:**
-  - **TAP-7733** hosting — **on the home lab**. The domain and the tunnel are DONE
-    (see plan §11): `tapphouse.co` is on Cloudflare and `dev-wedding.tapphouse.co` is
-    live. What remains is the **production Compose stack** behind
-    `wedding.tapphouse.co` — its own project, its own database — plus backups off the
-    machine and a restore actually performed. The restore is the deliverable.
-  - **TAP-7734** observability. Needs a Sentry DSN or equivalent.
-  - **TAP-7762** photography. Every image is an openly-licensed placeholder and the hero
-    is still someone else's wedding. Somebody has to take pictures.
-  - ~~**TAP-7740** DNS → Cloudflare.~~ **Closed 2026-09-17.** The guest site gets its
-    own wedding domain on Cloudflare; `nltlabs.ai` is never touched. Plan §7.1.
+## Where things stand, 2026-09-17
 
-The site is reachable. `https://dev-wedding.tapphouse.co/invites/<token>` serves the
-guest pages over a named Cloudflare Tunnel from this box; the tunnel is the systemd user
-service `cloudflared-tapphouse` and survives reboots. `wedding.tapphouse.co` and
-`savethedate.tapphouse.co` are routed and deliberately return 503 — do NOT point
-`wedding` at the development instance to make it look finished.
+**12 of 16 Linear issues are Done.** Phases 0–3 are complete: schema, guest pages, the
+review instance, the RSVP window, host auth, ownership scoping, rate limiting, the host
+dashboard, CSV import, email delivery.
 
-Useful things that are true now and were not before:
-- Sign in to the dashboard at `/host/login`. **There is no registered host yet.** Set
-  `HOST_REGISTRATION_TOKEN`, `POST /auth/register` once with it, then unset it.
-- If a database was migrated before any host existed, its events belong to a placeholder
-  account nobody can sign in as. `python -m scripts.adopt_events --to you@example.com`
-  moves them; `--dry-run` first.
-- `EMAIL_PROVIDER` defaults to `console` and prints instead of sending. That is on
-  purpose. Resend with no API key stays inert rather than going live.
-- The bounce webhook signs with HMAC-SHA256 over the raw body. **Resend actually signs
-  through Svix over `{id}.{timestamp}.{body}`** — check the provider's docs before
-  pointing anything at it. The docstring says so.
+**206 tests.** Gate green: ruff, ruff format, `mypy --strict` over 48 files, migrations
+up→down→up against the test database. Zero `noqa`, zero `type: ignore`, zero skipped
+tests, zero swallowed exceptions in the repository. Keep it that way.
 
-Non-negotiable:
-- guests.invite_token is in people's inboxes once sent. NEVER re-key a guests row.
+**Git is clean**: one branch (`main`), one worktree, in sync with origin, no stashes.
+
+**It is live.** `https://dev-wedding.tapphouse.co/invites/<token>` serves the guest pages
+from this box through a named Cloudflare Tunnel.
+
+## What this project actually is — read §12 before designing anything
+
+The **data layer is genuinely multi-tenant**: `hosts`, `events.host_id`, four
+ownership-scoped queries, nine cross-host tests, another host's event answers 404 not
+403.
+
+The **presentation layer is one couple's wedding**: exactly seven values reach the
+templates from the database; everything else — the story, the `L & B` monogram, the Port
+Aransas photo matching — is hard-coded.
+
+That split is deliberate and correct. **Do not "fix" it by generalising the templates.**
+There is no second wedding, and building for a customer who does not exist is how a
+four-page site acquires a CMS. If a second event is ever wanted, the honest route is a
+second deployment, not a content model.
+
+## Hosting — home lab, no managed platform
+
+`tapphouse.co` is on Cloudflare. Tunnel `tapphouse` runs as the systemd **user** service
+`cloudflared-tapphouse` (`Restart=always`, lingering on), config at
+`~/.cloudflared/config.yml`.
+
+| Hostname | Serves |
+| --- | --- |
+| `dev-wedding.tapphouse.co` | The review instance on :50681 — live |
+| `wedding.tapphouse.co` | Production — **503 on purpose** |
+| `savethedate.tapphouse.co` | Reserved — 503, contents undecided |
+| `home.tapphouse.co` | Home Assistant. **Not ours. Do not touch.** |
+
+**Do not point `wedding.tapphouse.co` at the development instance to make it look
+finished.** A guest-facing hostname quietly serving the development database is how
+invented guests start looking real and how a genuine RSVP lands somewhere disposable.
+
+## What is left — four issues, and what each needs
+
+- **TAP-7733** home lab hosting — *In Progress.* Domain and tunnel are done. What
+  remains: the **production Compose stack** behind `wedding.tapphouse.co` with its own
+  database, migrations as a release step, and **backups off the machine with a restore
+  actually performed**. The restore is the deliverable, not the backup.
+- **TAP-7775** the root of the guest site should welcome, not error — *new, designed,
+  ready to build.* Decided with Bill; the issue carries the full brief and the two
+  things it must never become.
+- **TAP-7734** observability — needs a Sentry DSN or a self-hosted collector.
+- **TAP-7762** photography — needs somebody to take photographs. Not a coding task. The
+  hero is still a stock photograph of another couple.
+
+## Open questions only Bill can answer
+
+- **What is `savethedate.tapphouse.co` for?** Routed and reserved, serving 503. Given
+  §12, a plausible reading is a *second deployment* — its own event row, its own guest
+  list — rather than another page of this one. Ask; do not assume.
+- **Is the card on file for `tapphouse.co` current?** It expires **2027-08-01**, roughly
+  six months before the wedding and inside the RSVP window. `renewAuto` is on, but a
+  lapsed card takes the guest site's domain with it.
+
+## Non-negotiable
+
+- `guests.invite_token` is in people's inboxes once sent. **NEVER re-key a guests row.**
   Withdrawing an invitation deletes the row; that is what kills the link.
-- Guest routes stay anonymous. The link IS the credential. No guest login, ever.
-- htmx 2.x only — htmx 4 changed attribute inheritance and fails silently.
-- 18px body text, 44px touch targets, native form controls. The guest list skews old.
-  When new CSS trips the 18px floor, **raise the type** — do not add an exemption. The
-  "eyebrow" loophole in LESSONS_LEARNED is exactly that mistake.
+- **Guest routes stay anonymous. The link IS the credential.** No guest login, ever, and
+  no "find your invitation" name lookup — that is a guest-list oracle.
+- htmx 2.x only. htmx 4 changed attribute inheritance and fails silently.
+- 18px body text, 44px touch targets, native form controls. **When new CSS trips the
+  18px floor, raise the type — do not add an exemption.** The "eyebrow" loophole in
+  LESSONS_LEARNED is exactly that mistake.
 - **Rebuild `app/static/app.css` after any template or CSS change, and commit it.**
-  `tests/test_stylesheet.py` will fail if you forget, which is new and is there because
-  a missing class shipped a broken image to a phone.
-- No # noqa, no # type: ignore, no skipped tests, no swallowed exceptions. There are
-  currently zero of all four in the repo; keep it that way.
-- American English. Postgres is on host port 5434, not 5432.
-- This repo is PUBLIC on GitHub. Never write a credential into it — record where a
-  secret lives, never its value. Invite tokens count as credentials: the review links
-  live in `.review/INVITE_LINKS.md`, which is gitignored on purpose.
+  `tests/test_stylesheet.py` fails if you forget — it exists because a missing class
+  shipped a broken image to a phone.
+- No `# noqa`, no `# type: ignore`, no skipped tests, no swallowed exceptions. If the
+  right fix is out of scope, stop and say so.
+- American English. Postgres is on host port **5434**.
+- **This repo is PUBLIC.** Never write a credential into it. Invite tokens are
+  credentials — the review links live in `.review/INVITE_LINKS.md`, gitignored.
+- **Never migrate the `nltlabs.ai` zone for this project.** It carries live company mail
+  behind a `quarantine` DMARC policy. Plan §7.1 explains the alternative that was used.
+- **Tailscale on this box depends on IPv6 ULAs.** Nothing may disable IPv6 wholesale.
 
-Do NOT use the Workflow tool unless I ask — the token pool is shared with my other
-sessions. Plain subagents are fine.
+Do NOT use the Workflow tool unless asked — the token pool is shared with other sessions.
+Plain subagents are fine.
 
-Three habits, all of which earned their place the hard way:
+## Four habits, all of which earned their place today
+
 - **If tests pass on the first run, they have proved nothing.** Break the source on
-  purpose and confirm the right test goes red. Roughly fifty mutations last session
-  found two real gaps — one where a shared fixture made three security tests vacuous,
-  and one where a documented rule was tested nowhere.
-- **A test that passes alone and fails in the suite is shared state**, not flakiness.
-- **Look at the page.** Three real problems in the dashboard were invisible to 158
-  passing tests, including an invite link clipped mid-token and a link pointing at
-  localhost. Screenshots go to `tests/screenshots/`.
+  purpose and confirm the right test goes red. Roughly sixty mutations this session found
+  four real gaps, including a shared fixture that made three security tests vacuous and a
+  rule asserted only in a docstring.
+- **A test that passes alone and fails in the suite is shared state, not flakiness.**
+- **Watch what your test client actually sends.** Two rounds of 404 tests were worthless
+  because `TestClient` defaults to `Accept: */*`; content negotiation alone routed
+  everything to JSON and the logic under test was never exercised.
+- **Look at the page.** Three real dashboard problems were invisible to 158 passing
+  tests. Screenshots go to `tests/screenshots/`.
 
-Linear: project SaveTheDate, team TappsCodingAgents (TAP), issues TAP-7725–7763.
+Linear: project SaveTheDate, team TappsCodingAgents (TAP), issues TAP-7725–7775.
 
 ---
 
 ## If you want a shorter version
 
-Read IMPLEMENTATION_PLAN.md §10, LESSONS_LEARNED.md §6, and .claude/CLAUDE.md. Phases
-0–3 are done, 11 of 15 issues closed, 199 tests, gate green. What is left — hosting,
-observability, photography, and a DNS move that is probably unnecessary — all needs your
-accounts or your camera rather than more code. Everything is self-hosted on the home lab —
-there is no managed platform in this project. Same non-negotiables as the plan. Don't
-use the Workflow tool. Never migrate the `nltlabs.ai` zone for this project; it carries
-live company mail and §7.1 explains the alternative.
+Read IMPLEMENTATION_PLAN.md §12 and §8.1, LESSONS_LEARNED.md §6, and .claude/CLAUDE.md.
+Phases 0–3 are done, 12 of 16 issues closed, 206 tests, gate green, git clean, and the
+site is live at `dev-wedding.tapphouse.co`. Next is TAP-7733's production stack and
+backups, then TAP-7775's welcome page. Everything self-hosts on the home lab — there is
+no managed platform in this project. Ask Bill what `savethedate.tapphouse.co` is for
+before building anything behind it.

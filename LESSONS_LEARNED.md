@@ -571,3 +571,26 @@ before cutting over, so a missing record is caught while the old ones are still
 authoritative. Checking for DS records belongs in the same pass — a stale DS with new
 nameservers takes a domain completely dark for validating resolvers, and it is invisible
 until someone with a validating resolver complains.
+
+### Say what the thing is, or everyone has to go and find out
+
+Asked whether this was a multi-tenant product or one wedding's app, I could not answer
+from the documentation. The README's subtitle says "a service for weddings and events",
+which is product language. The templates hard-code one couple's story. Nothing stated
+the split, so answering meant reading the schema, the routers, the tests and the
+templates.
+
+The answer turned out to be worth having: the data layer is genuinely multi-tenant —
+`hosts`, `events.host_id`, ownership-scoped queries, nine cross-host tests — while the
+presentation layer is deliberately one wedding, with exactly seven values reaching the
+templates from the database. That is a good place to be, because the expensive-to-change
+parts are general and the cheap-to-change parts are specific.
+
+But it was an *implicit* good place, and implicit architecture gets "fixed" by the next
+person. Someone reading only the README would reasonably start generalising the
+templates toward a product that has no customer.
+
+**Write the tenancy model down**, including the parts that are deliberately not general
+and why. Recorded as plan §12. The rule generalises: if answering "what is this?"
+requires reading the code, the documentation has a hole in it, and the hole is where
+someone else's well-meant refactor goes.
