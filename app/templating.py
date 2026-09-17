@@ -153,9 +153,9 @@ def deadline_date(moment: datetime, timezone: str) -> str:
     return plain_date((_in_zone(moment, timezone) - timedelta(seconds=1)).date())
 
 
-# Every scheduled item gets a picture. Photographs where an openly-licensed one
-# genuinely matches; otherwise an engraved plate drawn in the site's own line-and-
-# diamond language, which reads as stationery rather than as a missing photograph.
+# Every scheduled item gets a photograph. Several are of Port Aransas itself —
+# the Tarpon Inn porch, the ferry — rather than generic stock, which is worth the
+# search: a guest who knows the island will recognise them.
 #
 # Matched on keywords rather than a column, because `segments` is host-entered content
 # and a wedding's schedule is not a fixed vocabulary. Anything unrecognised still gets
@@ -178,31 +178,37 @@ SEGMENT_IMAGES: tuple[tuple[tuple[str, ...], str, str], ...] = (
     ),
     (
         ("fishing", "charter", "boat", "bay"),
-        "/static/img/plate-bay-fishing.svg",
-        "An engraved drawing of a small fishing skiff on the bay at first light",
+        "/static/img/pier-sunset.jpg",
+        "A figure on a fishing pier at sunset",
     ),
     (
         ("dinner", "bar", "town", "crawl"),
-        "/static/img/plate-dinner-in-town.svg",
-        "An engraved drawing of a row of storefronts under strung lights",
+        "/static/img/dinner-table.jpg",
+        "A long table laid for dinner by candlelight",
     ),
     (
         ("breakfast", "brunch", "departure", "coffee"),
-        "/static/img/plate-departure-breakfast.svg",
-        "An engraved drawing of a coffee pot and two cups in the morning sun",
+        "/static/img/breakfast-coffee.jpg",
+        "Coffee and a pastry on a table in the morning",
+    ),
+    (
+        ("ferry", "travel", "driving", "arrive"),
+        "/static/img/ferry-sunset.jpg",
+        "The Port Aransas ferry crossing at sunset",
     ),
 )
 
+# Every card gets a photograph, including one for a segment nobody has thought of yet.
 DEFAULT_SEGMENT_IMAGE = (
-    "/static/img/plate-a-shore-thing.svg",
-    "An engraved drawing of a beach house raised on pilings above the dunes",
+    "/static/img/gulf-sunset.jpg",
+    "An orange and purple sunset over the Gulf of Mexico",
 )
 
 
 def segment_image(name: str) -> tuple[str, str]:
     """The picture and alt text for one scheduled item, as (src, alt).
 
-    Never returns nothing: an unrecognised segment falls back to the house plate, so a
+    Never returns nothing: an unrecognised segment falls back to a Gulf sunset, so a
     schedule the hosts change later cannot leave a grey rectangle on the page.
     """
     lowered = name.casefold()
@@ -212,7 +218,26 @@ def segment_image(name: str) -> tuple[str, str]:
     return DEFAULT_SEGMENT_IMAGE
 
 
+# CC BY requires the credit to be visible to a reader, not filed in a repository. Kept
+# beside the mapping above so a picture cannot be swapped without its credit following.
+# CC0 images need no entry — see img/CREDITS.md for the full list either way.
+PHOTO_CREDITS: tuple[tuple[str, str], ...] = (
+    ("Mike Dickison", "CC BY 4.0"),
+    ("Gruenemann", "CC BY 2.0"),
+    ("BlankBlankBlank", "CC BY 2.0"),
+    ("Helen.Yang", "CC BY 2.0"),
+    ("Dennis Wong", "CC BY 2.0"),
+)
+
+
+def photo_credit_line() -> str:
+    """One readable sentence naming everyone whose licence requires naming."""
+    names = ", ".join(name for name, _ in PHOTO_CREDITS)
+    return f"Placeholder photography by {names}, used under Creative Commons licences."
+
+
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+templates.env.globals["photo_credit_line"] = photo_credit_line
 templates.env.globals["segment_image"] = segment_image
 templates.env.filters["formal_date"] = formal_date
 templates.env.filters["plain_date"] = plain_date

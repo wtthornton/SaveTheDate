@@ -155,8 +155,7 @@
       {% for segment in required_segments if ns.ceremony is none or segment.id != ns.ceremony.id %}
         <div class="card flex h-full flex-col">
           {% set picture = segment_image(segment.name) %}
-          <img class="beat-media h-[150px] w-full
-                      {{ 'object-contain' if picture[0].endswith('.svg') else 'object-cover' }}"
+          <img class="beat-media h-[150px] w-full object-cover"
                src="{{ picture[0] }}" alt="{{ picture[1] }}.">
           <div class="flex flex-grow flex-col gap-2.5 p-[26px]">
             <p class="eyebrow-card-when">
@@ -195,8 +194,7 @@
         {% for segment in optional_segments %}
           <div class="paid-card lg:flex-row lg:overflow-hidden lg:p-0">
             {% set picture = segment_image(segment.name) %}
-            <img class="beat-media hidden lg:block lg:h-auto lg:w-[250px] lg:flex-shrink-0
-                        {{ 'object-contain' if picture[0].endswith('.svg') else 'object-cover' }}"
+            <img class="beat-media hidden object-cover lg:block lg:h-auto lg:w-[250px] lg:flex-shrink-0"
                  src="{{ picture[0] }}" alt="{{ picture[1] }}.">
             <div class="flex flex-1 flex-col gap-2 lg:p-6">
               <p class="schedule-title">{{ segment.name }}</p>
@@ -235,6 +233,13 @@
         need, so that the getting there is the easy part.
       </p>
     </div>
+
+    {# The ferry is how most people will actually arrive, and this is a photograph of
+       that ferry rather than a stock boat — worth the width it takes. #}
+    <img
+      class="beat-media h-[160px] w-full object-cover lg:h-[260px]"
+      src="/static/img/ferry-sunset.jpg"
+      alt="The Port Aransas ferry crossing the channel at sunset.">
 
     <div class="travel-callout flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-10">
       <div class="flex flex-shrink-0 flex-col gap-1">
@@ -310,14 +315,5 @@
     </div>
     <a class="btn-outline lg:min-h-[54px] lg:px-9" href="/invites/{{ token }}/print">Printable itinerary</a>
   </section>
-
-  {# `beach-fire.jpg` is CC BY 4.0, which requires the credit to be visible to a reader
-     rather than filed in the repository. It is the only image on the whole site that
-     carries an attribution obligation. Remove this line if that image goes — and see
-     img/CREDITS.md, which says the same thing next to the file. #}
-  <p class="photo-credit">
-    Placeholder photography. Beach fire by Mike Dickison,
-    <a href="https://creativecommons.org/licenses/by/4.0/" rel="noopener">CC BY 4.0</a>.
-  </p>
 
 {% endblock %}

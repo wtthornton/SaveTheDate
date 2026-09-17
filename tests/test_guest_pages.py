@@ -327,14 +327,31 @@ def test_every_scheduled_item_has_a_picture() -> None:
         assert len(alt) > 15, f"{name} got a thin alt text: {alt!r}"
 
 
-def test_the_picture_for_an_item_suits_it(client: TestClient, db_session: Session) -> None:
-    """A fishing photograph beside golf copy is worse than no photograph at all."""
+def test_the_picture_for_an_item_suits_it() -> None:
+    """A fishing photograph beside golf copy is worse than no photograph at all.
+
+    Named explicitly rather than by matching a keyword against the filename: bay
+    fishing is illustrated by `pier-sunset.jpg`, a photograph of an actual fishing
+    pier, and a filename check called that wrong.
+    """
     from app.templating import segment_image
 
-    assert "fishing" in segment_image("Bay fishing")[0]
-    assert "golf" in segment_image("Golf at Palmilla Beach")[0]
-    assert "dinner" in segment_image("Dinner in town and a bar crawl")[0]
-    assert "breakfast" in segment_image("Departure breakfast")[0]
+    expected = {
+        "Bay fishing": "pier-sunset.jpg",
+        "Golf at Palmilla Beach": "golf-course.jpg",
+        "Dinner in town and a bar crawl": "dinner-table.jpg",
+        "Departure breakfast": "breakfast-coffee.jpg",
+        "Welcome party on the beach": "beach-fire.jpg",
+        "Ceremony and reception": "gulf-evening.jpg",
+    }
+    for name, filename in expected.items():
+        assert segment_image(name)[0].endswith(filename), (
+            f"{name} is illustrated by {segment_image(name)[0]}, expected {filename}"
+        )
+
+    # Two items on the same page sharing a photograph reads as a mistake.
+    used = [segment_image(name)[0] for name in expected]
+    assert len(set(used)) == len(used), f"a photograph is used twice: {used}"
 
 
 def test_no_page_renders_an_empty_picture_slot(client: TestClient, db_session: Session) -> None:

@@ -72,7 +72,17 @@
 
   /* -- Review-instance draft banner (TAP-7738) ---------------------------- */
 
+  /* Announces itself, then leaves. It overlays the page instead of sitting in the
+     flow, so the hero starts at the top of the viewport and nothing shifts when the
+     notice goes. Pure CSS on purpose: if this were script-driven, a JS failure would
+     leave a draft looking exactly like the real invitation. The worst a CSS failure
+     can do is leave the notice up, which is the safe direction to fail in. */
   .draft-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 60;
     margin: 0;
     padding: 12px 20px;
     background: var(--color-ink);
@@ -82,6 +92,7 @@
     text-align: center;
     text-wrap: pretty;
     border-bottom: 3px solid var(--color-accent);
+    animation: draft-notice 4.2s ease-in forwards;
   }
 
   .draft-banner strong {
@@ -89,17 +100,35 @@
     letter-spacing: 0.02em;
   }
 
-  /* The one attribution the site is obliged to show. Quiet, but present and legible —
-     an 18px floor applies to it like everything else a guest can read. */
-  /* A photograph can be cropped; a drawing cannot. The plates carry their own
-     engraved frame, so object-cover slices it off and the whole thing reads as a
-     mistake. Letterbox them instead, on the plate's own ground colour so the seam
-     does not show. */
-  img.beat-media[src$=".svg"] {
-    object-fit: contain;
-    background: var(--color-photo-slot, #EDE2D2);
+  @keyframes draft-notice {
+    0%, 72% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    97%, 100% {
+      opacity: 0;
+      transform: translateY(-100%);
+      visibility: hidden;
+      /* So the vanished notice cannot swallow a tap meant for the page beneath it. */
+      pointer-events: none;
+    }
   }
 
+  /* Someone who has asked for less motion still gets the notice out of the way — it
+     fades rather than travelling. */
+  @media (prefers-reduced-motion: reduce) {
+    .draft-banner {
+      animation-name: draft-notice-fade;
+    }
+
+    @keyframes draft-notice-fade {
+      0%, 72% { opacity: 1; }
+      97%, 100% { opacity: 0; visibility: hidden; pointer-events: none; }
+    }
+  }
+
+  /* The one attribution the site is obliged to show. Quiet, but present and legible —
+     an 18px floor applies to it like everything else a guest can read. */
   .photo-credit {
     margin: 0;
     padding: 20px;

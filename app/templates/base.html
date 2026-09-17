@@ -14,9 +14,14 @@
 <body class="bg-ground text-ink">
   {% if review_instance %}
   {# TAP-7738: this deployment is reachable from the internet and seeded with invented
-     guests. It says so on every page, print included, so nobody mistakes a draft for
-     the invitation that was really sent. #}
-  <p class="draft-banner">
+     guests. The notice announces itself, then gets out of the way so the page can be
+     judged on its own terms — the owner asked for that explicitly.
+
+     It overlays rather than sitting in the flow, so the hero starts at the very top of
+     the viewport and nothing shifts when the notice leaves. It stays in the DOM after
+     it goes: the text is still there for a screen reader and for anyone reading source,
+     and the page never stops *being* a draft just because it stops saying so. #}
+  <p class="draft-banner" role="status">
     <strong>Draft preview.</strong> A work-in-progress copy for review — not the real
     invitation. Every guest name on it is made up.
   </p>
@@ -36,6 +41,14 @@
   <main class="{% block main_class %}mx-auto flex max-w-2xl flex-col gap-8 px-5 py-8{% endblock %}">
     {% block content %}{% endblock %}
   </main>
+
+  {# Several pictures are CC BY, which wants the credit visible to a reader rather than
+     filed in the repository. Generated from PHOTO_CREDITS so a swapped photograph
+     cannot leave its credit behind. Suppressed on the print view, which is meant to be
+     undecorated. #}
+  {% block credits %}
+    <p class="photo-credit">{{ photo_credit_line() }}</p>
+  {% endblock %}
 
   <script src="/static/vendor/htmx-2.0.10.min.js" defer></script>
   {% block extra_scripts %}{% endblock %}

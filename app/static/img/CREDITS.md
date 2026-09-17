@@ -1,10 +1,18 @@
-# Pictures on the guest site
+# Photographs on the guest site
 
-Two kinds of thing live here: **photographs**, which are openly-licensed placeholders
-taken from the design canvas, and **plates**, which are engraved line drawings made for
-this site. None of the photographs is of Bill, Lisa, Port Aransas, or A Shore Thing.
+**Every one of these is a placeholder.** They are openly-licensed photographs, and none
+of them is of Bill, Lisa, or A Shore Thing. Several *are* of Port Aransas and Mustang
+Island, which is worth the search it took: a guest who knows the island will recognise
+the ferry and the Tarpon Inn porch, and a generic beach would have told them nothing.
 
-## Photographs — all placeholders
+## Of the actual place
+
+| File | Subject | Photographer | License |
+| --- | --- | --- | --- |
+| `porch-tarpon-inn.jpg` | The Tarpon Inn porch, Port Aransas | Gruenemann | CC BY 2.0 |
+| `ferry-sunset.jpg` | The Port Aransas ferry at sunset | BlankBlankBlank | CC BY 2.0 |
+
+## Generic, but on theme
 
 | File | Subject | Photographer | License |
 | --- | --- | --- | --- |
@@ -13,53 +21,44 @@ this site. None of the photographs is of Bill, Lisa, Port Aransas, or A Shore Th
 | `gulf-evening.jpg` | The Gulf at dusk | Linda Xu | CC0 |
 | `pier-sunset.jpg` | A figure on a fishing pier | Claude Piché | CC0 |
 | `golf-course.jpg` | A golf course | Viktor Kiryanov | CC0 |
-| **`beach-fire.jpg`** | **A driftwood fire on the sand** | **Mike Dickison** | **CC BY 4.0** |
+| `beach-fire.jpg` | A driftwood fire on the sand | Mike Dickison | CC BY 4.0 |
+| `dinner-table.jpg` | A long table laid by candlelight | Dennis Wong | CC BY 2.0 |
+| `breakfast-coffee.jpg` | Coffee and a pastry | Helen.Yang | CC BY 2.0 |
 
-### `beach-fire.jpg` carries an obligation the others do not
+## The five CC BY images carry an obligation the CC0 ones do not
 
-CC BY **requires the credit to be visible to the reader**, not filed in a repository. It
-is therefore named in a credit line at the foot of The Wedding page, which is the only
-page it appears on. **If that image is removed, remove the credit line with it. If
-another CC BY image is added, it goes in the same line.** Nothing else on the site
-carries an attribution requirement.
+CC BY **requires the credit to be visible to a reader**, not filed in a repository. The
+names are listed in `PHOTO_CREDITS` in `app/templating.py` and rendered at the foot of
+every guest page except the print view.
 
-## Plates — drawn for this site
+**Keep that list in step with this table.** If a CC BY photograph is swapped out, remove
+its name; if one is added, add it. A credit for an image that is no longer shown is as
+wrong as a missing one.
 
-Engraved line drawings in the site's own palette and ornament: the same double rule as
-the hero frame, the same diamond as the section dividers. They exist because four
-scheduled items had no photograph that could honestly stand in, and a grid of grey
-rectangles reads as unfinished.
+## Two to replace first
 
-| File | Subject |
-| --- | --- |
-| `plate-a-shore-thing.svg` | A beach house raised on pilings above the dunes |
-| `plate-dinner-in-town.svg` | A row of storefronts under strung lights |
-| `plate-departure-breakfast.svg` | A coffee pot and two cups in the morning sun |
-| `plate-bay-fishing.svg` | A small skiff on the bay at first light |
+`hero-couple.jpg` is **someone else's wedding** and is the first thing a guest sees.
+`porch-tarpon-inn.jpg` stands where A Shore Thing should be — it is genuinely on the
+island, and its alt text says plainly that it is the Tarpon Inn rather than implying it
+is Jason's house, but it is still a stand-in. Jason's house is Bill's to photograph.
 
-They are ours, so they carry no attribution requirement, and they are safe to keep even
-once real photography arrives — a drawing beside a photograph reads as a deliberate
-pairing in a way that a placeholder never does.
+## Which photograph goes with which item
 
-## Replace the hero first
-
-`hero-couple.jpg` is **someone else's wedding**, and it is the first image a guest sees.
-The design canvas flags it the same way. `plate-a-shore-thing.svg` is the other one to
-revisit: Jason's house is yours to photograph, and a drawing is a better stand-in than a
-stranger's house, but it is still a stand-in.
-
-## Which picture goes with which item
-
-Chosen in `app/templating.py` (`segment_image`), matched on keywords rather than a
+Decided in `app/templating.py` (`segment_image`), matched on keywords rather than a
 database column, because a schedule is host-entered content and not a fixed vocabulary.
-Anything unrecognised falls back to a plate, so a card can never render empty. A
-fishing photograph beside golf copy would be worse than no photograph at all, which is
-why the mapping is explicit and tested.
+Anything unrecognised falls back to a Gulf sunset, so a card can never render empty.
+
+The mapping is tested by name rather than by matching the filename — bay fishing is
+illustrated by `pier-sunset.jpg`, an actual fishing pier, and a filename check called
+that wrong. A fishing photograph beside golf copy would be worse than none at all.
 
 ## Rules for anything added later
 
 - Nothing from portaransas.org, Google Maps or Vacasa — all copyrighted, none
   republishable.
-- CC BY and stricter need a visible credit. CC0 does not.
-- Resize and strip metadata before committing: guests open this on cellular, and the
-  originals here ran to 1.5MB before optimization.
+- CC BY and stricter need a visible credit, and a line in `PHOTO_CREDITS`. CC0 does not.
+- Resize and strip metadata before committing. Guests open this on cellular, and the
+  originals ran past 1MB each before optimization.
+- Openverse (`api.openverse.org`) is where these were found; searching for "Port
+  Aransas" and "Mustang Island" directly turned up far better material than generic
+  terms like "beach house", which returned Californian surfers.

@@ -308,9 +308,6 @@
   .bg-ground {
     background-color: var(--color-ground);
   }
-  .object-contain {
-    object-fit: contain;
-  }
   .object-cover {
     object-fit: cover;
   }
@@ -680,6 +677,11 @@
 }
 @layer components {
   .draft-banner {
+    position: fixed;
+    top: 0;
+    left: 0;
+    right: 0;
+    z-index: 60;
     margin: 0;
     padding: 12px 20px;
     background: var(--color-ink);
@@ -689,14 +691,38 @@
     text-align: center;
     text-wrap: pretty;
     border-bottom: 3px solid var(--color-accent);
+    animation: draft-notice 4.2s ease-in forwards;
   }
   .draft-banner strong {
     color: var(--color-blush);
     letter-spacing: 0.02em;
   }
-  img.beat-media[src$=".svg"] {
-    object-fit: contain;
-    background: var(--color-photo-slot, #EDE2D2);
+  @keyframes draft-notice {
+    0%, 72% {
+      opacity: 1;
+      transform: translateY(0);
+    }
+    97%, 100% {
+      opacity: 0;
+      transform: translateY(-100%);
+      visibility: hidden;
+      pointer-events: none;
+    }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .draft-banner {
+      animation-name: draft-notice-fade;
+    }
+    @keyframes draft-notice-fade {
+      0%, 72% {
+        opacity: 1;
+      }
+      97%, 100% {
+        opacity: 0;
+        visibility: hidden;
+        pointer-events: none;
+      }
+    }
   }
   .photo-credit {
     margin: 0;
