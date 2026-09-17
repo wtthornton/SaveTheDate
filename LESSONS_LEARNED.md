@@ -302,6 +302,27 @@ because the bug was in what the pipeline *meant*, not in its syntax.
 before it is trusted, ideally while watching what it does to the service. "It passed
 shellcheck" says nothing about whether it works.
 
+### Search for the place, not the subject
+
+Four schedule cards needed photographs. Searching freely-licensed stock for the subject
+gave nothing usable: "beach house" returned Californian surfers, "restaurant" returned
+Red Lobster storefronts and Disneyland, "fishing boat" returned tropical harbours. The
+conclusion looked like "there are no good free photographs of these things".
+
+Searching for **Port Aransas** and **Mustang Island** directly returned real photographs
+of the actual island, including the Tarpon Inn porch and the ferry at sunset — the same
+ferry the welcome page's story is about. A guest who knows the place will recognise both.
+
+**Generalize:** when a search for a generic subject returns generic rubbish, try the
+specific proper noun before concluding the material does not exist. The index is often
+organised around names, not categories.
+
+A licensing note that came with it: five of the photographs are CC BY rather than CC0,
+and CC BY wants the credit visible to a reader, not filed in the repository. The names
+live next to the mapping that uses them, so a swapped photograph cannot leave its credit
+behind. That rule immediately caught a real slip — a photograph was committed and
+credited while appearing on no page at all.
+
 ### A green CI is not the same as the definition of done
 
 The project's stated definition of done required migrations to apply **and roll back**.

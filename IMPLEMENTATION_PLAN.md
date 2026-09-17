@@ -27,7 +27,9 @@ and the JSON view moved to `/api/invites/{token}`; the token is unchanged. Welco
 Wedding, RSVP, a print view and a 404, all anonymous and `noindex`. Per-person RSVP form
 honoring the three phases, folding into `<details>` at three seats or more. Tailwind
 v4.3.3 standalone with the built CSS committed; htmx 2.0.10 vendored and version-asserted.
-38 tests, each confirmed by deliberate mutation. **On a branch, green, not yet merged.**
+**Merged to `main` and pushed.** Desktop layouts followed from the three 1440px
+artboards, which the first pass missed entirely. 74 tests, including a browser-driven
+visual suite; each assertion confirmed by deliberate mutation.
 
 **Designed.** The Design canvas still specifies 15–17px body text, which contradicts the
 18px floor the build now enforces. **The canvas is the one that is wrong** and should be
@@ -66,8 +68,8 @@ is safe *only* because the review instance runs on invented guests.
 ### Phase 1 — The thing people see (M2)
 | Issue | Why it is here |
 | --- | --- |
-| ~~**TAP-7739** Schema redesign~~ | **DONE 2026-09-16**, branch `tap-7739-…`, gate green, **not yet merged**. Per-person `attendees`, `segments`, `attendance`, `rsvp_opens_at`, `events.timezone`; meal choice dropped; `rsvps` thinned. |
-| ~~**TAP-7728** Guest invite page~~ | **DONE 2026-09-16**, branch `tap-7728-…`, gate green, **not yet merged**. Jinja + htmx 2.x + Tailwind, five routes, 18px floor enforced by a test rather than by review. |
+| ~~**TAP-7739** Schema redesign~~ | **DONE 2026-09-16**, merged. Per-person `attendees`, `segments`, `attendance`, `rsvp_opens_at`, `events.timezone`; meal choice dropped; `rsvps` thinned. |
+| ~~**TAP-7728** Guest invite page~~ | **DONE 2026-09-16**, merged. Jinja + htmx 2.x + Tailwind, five routes, 18px floor enforced by a test rather than by review. |
 | **TAP-7729** RSVP window | **Narrowed 2026-09-16, and not folded in.** TAP-7739 enforces both ends; TAP-7728 took the page behavior. What remains is genuinely backend: `_phase()` never reads `events.timezone`, and `EventCreate` accepts a **naive** `rsvp_deadline` that Postgres then interprets in the server's zone — the exact failure the issue was filed against. Plus frozen-time tests, which need a dependency the repo does not have. |
 | **TAP-7740** DNS → Cloudflare | Blocks TAP-7738. **Far riskier than first written — the zone carries live company email. See §7.** |
 | **TAP-7738** Review instance | Cloudflare Tunnel off the dev box. Fake data, `noindex`, visibly a draft. **Take the Quick Tunnel path: it needs no DNS change at all, so it does not wait on TAP-7740.** `cloudflared` is not yet installed on this box. |
@@ -435,8 +437,11 @@ Carry these into the next session:
    what happens if it rains.
 3. **Prices** for golf and the fishing charter still show `$[ CONFIRM ]`.
 4. **Airport shuttle** is a marked placeholder on both travel pages.
-5. **Photography** — every image is an openly-licensed placeholder. The hero is someone
-   else's wedding. A Shore Thing's photo slot is empty.
+5. **Photography** — now tracked as **TAP-7762**. Every image is still an openly-licensed
+   placeholder and the hero is still someone else's wedding, but no slot is empty: two
+   photographs are of Port Aransas itself (the Tarpon Inn porch, the ferry), found by
+   searching for the place rather than the subject. Five are CC BY and carry a visible
+   credit line — keep `PHOTO_CREDITS` in step with what is actually shown.
 6. ~~**Timezone** for the RSVP window is undecided; `events` has no timezone column.~~
    **Resolved in TAP-7739.** `events.timezone` holds an IANA name (`America/Chicago`);
    `rsvp_opens_at` and `rsvp_deadline` are both `timestamptz`. A date deadline means the
@@ -444,6 +449,10 @@ Carry these into the next session:
    the zone, which is why the IANA name is kept in its own column.
 7. **Registry and FAQ pages** — see items 1 and 2; still not in the backlog. If they are
    wanted, they are template work and belong with TAP-7728.
+8. **The design canvas is now stale** — it still specifies the 15–17px type and the
+   20px date that measurement showed to be illegible, and predates the desktop
+   layouts built from it. Tracked as **TAP-7763**. Do not treat it as current spec
+   without checking it against `tests/test_visual.py`.
 
 ---
 

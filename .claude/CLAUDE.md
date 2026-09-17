@@ -12,7 +12,15 @@ FastAPI + PostgreSQL. Server-rendered Jinja2 + htmx 2.x + Tailwind. No Node tool
   defaults to the DEV database.** Run the up→down→up round trip against the test DB:
   `DATABASE_URL="$TEST_DATABASE_URL" .venv/bin/alembic …`, or it will wipe local data
   and re-key every invite token behind a running review instance.
-- Review instance: `scripts/review-instance.sh up | status | down` (TAP-7738)
+- Review instance: `scripts/review-instance.sh up | reload | status | down` (TAP-7738)
+  **`reload` after any change under `app/*.py`.** Jinja re-reads templates each
+  request but imports Python once, so a long-lived instance keeps serving the old
+  module — that shipped a live 500 once while every test was green. `reload`
+  restarts on the same port, so the URL and every invite token survive; `up` does
+  not.
+- Visual gate: `tests/test_visual.py` drives Chromium at 390px and 1440px and writes
+  screenshots to `tests/screenshots/`. Look at them. No non-visual test noticed that
+  the hero was an empty grey box, or that a whole breakpoint was missing.
 - Seed fake review data: `.venv/bin/python -m scripts.seed_review_data`
 - CSS: `~/.local/bin/tailwindcss -i app/static/src/app.css -o app/static/app.css`
   Tailwind v4 standalone binary, no Node, no `package.json`. The built

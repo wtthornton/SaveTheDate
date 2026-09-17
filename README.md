@@ -225,6 +225,7 @@ exists.
 
 ```bash
 scripts/review-instance.sh up       # start, seed, and print the links
+scripts/review-instance.sh reload   # restart after a Python change, keeping the URL
 scripts/review-instance.sh status   # running? on what URL?
 scripts/review-instance.sh down     # stop everything
 ```
@@ -242,7 +243,11 @@ chmod +x ~/.local/bin/cloudflared
 Three things to know before sending anyone a link:
 
 - **The URL is random and does not survive a restart.** Every `up` prints a new one, and
-  this box reboots roughly daily. Re-send the links after any restart.
+  this box reboots roughly daily. Re-send the links after any restart. Use `reload`
+  rather than `up` after changing anything under `app/*.py`: Jinja re-reads templates on
+  every request but imports Python once, so a running instance otherwise keeps serving
+  the old module. `reload` restarts on the same port, so the URL and every invite token
+  already sent stay valid.
 - **Every page says `Draft preview`**, driven by `REVIEW_INSTANCE=true`, so nobody
   mistakes it for the invitation that was really sent. It defaults off.
 - **The host endpoints are still unauthenticated.** Anyone with the URL can read every
@@ -257,10 +262,40 @@ Postgres-native UUID columns.
 
 ```bash
 docker compose exec db createdb -U savethedate savethedate_test   # once
+playwright install chromium                                      # once
 .venv/bin/pytest
 ```
 
 Point the suite at a different database with `TEST_DATABASE_URL`.
+
+**`tests/test_visual.py` drives a real browser.** It loads every page at 390px and
+1440px, measures rendered geometry against the design artboards, and writes full-page
+screenshots to `tests/screenshots/` (gitignored — regenerated each run).
+
+It exists because of a specific failure: the welcome page shipped with an empty grey box
+where the design has a photographic hero, and all 45 tests at the time stayed green. They
+checked structure, phases, labels and type sizes — nothing that knows what a page looks
+like. Later the same gap hid a whole missing breakpoint.
+
+Two things it does that a stylesheet scan cannot:
+
+- **Measures computed styles**, so the cascade and Tailwind utilities count. That caught
+  three links rendering at 29px against a declared 44px floor.
+- **Measures x-height, not font-size.** 20px Cormorant Garamond light italic has a
+  smaller x-height than 18px Karla, so the hero date was rendering *smaller* than body
+  text while passing an 18px floor. All-caps runs are measured by cap-height instead,
+  where x-height describes nothing.
+
+**Look at the screenshots.** An assertion only catches what somebody thought to assert.
+
+### Photography
+
+Ten photographs in `app/static/img/`, all openly-licensed placeholders, all listed with
+their licences in [`app/static/img/CREDITS.md`](app/static/img/CREDITS.md). Two are of
+Port Aransas itself. Five are CC BY and carry a credit line rendered at the foot of every
+guest page from `PHOTO_CREDITS` in `app/templating.py` — **if a CC BY photograph is
+removed, remove its name too.** Which picture goes with which scheduled item is decided
+by `segment_image()`, with a fallback so no card can render empty.
 
 ## Known gaps
 
