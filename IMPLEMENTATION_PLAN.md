@@ -527,8 +527,10 @@ storage, and attention.
 2. ~~**A named tunnel.**~~ **DONE 2026-09-17.** Tunnel `tapphouse`
    (`bcf78f41-e048-429a-9375-43cf777173e8`), config at `~/.cloudflared/config.yml`,
    running as the systemd user service `cloudflared-tapphouse` with `Restart=always`
-   and lingering on, so it returns unattended after a reboot. Three hostnames routed:
-   `dev-wedding` → the review instance on :50681, `wedding` and `savethedate` → 503.
+   and lingering on, so it returns unattended after a reboot. **Four hostnames routed,
+   all live since 2026-09-17:** `dev-wedding` and `dev-savethedate` → the review
+   instance on :50681, `wedding` and `savethedate` → the production stack on :8100.
+   (They were routed to `http_status:503` until the production stack existed; see §14.)
 3. ~~**Compose stack** with `restart: unless-stopped`.~~ **DONE 2026-09-17.** Project
    `savethedate-prod` in `docker-compose.prod.yml`: its own volume
    (`savethedate-prod_pgdata`), its own database, and **no published Postgres port at
