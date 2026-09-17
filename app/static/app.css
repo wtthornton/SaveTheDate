@@ -8,7 +8,9 @@
     --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New',
     monospace;
     --spacing: 0.25rem;
+    --container-md: 28rem;
     --container-2xl: 42rem;
+    --container-5xl: 64rem;
     --font-weight-normal: 400;
     --default-transition-duration: 150ms;
     --default-transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
@@ -233,6 +235,12 @@
   .max-w-2xl {
     max-width: var(--container-2xl);
   }
+  .max-w-5xl {
+    max-width: var(--container-5xl);
+  }
+  .max-w-md {
+    max-width: var(--container-md);
+  }
   .flex-1 {
     flex: 1;
   }
@@ -331,6 +339,9 @@
   }
   .py-8 {
     padding-block: calc(var(--spacing) * 8);
+  }
+  .py-12 {
+    padding-block: calc(var(--spacing) * 12);
   }
   .pt-3 {
     padding-top: calc(var(--spacing) * 3);
@@ -1703,6 +1714,304 @@
     .travel-recommended {
       border-color: var(--color-blush);
     }
+  }
+  .host-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+  }
+  .host-bar-mark {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 24px;
+    color: var(--color-ink);
+    text-decoration: none;
+  }
+  .host-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+  .host-bar-who {
+    font-size: 18px;
+    color: var(--color-muted);
+  }
+  .host-section-heading {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 30px;
+    font-weight: 500;
+    line-height: 1.2;
+    color: var(--color-ink);
+  }
+  .host-hint {
+    font-size: 18px;
+    line-height: 1.5;
+    color: var(--color-muted);
+  }
+  .host-error {
+    font-size: 18px;
+    line-height: 1.5;
+    padding: 0.75rem 1rem;
+    border-left: 4px solid var(--color-accent);
+    background-color: var(--color-card-selected);
+    color: var(--color-ink);
+  }
+  .host-stat-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+  @media (min-width: 768px) {
+    .host-stat-row {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+  .host-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+  }
+  .host-stat-lead {
+    border-color: var(--color-accent);
+    background-color: var(--color-card-selected);
+  }
+  .host-stat-number {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 44px;
+    line-height: 1;
+    color: var(--color-ink);
+  }
+  .host-stat-label {
+    font-size: 18px;
+    color: var(--color-muted);
+  }
+  .host-table-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+  }
+  .host-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 18px;
+  }
+  .host-table th, .host-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--color-rule);
+  }
+  .host-table thead th {
+    font-size: 18px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    white-space: nowrap;
+  }
+  .host-table tbody th {
+    font-weight: 500;
+    color: var(--color-ink);
+  }
+  .host-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+  .host-num-strong {
+    font-weight: 700;
+  }
+  .host-sub {
+    display: block;
+    font-size: 18px;
+    color: var(--color-muted);
+  }
+  .host-tag {
+    display: inline-block;
+    font-size: 18px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    border: 1px solid var(--color-rule);
+    padding: 0.05rem 0.4rem;
+  }
+  .host-people {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+  .host-status {
+    display: inline-block;
+    font-size: 18px;
+    padding: 0.15rem 0.5rem;
+    border: 1px solid var(--color-rule);
+    white-space: nowrap;
+  }
+  .host-status-all-coming {
+    border-color: var(--color-success);
+    color: var(--color-success);
+  }
+  .host-status-not-coming {
+    border-color: var(--color-muted);
+    color: var(--color-muted);
+  }
+  .host-status-awaiting-reply {
+    border-color: var(--color-blush);
+    color: var(--color-accent);
+  }
+  .host-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+  .host-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 18px;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+  }
+  .host-chip-count {
+    font-weight: 700;
+    color: var(--color-accent);
+  }
+  .host-note-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    font-size: 18px;
+    line-height: 1.5;
+    color: var(--color-body);
+  }
+  .host-label {
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--color-ink);
+  }
+  .host-input {
+    min-height: 44px;
+    font-size: 18px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+    color: var(--color-ink);
+  }
+  .host-input-narrow {
+    max-width: 8rem;
+  }
+  .host-link-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding-bottom: 0.5rem;
+  }
+  .host-link-field {
+    min-height: 44px;
+    width: 100%;
+    font-size: 18px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-ground);
+    color: var(--color-body);
+  }
+  .host-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    font-size: 18px;
+    padding: 0.5rem 1.25rem;
+    border: 1px solid var(--color-accent);
+    background-color: var(--color-accent);
+    color: var(--color-card);
+    cursor: pointer;
+  }
+  .host-btn:hover {
+    background-color: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+  }
+  .host-btn-quiet {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    font-size: 18px;
+    padding: 0.5rem 1.25rem;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+    color: var(--color-ink);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .host-btn-quiet:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+  .host-btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    font-size: 18px;
+    padding: 0.5rem 1.25rem;
+    border: 1px solid var(--color-accent);
+    background-color: transparent;
+    color: var(--color-accent);
+    cursor: pointer;
+  }
+  .host-btn-danger:hover {
+    background-color: var(--color-accent);
+    color: var(--color-card);
+  }
+  .host-summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    font-size: 18px;
+    color: var(--color-accent);
+    cursor: pointer;
+  }
+  .host-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    padding: 1rem 0 0.5rem;
+  }
+  .host-edit-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1rem;
+  }
+  .host-row-actions td {
+    padding-top: 0;
+    background-color: var(--color-ground);
+  }
+  .host-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+    text-decoration: none;
+  }
+  .host-card:hover {
+    border-color: var(--color-accent);
+  }
+  .host-card-title {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 26px;
+    color: var(--color-ink);
   }
 }
 @property --tw-font-weight {

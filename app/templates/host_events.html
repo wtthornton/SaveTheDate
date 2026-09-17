@@ -1,0 +1,31 @@
+{% extends "host_base.html" %}
+
+{% block title %}Your events — SaveTheDate{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col gap-2">
+    <p class="eyebrow">Host dashboard</p>
+    <h1 class="display-lg">Your events</h1>
+  </div>
+
+  {% if not events %}
+    <p class="body-copy">
+      You have no events yet. One is created through the API — <code>POST /events</code>
+      — while the host-facing form for it is still to come.
+    </p>
+  {% else %}
+    <ul class="flex flex-col gap-3">
+      {% for event in events %}
+        <li>
+          <a class="host-card" href="/host/events/{{ event.id }}">
+            <span class="host-card-title">{{ event.title }}</span>
+            <span class="host-sub">
+              {% if event.event_date %}{{ event.event_date | plain_date }}{% else %}Date to follow{% endif %}
+              {% if event.location %} · {{ event.location }}{% endif %}
+            </span>
+          </a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% endif %}
+{% endblock %}

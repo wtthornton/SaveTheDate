@@ -81,6 +81,20 @@ def _clean_tables(engine: Engine) -> None:
         connection.execute(text(f"TRUNCATE {', '.join(TABLES)} RESTART IDENTITY CASCADE"))
 
 
+@pytest.fixture(autouse=True)
+def _clean_rate_limiter() -> None:
+    """Drop the throttle's counters between tests. TAP-7727.
+
+    They live in process memory, and every `TestClient` request arrives from the same
+    address, so without this the whole suite shares one bucket: enough guest-page tests
+    run in a minute to spend the allowance, and a later test gets a 429 it never asked
+    for. That is what happened — one test passed alone and failed in the full run.
+    """
+    from app.ratelimit import reset_limiter
+
+    reset_limiter()
+
+
 @pytest.fixture
 def db_session(engine: Engine) -> Iterator[Session]:
     """A session alongside the app's own, for setting up rows the API cannot create yet."""

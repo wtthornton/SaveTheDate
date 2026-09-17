@@ -569,3 +569,80 @@ def test_the_page_survives_200_percent_zoom(browser: Browser, live_url: str, tok
     )
     assert not overflow, "the RSVP form scrolls sideways at 200% zoom"
     page.context.close()
+
+
+# -- The host dashboard (TAP-7730) ----------------------------------------
+
+
+def _signed_in_host_page(browser: Browser, live_url: str, viewport: ViewportSize) -> Page:
+    """A browser sitting on the dashboard, signed in through the real form."""
+    from tests.conftest import HOST_EMAIL, HOST_PASSWORD
+
+    page = _page(browser, viewport)
+    page.goto(f"{live_url}/host/login", wait_until="networkidle")
+    page.fill("#email", HOST_EMAIL)
+    page.fill("#password", HOST_PASSWORD)
+    page.click("button[type=submit]")
+    page.wait_for_load_state("networkidle")
+    return page
+
+
+@pytest.mark.parametrize(("label", "viewport"), [("phone", PHONE), ("desktop", DESKTOP)])
+def test_capture_the_host_dashboard(
+    browser: Browser, live_url: str, token: str, label: str, viewport: ViewportSize
+) -> None:
+    """Screenshots for a person to look at, same as the guest pages get."""
+    page = _signed_in_host_page(browser, live_url, viewport)
+
+    assert "/host/events/" in page.url, f"did not land on the dashboard: {page.url}"
+    _shoot(page, f"host-dashboard-{label}")
+    page.context.close()
+
+
+def test_an_invite_link_is_readable_in_full(browser: Browser, live_url: str, token: str) -> None:
+    """A clipped link is a link a host cannot check before sending it.
+
+    It first shipped inside a table column, where it showed 478px of the 826px it
+    needed and cut off mid-token. Nothing failed: the value was correct, the input was
+    valid, and only looking at it showed the problem.
+    """
+    page = _signed_in_host_page(browser, live_url, DESKTOP)
+
+    clipped = page.evaluate(
+        """() => Array.from(document.querySelectorAll('.host-link-field'))
+              .filter(el => el.scrollWidth > el.clientWidth + 1)
+              .map(el => ({shown: Math.round(el.clientWidth),
+                           needed: Math.round(el.scrollWidth)}))"""
+    )
+
+    assert not clipped, f"invite links are cut off: {clipped}"
+    page.context.close()
+
+
+def test_the_dashboard_link_points_at_the_host_being_browsed(
+    browser: Browser, live_url: str, token: str
+) -> None:
+    """Built from the request, not from a setting — otherwise a host on the review
+    tunnel copies a localhost link and sends it to somebody."""
+    page = _signed_in_host_page(browser, live_url, DESKTOP)
+
+    values = page.evaluate(
+        "() => Array.from(document.querySelectorAll('.host-link-field')).map(el => el.value)"
+    )
+
+    assert values, "no invite links rendered"
+    assert all(value.startswith(live_url) for value in values), values
+    page.context.close()
+
+
+def test_the_dashboard_does_not_scroll_sideways(
+    browser: Browser, live_url: str, token: str
+) -> None:
+    """Tables may scroll inside their own box; the page itself may not."""
+    for viewport in (PHONE, DESKTOP):
+        page = _signed_in_host_page(browser, live_url, viewport)
+        width = page.evaluate("() => document.body.scrollWidth")
+        assert width <= viewport["width"] + 1, (
+            f"the dashboard overflows at {viewport['width']}px: body is {width}px"
+        )
+        page.context.close()

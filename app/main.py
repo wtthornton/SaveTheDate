@@ -9,7 +9,7 @@ from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
 from app.ratelimit import client_address, get_limiter
-from app.routers import auth, events, invites, pages
+from app.routers import auth, events, host, invites, pages
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -85,6 +85,7 @@ app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 app.include_router(auth.router)
 app.include_router(events.router)
+app.include_router(host.router)
 app.include_router(invites.router)
 app.include_router(pages.router)
 
