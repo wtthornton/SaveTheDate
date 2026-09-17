@@ -16,8 +16,10 @@ def create_event(
     slug: str = "bill-and-lisa",
     timezone: str = "America/Chicago",
     event_date: str | None = "2028-02-13",
-    rsvp_opens_at: datetime | None = None,
-    rsvp_deadline: datetime | None = None,
+    # A `str` goes to the API verbatim, so a test can post the bare calendar date or
+    # the naive value a host might type and see what the API makes of it. TAP-7729.
+    rsvp_opens_at: datetime | str | None = None,
+    rsvp_deadline: datetime | str | None = None,
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "slug": slug,
@@ -28,9 +30,13 @@ def create_event(
         "timezone": timezone,
     }
     if rsvp_opens_at is not None:
-        payload["rsvp_opens_at"] = rsvp_opens_at.isoformat()
+        payload["rsvp_opens_at"] = (
+            rsvp_opens_at if isinstance(rsvp_opens_at, str) else rsvp_opens_at.isoformat()
+        )
     if rsvp_deadline is not None:
-        payload["rsvp_deadline"] = rsvp_deadline.isoformat()
+        payload["rsvp_deadline"] = (
+            rsvp_deadline if isinstance(rsvp_deadline, str) else rsvp_deadline.isoformat()
+        )
 
     response = client.post("/events", json=payload)
     assert response.status_code == 201, response.text

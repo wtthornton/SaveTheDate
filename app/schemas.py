@@ -1,11 +1,16 @@
+import re
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timedelta
 from decimal import Decimal
 from enum import StrEnum
-from typing import Literal
+from typing import Any, Literal, Self
 from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator
+from pydantic import BaseModel, ConfigDict, EmailStr, Field, field_validator, model_validator
+
+# `2027-12-15` — a calendar date with no time and no offset, which is what a host
+# actually writes down. Anything longer is parsed as a datetime and must carry a zone.
+LOCAL_DATE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 
 
 class DietaryTag(StrEnum):
@@ -60,6 +65,53 @@ class EventCreate(BaseModel):
         except (ZoneInfoNotFoundError, ValueError) as exc:
             raise ValueError(f"unknown IANA time zone: {value!r}") from exc
         return value
+
+    @model_validator(mode="before")
+    @classmethod
+    def _window_dates_are_local(cls, data: Any) -> Any:
+        """Read a bare `2027-12-15` as a day in the event's zone, not the server's.
+
+        The open date becomes midnight at the start of that day and the deadline
+        midnight at the start of the *next* one, so the stored bound is exclusive and
+        "RSVP by December 15" includes the whole of the 15th. TAP-7729.
+        """
+        if not isinstance(data, dict):
+            return data
+        try:
+            zone = ZoneInfo(str(data.get("timezone", "UTC")))
+        except (ZoneInfoNotFoundError, ValueError):
+            # An unusable zone is `_known_timezone`'s error to report, with its own
+            # wording. Leaving the values alone keeps that message the one the host sees.
+            return data
+
+        converted = dict(data)
+        for field, exclusive in (("rsvp_opens_at", False), ("rsvp_deadline", True)):
+            value = converted.get(field)
+            if isinstance(value, str) and LOCAL_DATE.match(value):
+                day = date.fromisoformat(value)
+                if exclusive:
+                    day += timedelta(days=1)
+                converted[field] = datetime(day.year, day.month, day.day, tzinfo=zone)
+        return converted
+
+    @model_validator(mode="after")
+    def _window_carries_a_zone(self) -> Self:
+        """Refuse a naive instant instead of letting Postgres guess at it.
+
+        A naive value written to a `timestamptz` is interpreted in the Postgres
+        session's zone — the server's day, not the event's — and reads as precise
+        while carrying no zone at all. A bare date is honest about being a date and is
+        converted above; this is the case that has to be refused.
+        """
+        for field in ("rsvp_opens_at", "rsvp_deadline"):
+            value: datetime | None = getattr(self, field)
+            if value is not None and value.tzinfo is None:
+                raise ValueError(
+                    f"{field} carries no time zone. Give an offset "
+                    f"(2027-12-15T23:59:59-06:00), or a bare date (2027-12-15), "
+                    f"which is read as a whole day in the event's own zone."
+                )
+        return self
 
 
 class EventOut(BaseModel):
