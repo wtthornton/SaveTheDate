@@ -31,6 +31,20 @@ class Settings(BaseSettings):
     # simply never be sent back. Set it explicitly to override.
     session_cookie_secure: bool | None = None
 
+    # -- Throttling the public guest routes (TAP-7727) ---------------------
+
+    # Per address, per window, across `/invites/*` and `/api/invites/*`. A guest
+    # reading all four pages spends four; the default leaves room for reloads and for
+    # a household behind one address, while still bounding a scraper.
+    invite_rate_limit: int = 60
+    invite_rate_window_seconds: int = 60
+
+    # Name of a header holding the real client address, e.g. "CF-Connecting-IP".
+    # Leave unset unless a proxy you control OVERWRITES it on every request: a header
+    # a caller can set is an unlimited supply of fresh buckets, which turns the
+    # limiter off rather than on.
+    trusted_client_ip_header: str | None = None
+
     @property
     def cookie_secure(self) -> bool:
         if self.session_cookie_secure is not None:

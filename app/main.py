@@ -1,12 +1,14 @@
+import math
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from fastapi import FastAPI, Request, Response
+from fastapi import FastAPI, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import PlainTextResponse
+from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
+from app.ratelimit import client_address, get_limiter
 from app.routers import auth, events, invites, pages
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -40,6 +42,43 @@ async def no_index(
     response = await call_next(request)
     response.headers["X-Robots-Tag"] = NOINDEX
     return response
+
+
+# The public guest routes, and only those. `/static` is excluded because one guest
+# page pulls a stylesheet, htmx and four photographs, so counting those would throttle
+# a single visitor before they finished reading. Host routes are behind a session
+# already, and `/health` is hit by the platform every few seconds.
+THROTTLED_PREFIXES = ("/invites/", "/api/invites/")
+
+
+@app.middleware("http")
+async def throttle_guest_routes(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """Count before looking anything up. TAP-7727.
+
+    Running here rather than in a route dependency is what makes a throttled real
+    token indistinguishable from a made-up one: neither reaches the database, so the
+    status, the body and the time taken are identical.
+    """
+    if not request.url.path.startswith(THROTTLED_PREFIXES):
+        return await call_next(request)
+
+    address = client_address(
+        request.client.host if request.client else None,
+        {key.lower(): value for key, value in request.headers.items()},
+    )
+    wait = get_limiter().retry_after(address)
+    if wait is None:
+        return await call_next(request)
+
+    return JSONResponse(
+        status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+        content={"detail": "too many requests; please wait a moment and try again"},
+        # Whole seconds, and never zero: RFC 9110 wants an integer, and a client
+        # reading "0" would retry immediately into another 429.
+        headers={"Retry-After": str(max(1, math.ceil(wait))), "X-Robots-Tag": NOINDEX},
+    )
 
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
