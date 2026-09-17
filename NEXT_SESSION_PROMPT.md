@@ -161,6 +161,26 @@ second deployment.
   not moved.
 - **Look at the page.** Every save-the-date screenshot was once taken with half the card
   still inside the envelope, and not one assertion noticed.
+- **A suite that measures rest states cannot see a bug that only exists mid-transition**,
+  and rest states are what everything naturally asserts, because they are the only
+  moment that holds still. The save-the-date card hung visibly out of the bottom of the
+  envelope for its whole 1200ms rise, and the envelope's teal liner was never once
+  painted — both green the entire time, including in the tests written specifically
+  about the envelope.
+- **Scrub the animation; do not wait for it.** Screenshotting at wall-clock offsets
+  drifts, because each screenshot costs a few hundred ms and the error accumulates — by
+  the fifth frame the picture is nowhere near the time it claims. Pause every finite
+  animation and set `currentTime`. `SCRUB_TO` in `tests/test_visual.py`.
+- **Hit-test when the question is "is this painted?"** A clipped element still reports
+  its full `getBoundingClientRect`, so geometry cannot answer it. `elementFromPoint`
+  respects the clip.
+- **A computed value is not a used value, and some CSS properties veto others.**
+  `opacity` is a grouping property, so an element carrying one is forced to
+  `transform-style: flat` whatever its own rule says — which silently disabled
+  `backface-visibility` and hid the envelope's liner, while `getComputedStyle` cheerfully
+  reported `preserve-3d` throughout. When a visual property "does not work" and the CSS
+  reads correctly, suspect a neighbour and run a **static experiment** rather than
+  reading harder. Two plausible hypotheses were tested and both wrong before the third.
 - Ask the browser for the condition rather than deriving it. `document.getAnimations()`
   beats naming the element you happen to think of.
 - Sampling the centre of an element is not sampling the element.
