@@ -9,6 +9,10 @@ FastAPI + PostgreSQL. Server-rendered Jinja2 + htmx 2.x + Tailwind. No Node tool
          .venv/bin/mypy app migrations scripts tests && .venv/bin/pytest -q`
 - Migrations: `.venv/bin/alembic upgrade head` / `downgrade base`
 - Seed fake review data: `.venv/bin/python -m scripts.seed_review_data`
+- CSS: `~/.local/bin/tailwindcss -i app/static/src/app.css -o app/static/app.css`
+  Tailwind v4 standalone binary, no Node, no `package.json`. The built
+  `app/static/app.css` is **committed** so a deploy never has to run the build —
+  Render does not run yours. Rebuild and commit it whenever the source changes.
 
 ## Invariants — do not break these
 - `guests.invite_token` is in people's inboxes once sent. NEVER re-key or re-issue a
@@ -16,7 +20,11 @@ FastAPI + PostgreSQL. Server-rendered Jinja2 + htmx 2.x + Tailwind. No Node tool
 - Guest routes stay anonymous. The link IS the credential. Never add a guest login.
 - Accessibility is a requirement, not a nicety: 18px minimum body text, 44px touch
   targets, real `<input>`/`<label>`, no `role=` on divs. The guest list skews old.
-- htmx is pinned to 2.x. htmx 4 made attribute inheritance explicit and fails SILENTLY.
+- htmx is pinned to 2.x, vendored at `app/static/vendor/htmx-2.0.10.min.js`. htmx 4
+  made attribute inheritance explicit and fails SILENTLY. npm `latest` is still 2.x;
+  `next` is 4.0.0. A test asserts the loaded file reports `version:"2.0.10"`.
+- `/invites/{token}` serves the guest HTML. The JSON view is `/api/invites/{token}`.
+  The token itself never changes — only what the URL renders.
 - No per-plate meal choice. Dietary tags only. Headcounts are per DAY, not per plate.
 - Generated Alembic migrations need `ruff check --fix` AND `ruff format`, or CI fails.
   `ruff format` alone does NOT fix the UP007/UP035 errors Alembic generates.

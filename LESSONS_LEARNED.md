@@ -144,6 +144,71 @@ real red.
 that a fixture will regenerate. And confirm the negative control still passes, or you
 have only proved that everything fails.
 
+### A failing test can still be a *vacuous* test
+
+TAP-7728's suite was written before any implementation, so 15 of 19 failed on the first
+run — which looked like proof the tests worked. The other **four passed, and all four
+were worthless.** Two accessibility tests found no unlabelled controls because the page
+was still JSON and had no controls at all. Two stylesheet tests scanned `/static/app.css`,
+got a 404 body, found no `font-size` declarations in it, and concluded nothing was too
+small.
+
+Every one of them would have gone on passing after a regression deleted the thing it
+was meant to guard.
+
+**The rule:** a test that scans a collection must first assert the collection is not
+empty. `assert page.form_controls()` before checking they are labelled;
+`assert response.status_code == 200` before parsing what came back. "I found no
+violations" and "I found nothing" are the same result to an `assert not offenders`, and
+only one of them is good news.
+
+### A parser you wrote to check your work needs checking too
+
+The accessibility assertions run against a small hand-rolled DOM built on
+`html.parser`, so the rules are checked against rendered markup rather than template
+source. The first version stored an element's own text separately from its children,
+and reassembled them parent-text-first. `Please reply by <strong>December 15</strong>.`
+came back as `"Please reply by . December 15"`.
+
+Every assertion still passed, because they were all substring checks that happened not
+to straddle a tag. The bug only surfaced when a real page was printed and read. Text
+and child elements now live in one ordered list.
+
+**Generalize:** a test helper is untested code in the most dangerous position — the
+place you look to find out whether everything else is right. Print its output against
+something real before trusting what it tells you.
+
+### Two documents specified the same thing and disagreed
+
+The design canvas sets body text at 15–17px throughout. TAP-7728's own accessibility
+section mandates **18px minimum**, in bold, with the reasoning (the guest list skews
+old). Building the design as drawn would have violated the issue that commissioned it.
+
+The invariant won, and the exemption for tracked uppercase eyebrow labels was made
+*mechanical* rather than promised: a test scans the built stylesheet for any
+`font-size` below 18px and only skips selectors containing the literal string
+`eyebrow`. A subagent hit this immediately — it had styled a photo caption at 12px as
+`.photo-slot-label`, and rather than widening the exemption it renamed the class to
+`.photo-slot-eyebrow` and said so.
+
+**Generalize:** when two artifacts specify the same property, decide which is normative
+*before* building, say so out loud, and flag the other for correction — the canvas is
+now wrong and needs updating. And prefer an exemption a test can see over one a
+reviewer has to remember.
+
+### Check the repository against the handover, not the handover against itself
+
+The session brief said TAP-7739 was "code-complete, NOT committed and NOT merged", and
+that all 13 Linear issues were still in Backlog. In fact the work was committed,
+merged, **and pushed to `origin/main`**, TAP-7739 was marked Done and TAP-7728 had been
+moved to Todo. The brief was one session stale.
+
+Acting on it would have meant trying to commit a clean tree and puzzling over the
+result. Thirty seconds of `git log` and one Linear query settled it.
+
+**Generalize:** a handover describes the world as of when it was written. Verify the
+parts you are about to act on, especially the ones that say "not done yet".
+
 ### A green CI is not the same as the definition of done
 
 The project's stated definition of done required migrations to apply **and roll back**.
@@ -191,6 +256,13 @@ no internal document mentions at all.
 NLTWeb learned this in production: a new `import` broke the live site while GitHub
 Actions stayed green, because CI runs `uv sync` and Render did not. **The build command
 must install dependencies itself** (`uv sync --frozen && …`). Carry this into TAP-7733.
+
+The corollary for this repo's front end: the Tailwind v4 standalone binary lives at
+`~/.local/bin/tailwindcss`, **outside the repo** (it is 110MB and this repo is public),
+and the built `app/static/app.css` is **committed**. That is deliberate — it means a
+deploy never has to run the build, so the NLTWeb failure cannot repeat here. The cost
+is remembering to rebuild and commit after editing the source; the gate catches it,
+because the 18px test reads the built file rather than the source.
 
 Related, from the same repo: `render.yaml` is **documentation, not a control surface** in
 this account — there are no Blueprints and every service is dashboard-managed, so editing

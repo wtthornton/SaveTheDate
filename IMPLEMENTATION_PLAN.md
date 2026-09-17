@@ -20,13 +20,20 @@ and pytest against a real Postgres and is green.
 
 **Shipped 2026-09-16.** The `.claude/` harness (§3), and **TAP-7739** — per-person
 `attendees`, a six-row `segments` schedule, an `attendance` join, `rsvp_opens_at` and a
-`timezone` on `events`, and a thin `rsvps`. On a branch, green, **not yet merged**.
+`timezone` on `events`, and a thin `rsvps`. Merged to `main` and pushed.
 
-**Designed, not built.** Three-page guest site (Welcome → The Wedding → RSVP), mobile
-and web, in a Design canvas. Direction settled: server-rendered Jinja2 + htmx 2.x +
-Tailwind, no Node toolchain.
+**Shipped 2026-09-16.** **TAP-7728** — the guest pages. `/invites/{token}` serves HTML
+and the JSON view moved to `/api/invites/{token}`; the token is unchanged. Welcome, The
+Wedding, RSVP, a print view and a 404, all anonymous and `noindex`. Per-person RSVP form
+honoring the three phases, folding into `<details>` at three seats or more. Tailwind
+v4.3.3 standalone with the built CSS committed; htmx 2.0.10 vendored and version-asserted.
+38 tests, each confirmed by deliberate mutation. **On a branch, green, not yet merged.**
 
-**Not started.** Every template, and host authentication.
+**Designed.** The Design canvas still specifies 15–17px body text, which contradicts the
+18px floor the build now enforces. **The canvas is the one that is wrong** and should be
+updated before it is used as a reference again.
+
+**Not started.** Host authentication, and the host dashboard.
 
 **The immovable fact.** The wedding is **Sunday 13 February 2028 at 3pm**. Invitations
 go out ~6–8 weeks ahead; save-the-dates 6–12 months ahead. RSVP deadline 15 December
@@ -60,8 +67,8 @@ is safe *only* because the review instance runs on invented guests.
 | Issue | Why it is here |
 | --- | --- |
 | ~~**TAP-7739** Schema redesign~~ | **DONE 2026-09-16**, branch `tap-7739-…`, gate green, **not yet merged**. Per-person `attendees`, `segments`, `attendance`, `rsvp_opens_at`, `events.timezone`; meal choice dropped; `rsvps` thinned. |
-| **TAP-7728** Guest invite page | **Next.** Jinja + htmx 2.x + Tailwind. Three pages. 18px body, 44px targets, native controls. |
-| **TAP-7729** RSVP window | **Mostly absorbed by TAP-7739** — the API enforces both ends and reports `phase`. What is left is template behavior, which falls out of TAP-7728. Consider folding it in. |
+| ~~**TAP-7728** Guest invite page~~ | **DONE 2026-09-16**, branch `tap-7728-…`, gate green, **not yet merged**. Jinja + htmx 2.x + Tailwind, five routes, 18px floor enforced by a test rather than by review. |
+| **TAP-7729** RSVP window | **Narrowed 2026-09-16, and not folded in.** TAP-7739 enforces both ends; TAP-7728 took the page behavior. What remains is genuinely backend: `_phase()` never reads `events.timezone`, and `EventCreate` accepts a **naive** `rsvp_deadline` that Postgres then interprets in the server's zone — the exact failure the issue was filed against. Plus frozen-time tests, which need a dependency the repo does not have. |
 | **TAP-7740** DNS → Cloudflare | Blocks TAP-7738. **Far riskier than first written — the zone carries live company email. See §7.** |
 | **TAP-7738** Review instance | Cloudflare Tunnel off the dev box. Fake data, `noindex`, visibly a draft. **Take the Quick Tunnel path: it needs no DNS change at all, so it does not wait on TAP-7740.** `cloudflared` is not yet installed on this box. |
 

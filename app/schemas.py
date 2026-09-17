@@ -18,9 +18,24 @@ class DietaryTag(StrEnum):
     VEGAN = "vegan"
     GLUTEN_FREE = "gluten-free"
     NUT_ALLERGY = "nut-allergy"
+    SHELLFISH_ALLERGY = "shellfish-allergy"
     KOSHER = "kosher"
     HALAL = "halal"
     DAIRY_FREE = "dairy-free"
+
+
+# How each tag is written on the guest form. The stored value stays machine-readable
+# so the caterer's counts group cleanly; only the wording here is for people.
+DIETARY_LABELS: dict[DietaryTag, str] = {
+    DietaryTag.VEGETARIAN: "Vegetarian",
+    DietaryTag.VEGAN: "Vegan",
+    DietaryTag.GLUTEN_FREE: "Gluten-free",
+    DietaryTag.NUT_ALLERGY: "Nut allergy",
+    DietaryTag.SHELLFISH_ALLERGY: "Shellfish allergy",
+    DietaryTag.DAIRY_FREE: "Dairy-free",
+    DietaryTag.KOSHER: "Kosher",
+    DietaryTag.HALAL: "Halal",
+}
 
 
 RsvpPhase = Literal["before_open", "open", "closed"]
