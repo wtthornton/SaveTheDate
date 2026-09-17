@@ -1016,3 +1016,44 @@ whether the overhang was visible. `elementFromPoint` respects the clip.
 The general form: **a visual bug that only exists mid-transition is invisible to a suite
 that only measures rest states**, and rest states are what everything naturally asserts,
 because they are the only moment that holds still.
+
+### A computed value is not a used value, and CSS has properties that veto other properties
+
+The envelope's flap has two faces — cream paper outside, a teal striped liner inside —
+with `backface-visibility: hidden` on both, so the liner turns toward the reader as the
+flap passes vertical. That liner is the detail the envelope was rebuilt for after Bill
+pointed at Greenvelope; §7 records it as "the detail that makes an envelope look chosen
+rather than generated".
+
+**It was never once visible.** The flap showed its cream outer face for the whole
+reveal, from the day it was built.
+
+`opacity` is a *grouping* property: an element that carries one is forced to
+`transform-style: flat`, whatever its own rule says. The flap's open animation faded it
+out, which flattened its 3D context, which disabled `backface-visibility` on both
+faces — so the outer face never hid and the liner was painted nowhere. Three properties,
+each individually correct, and the third quietly cancelled by the first.
+
+Nothing could have caught it by inspection. `getComputedStyle` reports `preserve-3d`
+throughout, because **the computed value is not the used value** — the flattening is
+applied later and is not visible anywhere in the CSSOM. Every screenshot showed a
+perfectly plausible cream flap, which is what an envelope flap looks like.
+
+Finding it took a *decisive experiment* rather than more reading: rotate the flap
+statically past vertical, with no animation at all, and see what is painted. The liner
+appeared immediately, which named the cause in one step. Two earlier hypotheses —
+`filter` on the outer face, then `clip-path` on both faces, each of which really does
+force flattening — were both tested and both wrong. **Testing a hypothesis you believe
+is how you find out it is the wrong one cheaply**; reasoning harder about it is not.
+
+The fix splits the animation: the flap turns, the faces fade. A leaf can carry opacity
+safely because it groups nothing.
+
+The test asserts against the animation the browser is actually running —
+`getAnimations()` and `getKeyframes()` — rather than against the stylesheet text, so it
+holds however the rule is later rewritten. Confirmed by putting the fade back and
+watching it go red.
+
+**The rule worth carrying:** when a visual property "does not work" and the CSS reads
+correctly, suspect a neighbouring property that changes the rules for it, and reach for
+a static experiment rather than a closer read.

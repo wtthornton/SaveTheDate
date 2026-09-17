@@ -953,6 +953,56 @@ def test_the_card_never_hangs_out_of_the_envelope_while_it_rises(
     page.context.close()
 
 
+def test_the_flaps_own_animation_never_carries_opacity(browser: Browser, live_url: str) -> None:
+    """Because `opacity` on that element silently flattens its 3D, and hides the liner.
+
+    The flap has two faces: cream paper outside, a teal striped liner inside, with
+    `backface-visibility: hidden` on both so the liner turns toward the reader as the
+    flap passes vertical. That liner is the detail the envelope was rebuilt for, after
+    Bill pointed at Greenvelope — "the detail that makes an envelope look chosen
+    rather than generated".
+
+    It was never once visible. `opacity` is a grouping property, so an element that
+    carries one is forced to `transform-style: flat` regardless of its own rule; the
+    flap's open animation faded it, which flattened its 3D context, which disabled
+    `backface-visibility` on both faces, so the cream outer face simply never hid.
+
+    Nothing could see this. `getComputedStyle` reports `preserve-3d` the whole time,
+    because the computed value is not the used value, and every screenshot showed a
+    plausible cream flap. The fade now lives on the faces, which are leaves and group
+    nothing.
+
+    Asserted against the animation the browser is actually running, rather than
+    against the stylesheet text, so it holds however the rule is written.
+    """
+    page = _page(browser, DESKTOP)
+    page.goto(_public_url(live_url, "save-the-date"), wait_until="networkidle")
+
+    offenders = page.evaluate(
+        """() => document.getAnimations()
+             .filter(a => a.effect && a.effect.target
+                       && a.effect.target.classList.contains('std-flap'))
+             .flatMap(a => a.effect.getKeyframes())
+             .filter(k => k.opacity !== undefined)
+             .map(k => `offset ${k.offset}: opacity ${k.opacity}`)"""
+    )
+    assert not offenders, (
+        "the flap's own animation fades it, which forces transform-style: flat and "
+        f"hides the liner for the whole reveal — {offenders}"
+    )
+
+    # And the faces must still be the things that fade, or the flap never leaves.
+    faces_fade = page.evaluate(
+        """() => document.getAnimations()
+             .filter(a => a.effect && a.effect.target
+                       && a.effect.target.classList.contains('std-flap-face'))
+             .flatMap(a => a.effect.getKeyframes())
+             .some(k => k.opacity === '0' || k.opacity === 0)"""
+    )
+    assert faces_fade, "nothing fades the flap out; it will sit over the card forever"
+    page.context.close()
+
+
 def test_the_card_needs_no_javascript(browser: Browser, live_url: str) -> None:
     """The envelope is CSS. With scripting off the card is simply there, open.
 

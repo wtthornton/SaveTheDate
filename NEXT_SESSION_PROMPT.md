@@ -15,7 +15,7 @@ is most of the way: schema, guest pages, the review instance, the RSVP window, h
 auth, ownership scoping, rate limiting, the host dashboard, CSV import, email delivery,
 the two public pages, **and now the production stack**.
 
-272 tests. Gate green: ruff, ruff format, mypy --strict over 51 files, migrations
+273 tests. Gate green: ruff, ruff format, mypy --strict over 51 files, migrations
 up→down→up against the test database. Zero `noqa`, zero `type: ignore`, zero skipped
 tests, zero swallowed exceptions. Keep it that way.
 

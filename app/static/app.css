@@ -2405,13 +2405,14 @@
     z-index: 4;
     transform-origin: top center;
     transform-style: preserve-3d;
-    animation: std-flap-open 1100ms cubic-bezier(0.34, 0, 0.16, 1) 900ms forwards;
+    animation: std-flap-turn 1100ms cubic-bezier(0.34, 0, 0.16, 1) 900ms forwards;
   }
   .std-flap-face {
     position: absolute;
     inset: 0;
     clip-path: polygon(0 0, 100% 0, 50% 100%);
     backface-visibility: hidden;
+    animation: std-flap-fade 1100ms cubic-bezier(0.34, 0, 0.16, 1) 900ms forwards;
   }
   .std-flap-out {
     background: linear-gradient(to bottom, #F8EFE1 0%, #EADCC4 100%);
@@ -2451,16 +2452,22 @@
       transform: scale(1.22) rotate(-13deg);
     }
   }
-  @keyframes std-flap-open {
+  @keyframes std-flap-turn {
     0% {
       transform: rotateX(0deg);
+    }
+    100% {
+      transform: rotateX(-166deg);
+    }
+  }
+  @keyframes std-flap-fade {
+    0% {
       opacity: 1;
     }
     55% {
       opacity: 1;
     }
     100% {
-      transform: rotateX(-166deg);
       opacity: 0;
     }
   }

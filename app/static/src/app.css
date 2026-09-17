@@ -2236,7 +2236,16 @@
     z-index: 4;
     transform-origin: top center;
     transform-style: preserve-3d;
-    animation: std-flap-open 1100ms cubic-bezier(0.34, 0, 0.16, 1) 900ms forwards;
+    /* Rotation ONLY. The fade lives on the faces below, and that split is
+       load-bearing rather than tidy: `opacity` is a grouping property, so an
+       element carrying one is forced to `transform-style: flat` no matter what its
+       own rule says. With the fade here, this element's `preserve-3d` was silently
+       overridden, which disabled `backface-visibility` on both faces — so the cream
+       outer face never hid and the teal liner was never once visible, on a detail
+       that was the whole reason the envelope was rebuilt. `getComputedStyle` still
+       reported `preserve-3d` throughout, because the computed value is not the used
+       value. */
+    animation: std-flap-turn 1100ms cubic-bezier(0.34, 0, 0.16, 1) 900ms forwards;
   }
 
   .std-flap-face {
@@ -2244,6 +2253,10 @@
     inset: 0;
     clip-path: polygon(0 0, 100% 0, 50% 100%);
     backface-visibility: hidden;
+    /* The fade the flap used to carry. Here it is harmless: these are leaves, so
+       flattening them groups nothing, and their own `backface-visibility` still
+       answers to the flap's 3D context above. */
+    animation: std-flap-fade 1100ms cubic-bezier(0.34, 0, 0.16, 1) 900ms forwards;
   }
 
   .std-flap-out {
@@ -2299,10 +2312,15 @@
      top edge — off the top of a phone screen. Letting it go as it turns away reads
      as the flap opening and the paper receding, and keeps the whole gesture inside
      the viewport, which is where a reader can see it. */
-  @keyframes std-flap-open {
-    0%   { transform: rotateX(0deg); opacity: 1; }
+  @keyframes std-flap-turn {
+    0%   { transform: rotateX(0deg); }
+    100% { transform: rotateX(-166deg); }
+  }
+
+  @keyframes std-flap-fade {
+    0%   { opacity: 1; }
     55%  { opacity: 1; }
-    100% { transform: rotateX(-166deg); opacity: 0; }
+    100% { opacity: 0; }
   }
 
   @keyframes std-rise-out {

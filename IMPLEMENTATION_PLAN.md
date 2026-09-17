@@ -12,7 +12,7 @@ disciplined without burning the token pool.
 ## 1. Where this stands
 
 > **Updated 2026-09-17.** Phases 0-3 are done and **Phase 4 is most of the way**:
-> **13 of 17 issues closed** (one canceled), **272 tests**. Production is live on
+> **13 of 17 issues closed** (one canceled), **273 tests**. Production is live on
 > `wedding.tapphouse.co` and `savethedate.tapphouse.co` with its own database, and the
 > backup pipeline is built with its restore proven — **but the dumps are not yet
 > leaving this machine**, because the R2 bucket is Bill's to create. That is the one
