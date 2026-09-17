@@ -498,8 +498,88 @@ for TAP-7733, and it removes some guesswork from the "Railway or Render" questio
   no Blueprints, every service is dashboard-managed. NLTWeb keeps
   `scripts/check-render-drift.mjs` to stop the file lying. Worth copying that habit
   rather than assuming a committed YAML is what is running.
-- **`cloudflared` is not installed on this box**, and there is no `~/.cloudflared`. That
-  is the first step of TAP-7738, not a detail.
+- ~~**`cloudflared` is not installed on this box.**~~ Installed 2026-09-16 at
+  `~/.local/bin/cloudflared`; TAP-7738 is done.
+
+### 8.2 Re-checked against NLTWeb and live DNS, 2026-09-17
+
+Read before starting TAP-7733. Everything here was verified against the running estate
+rather than taken from a document.
+
+**How Render is tied to GitHub.** Per-service **Git auto-deploy**: each Render service
+is connected to a repo and a branch, and a push to that branch deploys it. That is the
+primary and sufficient path — no workflow required. NLTWeb's
+`.github/workflows/deploy.yml` is a *backup* that force-triggers deploys through the
+Render API when particular paths change, falling back to a single deploy hook if
+`RENDER_API_KEY` is unset. SaveTheDate needs nothing equivalent to begin with.
+
+**`invite.nltlabs.ai` does not need TAP-7740, and this is now settled.** The zone is on
+GoDaddy — `ns71`/`ns72.domaincontrol.com`, checked live — and **six** hostnames on it
+already serve from Render over plain CNAMEs with valid TLS:
+
+| Hostname | CNAME target |
+| --- | --- |
+| `profile.nltlabs.ai` | `nlt-profile.onrender.com` |
+| `merch.nltlabs.ai` | `nlt-merch.onrender.com` |
+| `briefs.nltlabs.ai` | `nlt-briefs.onrender.com` |
+| `nltlabs-draft.nltlabs.ai` | `nltlabs-draft.onrender.com` |
+| `portfolio.nltlabs.ai` | `portfolio-zh0x.onrender.com` |
+| `partners.nltlabs.ai` | `nlt-partner-desk.onrender.com` |
+
+`invite.nltlabs.ai` resolves to nothing today, so it is free. One CNAME at GoDaddy plus
+Custom Domains in Render is the whole job. Moving the zone to Cloudflare buys nothing
+this project needs and risks live company email — see §7.1.
+
+**The template to copy is NLTlabsPE, not NLTWeb.** Every NLTWeb service is
+`env: static`; SaveTheDate is a dynamic Python service with a database. `NLTlabsPE`'s
+`render.yaml` is the house style for a real runtime:
+
+```yaml
+- type: web
+  runtime: node          # → python for this project
+  region: oregon
+  plan: starter
+  rootDir: apps/portfolio
+  buildCommand: npm install && npm run build
+  startCommand: node dist/server/entry.mjs
+  healthCheckPath: /api/health
+  domains: [partners.nltlabs.ai]
+  buildFilter:
+    paths: [apps/partner-desk/**]
+  envVars:
+    - key: NODE_ENV
+      value: production
+    - key: STRIPE_SECRET_KEY
+      sync: false        # declared, value set in the dashboard
+```
+
+Points worth lifting: `sync: false` declares a secret without putting a value in a
+public repo; every service carries `X-Content-Type-Options`, `X-Frame-Options` and
+`Referrer-Policy`, and private ones add `X-Robots-Tag: noindex, nofollow` — which this
+project already sets in middleware; and a comment block names each secret the dashboard
+must hold.
+
+**Still true, and still the biggest trap:** Render does not install Python dependencies.
+The build command must, hence `uv sync --frozen && …`.
+
+**Still true:** no `databases:` block exists in any of the six `render.yaml` files on
+this box. SaveTheDate would be the first managed Postgres on the account, and
+TAP-7733's real deliverable is a **tested restore**.
+
+**Still true:** `render.yaml` is documentation, not a control surface — no Blueprints in
+the account as of 2026-09-11, every service dashboard-managed. NLTWeb's
+`scripts/check-render-drift.mjs` compares the file to the live API and exits `2` when it
+*could not look*, which is the right call: a drift check that reports success when it
+failed to run is worse than none. Worth copying that habit and that exit code.
+
+**Two more things learned from NLTWeb's own scars**, both in its `docs/DEPLOY.md`:
+
+- A static publish is **additive** — deleting a file from the build output does not
+  unpublish it; only a cache-clearing redeploy does. Not applicable to a dynamic
+  service, but it is why that repo's `dist/` had 68 stale files serving 200s.
+- Its draft→prod gate is "enforced by habit, not branch protection", and `draft` was
+  found 86 commits behind `main` with nothing unique on it. If this project ever grows a
+  review branch, the lesson is that a gate nothing enforces is a gate nobody uses.
 
 ---
 
