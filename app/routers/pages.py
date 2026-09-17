@@ -18,7 +18,7 @@ from sqlalchemy import select
 
 from app import rsvp as rsvp_domain
 from app.config import get_settings
-from app.deps import DbSession
+from app.deps import DbSession, Now
 from app.models import Guest
 from app.schemas import DIETARY_LABELS
 from app.templating import templates
@@ -45,7 +45,7 @@ def _not_found(request: Request) -> Response:
     )
 
 
-def _context(request: Request, guest: Guest, db: DbSession) -> dict[str, Any]:
+def _context(request: Request, guest: Guest, db: DbSession, now: Now) -> dict[str, Any]:
     segments = rsvp_domain.segments_for(guest.event_id, db)
     return {
         "review_instance": _is_review(),
@@ -55,13 +55,13 @@ def _context(request: Request, guest: Guest, db: DbSession) -> dict[str, Any]:
         "segments": segments,
         "required_segments": [s for s in segments if not s.is_optional],
         "optional_segments": [s for s in segments if s.is_optional],
-        "phase": rsvp_domain.phase(guest.event),
+        "phase": rsvp_domain.phase(guest.event, now),
         "answer": guest.rsvp,
     }
 
 
-def _rsvp_context(request: Request, guest: Guest, db: DbSession) -> dict[str, Any]:
-    context = _context(request, guest, db)
+def _rsvp_context(request: Request, guest: Guest, db: DbSession, now: Now) -> dict[str, Any]:
+    context = _context(request, guest, db, now)
     context["rows"] = rsvp_domain.form_rows(guest, context["segments"])
     context["dietary_options"] = list(DIETARY_LABELS.items())
     context["error"] = None
@@ -73,46 +73,46 @@ def _find(token: str, db: DbSession) -> Guest | None:
 
 
 @router.get("/{token}", response_class=HTMLResponse)
-def welcome(token: str, request: Request, db: DbSession) -> Response:
+def welcome(token: str, request: Request, db: DbSession, now: Now) -> Response:
     guest = _find(token, db)
     if guest is None:
         return _not_found(request)
     return templates.TemplateResponse(
-        request=request, name="welcome.html", context=_context(request, guest, db)
+        request=request, name="welcome.html", context=_context(request, guest, db, now)
     )
 
 
 @router.get("/{token}/wedding", response_class=HTMLResponse)
-def wedding(token: str, request: Request, db: DbSession) -> Response:
+def wedding(token: str, request: Request, db: DbSession, now: Now) -> Response:
     guest = _find(token, db)
     if guest is None:
         return _not_found(request)
     return templates.TemplateResponse(
-        request=request, name="wedding.html", context=_context(request, guest, db)
+        request=request, name="wedding.html", context=_context(request, guest, db, now)
     )
 
 
 @router.get("/{token}/rsvp", response_class=HTMLResponse)
-def rsvp_page(token: str, request: Request, db: DbSession) -> Response:
+def rsvp_page(token: str, request: Request, db: DbSession, now: Now) -> Response:
     guest = _find(token, db)
     if guest is None:
         return _not_found(request)
     return templates.TemplateResponse(
-        request=request, name="rsvp.html", context=_rsvp_context(request, guest, db)
+        request=request, name="rsvp.html", context=_rsvp_context(request, guest, db, now)
     )
 
 
 @router.post("/{token}/rsvp", response_class=HTMLResponse)
-async def submit(token: str, request: Request, db: DbSession) -> Response:
+async def submit(token: str, request: Request, db: DbSession, now: Now) -> Response:
     guest = _find(token, db)
     if guest is None:
         return _not_found(request)
 
-    phase = rsvp_domain.phase(guest.event)
+    phase = rsvp_domain.phase(guest.event, now)
     if phase != "open":
         # The window is enforced on the write, not only hidden in the template — a
         # stale tab or a resubmitted form must not slip an answer past the deadline.
-        context = _rsvp_context(request, guest, db)
+        context = _rsvp_context(request, guest, db, now)
         context["error"] = (
             "RSVPs have not opened yet."
             if phase == "before_open"
@@ -132,7 +132,7 @@ async def submit(token: str, request: Request, db: DbSession) -> Response:
         payload = rsvp_domain.parse_form(form, guest, segments)
         rsvp_domain.validate(payload, guest, {segment.id for segment in segments})
     except rsvp_domain.RsvpRefused as refused:
-        context = _rsvp_context(request, guest, db)
+        context = _rsvp_context(request, guest, db, now)
         context["error"] = refused.message
         return templates.TemplateResponse(
             request=request,
@@ -143,15 +143,15 @@ async def submit(token: str, request: Request, db: DbSession) -> Response:
 
     rsvp_domain.save(payload, guest, db)
     return templates.TemplateResponse(
-        request=request, name="rsvp.html", context=_rsvp_context(request, guest, db)
+        request=request, name="rsvp.html", context=_rsvp_context(request, guest, db, now)
     )
 
 
 @router.get("/{token}/print", response_class=HTMLResponse)
-def print_view(token: str, request: Request, db: DbSession) -> Response:
+def print_view(token: str, request: Request, db: DbSession, now: Now) -> Response:
     guest = _find(token, db)
     if guest is None:
         return _not_found(request)
     return templates.TemplateResponse(
-        request=request, name="print.html", context=_context(request, guest, db)
+        request=request, name="print.html", context=_context(request, guest, db, now)
     )

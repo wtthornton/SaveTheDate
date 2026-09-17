@@ -6,10 +6,13 @@ Hosts create an event, add their guest list, and hand each guest a private invit
 link. Guests open the link, see the event, and RSVP — no account, no password.
 Hosts read the responses back off the guest list.
 
-**Status:** early. The API below works end to end and is covered by tests. The
-guest-facing pages are built — an invite link opens a real page, not JSON — but the
-host-facing endpoints are still unauthenticated (see [Known gaps](#known-gaps)), so
-only invented guests may exist on any running instance.
+**Status:** working. Guest pages, host authentication, per-host scoping, rate
+limiting, a host dashboard with per-day headcounts, CSV import and export, and email
+delivery with per-guest delivery state. 199 tests against a real Postgres.
+
+What is left is not code: a durable host, error reporting, and real photographs. Until
+this has a durable home, keep invented guests only — losing the guest list has no
+recovery path.
 
 ## Stack
 
@@ -77,8 +80,9 @@ and streaming CSV import. Staying at one service is also the main lever on hosti
 **Now:** self-hosted on the dev box and published with
 [Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
 — outbound-only, so no open ports, no static IP, and TLS at the edge. This is for design
-review on real phones, with **fake guest data only**, because the host endpoints are
-still unauthenticated.
+review on real phones, with **invented guest data only** — not because the endpoints are
+open (they are not, since TAP-7725/7726/7727) but because a throwaway tunnel off a dev
+box is not somewhere a real guest list should live.
 
 **Later:** a managed host (Railway or Render, paid tier). Render's *free* tier is
 disqualified for this project on two counts: free Postgres is deleted 30 days after
@@ -99,9 +103,11 @@ out. An *invitation* is the whole artifact and both are phases of it.
 Keep prefixes to a single label. Cloudflare's free Universal SSL wildcard covers
 `*.nltlabs.ai` but not `a.b.nltlabs.ai`, so use hyphens rather than a second dot.
 
-`nltlabs.ai` is on GoDaddy nameservers today, so neither hostname routes to a tunnel
-until the zone moves to Cloudflare (TAP-7740) — that change touches the live company
-site, so it is tracked separately.
+`nltlabs.ai` is on GoDaddy nameservers. That blocks a *named Cloudflare Tunnel*, which
+is why TAP-7740 exists — but it does **not** block these hostnames in production: a
+Render custom domain is an ordinary CNAME that resolves from any provider. The review
+instance meanwhile runs on a Quick Tunnel and needs no DNS at all. See the comment on
+TAP-7740 before moving that zone; it carries live company email.
 
 ## Quick start
 
@@ -138,6 +144,9 @@ Interactive docs are then at <http://localhost:8000/docs>.
 | `attendees` | One row per real person under an invitation, with their own `dietary_tags` and `dietary_notes`. This is what lets one person attend while their plus-one declines. |
 | `attendance` | Whether one person is coming to one segment. The row carries an explicit boolean rather than meaning "yes" by existing, so "said no to golf" stays distinct from "never answered about golf". |
 | `rsvps` | At most one per guest, and deliberately thin: `note` and `responded_at`. Its *existence* is what keeps "declined" distinct from "never replied". Re-submitting the same invite link replaces the answer, so guests can change their mind. |
+| `hosts` | The only accounts in the system. Guests deliberately have no row here and never will — the invite token is their whole credential. argon2id password digests. |
+| `host_sessions` | One logged-in browser. Server-side rather than a signed cookie, so signing out actually ends the session and a stolen cookie can be revoked. Stores the sha256 of the cookie value, never the value. |
+| `deliveries` | One attempt to email one guest, per kind. A silently bounced invite looks identical to a guest who ignored it, so the outcome is recorded rather than assumed, and shown on the dashboard. |
 
 There is no per-plate meal choice — dietary tags only, and headcounts are per day
 rather than per main.
@@ -291,7 +300,7 @@ Two things it does that a stylesheet scan cannot:
 ### Photography
 
 Ten photographs in `app/static/img/`, all openly-licensed placeholders, all listed with
-their licences in [`app/static/img/CREDITS.md`](app/static/img/CREDITS.md). Two are of
+their licenses in [`app/static/img/CREDITS.md`](app/static/img/CREDITS.md). Two are of
 Port Aransas itself. Five are CC BY and carry a credit line rendered at the foot of every
 guest page from `PHOTO_CREDITS` in `app/templating.py` — **if a CC BY photograph is
 removed, remove its name too.** Which picture goes with which scheduled item is decided
@@ -303,12 +312,16 @@ These are tracked as epics in the
 [Linear project](https://linear.app/tappscodingagents/project/savethedate-6d14ff49f534)
 and are deliberately not stubbed out:
 
-- **Host endpoints are unauthenticated.** Anyone who can reach the API can create
-  events and read any guest list, including invite tokens. This must be closed
-  before the service is exposed publicly.
-- **No host dashboard.** The guest pages exist; the host-facing side does not.
-- **No email/SMS delivery.** Invite links have to be distributed by hand.
-- **No rate limiting** on invite-token lookups.
+- **Not deployed anywhere durable.** It runs on a dev box against a docker-compose
+  Postgres, plus a throwaway Cloudflare Quick Tunnel for review. Managed hosting with a
+  **tested restore** is TAP-7733, and it is the only gap that could cost the guest list.
+- **No error reporting**, and `/health` says the process is up rather than that the
+  service works. TAP-7734.
+- **Every photograph is a placeholder**, and the hero is a stock photograph of another
+  couple. TAP-7762.
+- **The mail webhook's signature scheme is unverified** against a live provider — see
+  the docstring in `app/mail.py`. Sending itself is tested end to end against a fake
+  transport.
 
 ## License
 

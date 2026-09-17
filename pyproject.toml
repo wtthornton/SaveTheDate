@@ -18,6 +18,9 @@ dependencies = [
     # Starlette requires it before `request.form()` will parse anything at all,
     # urlencoded included — the RSVP form posts as a plain HTML form.
     "python-multipart>=0.0.20",
+    # argon2id for host passwords (TAP-7725). The reference implementation, and the
+    # only password KDF here — guests never have one, and never will.
+    "argon2-cffi>=25.1",
 ]
 
 [project.optional-dependencies]

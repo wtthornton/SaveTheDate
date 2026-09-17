@@ -1387,3 +1387,401 @@
     }
   }
 }
+
+/* -- The host dashboard (TAP-7730) ---------------------------------------
+   Same accessibility floor as the guest pages: 18px body text, 44px targets,
+   real labels on real controls. A host reads this on a phone at a venue as
+   often as at a desk, and the tables scroll sideways rather than shrinking
+   the type to fit. */
+@layer components {
+  .host-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    flex-wrap: wrap;
+    padding: 0.75rem 1.25rem;
+    border-bottom: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+  }
+
+  .host-bar-mark {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 24px;
+    color: var(--color-ink);
+    text-decoration: none;
+  }
+
+  .host-bar-right {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .host-bar-who {
+    font-size: 18px;
+    color: var(--color-muted);
+  }
+
+  .host-section-heading {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 30px;
+    font-weight: 500;
+    line-height: 1.2;
+    color: var(--color-ink);
+  }
+
+  .host-hint {
+    font-size: 18px;
+    line-height: 1.5;
+    color: var(--color-muted);
+  }
+
+  .host-error {
+    font-size: 18px;
+    line-height: 1.5;
+    padding: 0.75rem 1rem;
+    border-left: 4px solid var(--color-accent);
+    background-color: var(--color-card-selected);
+    color: var(--color-ink);
+  }
+
+  /* -- The headline numbers -- */
+  .host-stat-row {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+
+  @media (min-width: 768px) {
+    .host-stat-row {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+    }
+  }
+
+  .host-stat {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+  }
+
+  .host-stat-lead {
+    border-color: var(--color-accent);
+    background-color: var(--color-card-selected);
+  }
+
+  .host-stat-number {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 44px;
+    line-height: 1;
+    color: var(--color-ink);
+  }
+
+  .host-stat-label {
+    font-size: 18px;
+    color: var(--color-muted);
+  }
+
+  /* -- Tables. They scroll rather than shrinking the type. -- */
+  .host-table-scroll {
+    overflow-x: auto;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+  }
+
+  .host-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 18px;
+  }
+
+  .host-table th,
+  .host-table td {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    vertical-align: top;
+    border-bottom: 1px solid var(--color-rule);
+  }
+
+  .host-table thead th {
+    font-size: 18px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    white-space: nowrap;
+  }
+
+  .host-table tbody th {
+    font-weight: 500;
+    color: var(--color-ink);
+  }
+
+  .host-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .host-num-strong {
+    font-weight: 700;
+  }
+
+  .host-sub {
+    display: block;
+    font-size: 18px;
+    color: var(--color-muted);
+  }
+
+  .host-tag {
+    display: inline-block;
+    font-size: 18px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+    border: 1px solid var(--color-rule);
+    padding: 0.05rem 0.4rem;
+  }
+
+  .host-people {
+    display: flex;
+    flex-direction: column;
+    gap: 0.2rem;
+  }
+
+  .host-status {
+    display: inline-block;
+    font-size: 18px;
+    padding: 0.15rem 0.5rem;
+    border: 1px solid var(--color-rule);
+    white-space: nowrap;
+  }
+
+  .host-status-all-coming {
+    border-color: var(--color-success);
+    color: var(--color-success);
+  }
+
+  .host-status-not-coming {
+    border-color: var(--color-muted);
+    color: var(--color-muted);
+  }
+
+  .host-status-awaiting-reply {
+    border-color: var(--color-blush);
+    color: var(--color-accent);
+  }
+
+  /* -- Dietary -- */
+  .host-chip-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .host-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 18px;
+    padding: 0.4rem 0.75rem;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+  }
+
+  .host-chip-count {
+    font-weight: 700;
+    color: var(--color-accent);
+  }
+
+  .host-note-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.4rem;
+    font-size: 18px;
+    line-height: 1.5;
+    color: var(--color-body);
+  }
+
+  /* -- Forms and buttons. 44px minimum, everywhere. -- */
+  .host-label {
+    font-size: 18px;
+    font-weight: 500;
+    color: var(--color-ink);
+  }
+
+  .host-input {
+    min-height: 44px;
+    font-size: 18px;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+    color: var(--color-ink);
+  }
+
+  .host-input-narrow {
+    max-width: 8rem;
+  }
+
+  .host-link-row {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding-bottom: 0.5rem;
+  }
+
+  .host-link-field {
+    min-height: 44px;
+    /* Full width of the row it now sits in. In a table column it was clipped
+       mid-token, and a link a host cannot read is one they cannot check before
+       sending it. */
+    width: 100%;
+    font-size: 18px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    padding: 0.5rem 0.75rem;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-ground);
+    color: var(--color-body);
+  }
+
+  .host-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    font-size: 18px;
+    padding: 0.5rem 1.25rem;
+    border: 1px solid var(--color-accent);
+    background-color: var(--color-accent);
+    color: var(--color-card);
+    cursor: pointer;
+  }
+
+  .host-btn:hover {
+    background-color: var(--color-accent-hover);
+    border-color: var(--color-accent-hover);
+  }
+
+  .host-btn-quiet {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    font-size: 18px;
+    padding: 0.5rem 1.25rem;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+    color: var(--color-ink);
+    text-decoration: none;
+    cursor: pointer;
+  }
+
+  .host-btn-quiet:hover {
+    border-color: var(--color-accent);
+    color: var(--color-accent);
+  }
+
+  .host-btn-danger {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    font-size: 18px;
+    padding: 0.5rem 1.25rem;
+    border: 1px solid var(--color-accent);
+    background-color: transparent;
+    color: var(--color-accent);
+    cursor: pointer;
+  }
+
+  .host-btn-danger:hover {
+    background-color: var(--color-accent);
+    color: var(--color-card);
+  }
+
+  .host-summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    font-size: 18px;
+    color: var(--color-accent);
+    cursor: pointer;
+  }
+
+  .host-edit {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+    padding: 1rem 0 0.5rem;
+  }
+
+  .host-edit-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 1rem;
+  }
+
+  /* A file input carries a wide intrinsic minimum (the browser's "Choose file"
+     button plus the filename), which pushed the page 30px past a 390px viewport.
+     Flex children default to min-width:auto, so they refuse to shrink below it. */
+  .host-edit-form > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .host-input {
+    max-width: 100%;
+  }
+
+  .host-input[type="file"] {
+    width: 100%;
+  }
+
+  .host-row-actions td {
+    padding-top: 0;
+    background-color: var(--color-ground);
+  }
+
+  .host-card {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    padding: 1rem 1.25rem;
+    border: 1px solid var(--color-rule);
+    background-color: var(--color-card);
+    text-decoration: none;
+  }
+
+  .host-card:hover {
+    border-color: var(--color-accent);
+  }
+
+  .host-card-title {
+    font-family: "Cormorant Garamond", Georgia, serif;
+    font-size: 26px;
+    color: var(--color-ink);
+  }
+}
+
+@layer components {
+  .host-delivery {
+    display: inline-block;
+    font-size: 18px;
+    color: var(--color-muted);
+  }
+
+  .host-delivery-bounced,
+  .host-delivery-failed,
+  .host-delivery-complained {
+    color: var(--color-accent);
+    font-weight: 500;
+  }
+
+  .host-delivery-delivered,
+  .host-delivery-sent {
+    color: var(--color-success);
+  }
+}

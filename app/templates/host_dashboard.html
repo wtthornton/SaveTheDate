@@ -1,0 +1,308 @@
+{% extends "host_base.html" %}
+
+{% block title %}{{ event.title }} — hosts{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col gap-2">
+    <p class="eyebrow">Host dashboard</p>
+    <h1 class="display-lg">{{ event.title }}</h1>
+    <p class="body-copy">
+      {% if event.event_date %}{{ event.event_date | plain_date }}{% else %}Date to follow{% endif %}
+      {% if event.location %} · {{ event.location }}{% endif %}
+      {% if event.rsvp_deadline %}
+        · Replies close {{ deadline_date(event.rsvp_deadline, event.timezone) }}
+      {% endif %}
+    </p>
+  </div>
+
+  {# -- The one question a host is actually asking -- #}
+  <section class="flex flex-col gap-3" aria-labelledby="headline-heading">
+    <h2 class="host-section-heading" id="headline-heading">How many people are coming?</h2>
+    <div class="host-stat-row">
+      <div class="host-stat host-stat-lead">
+        <p class="host-stat-number">{{ view.headline.accepted }}</p>
+        <p class="host-stat-label">coming</p>
+      </div>
+      <div class="host-stat">
+        <p class="host-stat-number">{{ view.headline.declined }}</p>
+        <p class="host-stat-label">not coming</p>
+      </div>
+      <div class="host-stat">
+        <p class="host-stat-number">{{ view.headline.awaiting }}</p>
+        <p class="host-stat-label">yet to reply</p>
+      </div>
+      <div class="host-stat">
+        <p class="host-stat-number">{{ view.headline.invited_seats }}</p>
+        <p class="host-stat-label">seats invited</p>
+      </div>
+    </div>
+    <p class="host-hint">
+      Counted by person, not by invitation — an invitation for four where two are
+      coming counts as two.
+    </p>
+  </section>
+
+  {# -- What the caterer is handed. Per day, never per plate. -- #}
+  {% if view.segments %}
+  <section class="flex flex-col gap-3" aria-labelledby="days-heading">
+    <h2 class="host-section-heading" id="days-heading">Headcount for each day</h2>
+    <div class="host-table-scroll">
+      <table class="host-table">
+        <thead>
+          <tr>
+            <th scope="col">What</th>
+            <th scope="col">When</th>
+            <th scope="col" class="host-num">Adults</th>
+            <th scope="col" class="host-num">Children</th>
+            <th scope="col" class="host-num">Total</th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in view.segments %}
+            <tr>
+              <th scope="row">
+                {{ row.segment.name }}
+                {% if row.segment.is_optional %}<span class="host-tag">optional</span>{% endif %}
+              </th>
+              <td>{{ local_day(row.segment.starts_at, event.timezone) }}</td>
+              <td class="host-num">{{ row.adults }}</td>
+              <td class="host-num">{{ row.children }}</td>
+              <td class="host-num host-num-strong">{{ row.total }}</td>
+            </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </section>
+  {% endif %}
+
+  <section class="flex flex-col gap-3" aria-labelledby="diet-heading">
+    <h2 class="host-section-heading" id="diet-heading">Dietary needs</h2>
+    {% if view.dietary.is_empty %}
+      <p class="host-hint">Nothing recorded yet.</p>
+    {% else %}
+      {% if view.dietary.counts %}
+        <ul class="host-chip-list">
+          {% for label, count in view.dietary.counts %}
+            <li class="host-chip">{{ label }} <span class="host-chip-count">{{ count }}</span></li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+      {% if view.dietary.notes %}
+        {# Attributed by name on purpose: an allergy nobody can trace to a person is
+           not something a caterer can act on. #}
+        <ul class="host-note-list">
+          {% for entry in view.dietary.notes %}
+            <li><strong>{{ entry.name }}</strong> — {{ entry.note }}</li>
+          {% endfor %}
+        </ul>
+      {% endif %}
+    {% endif %}
+    <p class="host-hint">
+      Counted only for people who are coming, and there is no per-plate meal choice —
+      headcounts are per day.
+    </p>
+  </section>
+
+  {# -- The guest list -- #}
+  <section class="flex flex-col gap-3" aria-labelledby="guests-heading">
+    <div class="flex flex-wrap items-center justify-between gap-3">
+      <h2 class="host-section-heading" id="guests-heading">
+        Guest list ({{ view.invitations | length }})
+      </h2>
+      <a class="host-btn-quiet" href="/host/events/{{ event.id }}/guests.csv">
+        Download as CSV
+      </a>
+    </div>
+
+    {% if not view.invitations %}
+      <p class="host-hint">No invitations yet. Add the first one below.</p>
+    {% else %}
+      <div class="host-table-scroll">
+        <table class="host-table">
+          <thead>
+            <tr>
+              <th scope="col">Invitation</th>
+              <th scope="col">Status</th>
+              <th scope="col">Who is coming</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for row in view.invitations %}
+              <tr>
+                <th scope="row">
+                  {{ row.guest.name }}
+                  <span class="host-sub">{{ row.seats }} seat{{ '' if row.seats == 1 else 's' }}</span>
+                  {% if row.guest.email %}<span class="host-sub">{{ row.guest.email }}</span>{% endif %}
+                </th>
+                <td>
+                  <span class="host-status host-status-{{ row.status | replace(' ', '-') }}">
+                    {{ row.status }}
+                  </span>
+                  {% if row.note %}<span class="host-sub">“{{ row.note }}”</span>{% endif %}
+                  {# A bounced invite and an ignored one look identical on a guest
+                     list, and only one of them is the host's to fix. TAP-7731. #}
+                  <span class="host-delivery host-delivery-{{ row.delivery | replace(' ', '-') }}">
+                    Email: {{ row.delivery }}
+                  </span>
+                </td>
+                <td>
+                  {% if row.guest.attendees %}
+                    <ul class="host-people">
+                      {% for person in row.guest.attendees %}
+                        <li>
+                          {{ person.name }}
+                          {%- if person.is_child %} <span class="host-tag">child</span>{% endif %}
+                          {%- if not person.attending %} <span class="host-tag">not coming</span>{% endif %}
+                        </li>
+                      {% endfor %}
+                    </ul>
+                  {% else %}
+                    <span class="host-sub">—</span>
+                  {% endif %}
+                </td>
+              </tr>
+              <tr class="host-row-actions">
+                {# The link gets the full width of the table rather than a column of
+                   its own. In a column it was clipped mid-token at 478px of the 826px
+                   it needs, and a link a host cannot read is a link they cannot check
+                   before sending it.
+
+                   A real readonly input rather than a copy button: it works with no
+                   JavaScript, it selects with a double-click, and it is legible. #}
+                <td colspan="3">
+                  <div class="host-link-row">
+                    <label class="host-label" for="link-{{ row.guest.id }}">
+                      Invite link for {{ row.guest.name }}
+                    </label>
+                    <input class="host-link-field" id="link-{{ row.guest.id }}" type="text"
+                           readonly value="{{ base_url }}/invites/{{ row.guest.invite_token }}">
+                  </div>
+                  <details>
+                    <summary class="host-summary">Edit or withdraw {{ row.guest.name }}</summary>
+                    <div class="host-edit">
+                      <form class="host-edit-form" method="post"
+                            action="/host/events/{{ event.id }}/guests/{{ row.guest.id }}">
+                        <div class="flex flex-col gap-1">
+                          <label class="host-label" for="name-{{ row.guest.id }}">Name</label>
+                          <input class="host-input" id="name-{{ row.guest.id }}" type="text"
+                                 name="name" value="{{ row.guest.name }}" required>
+                        </div>
+                        <div class="flex flex-col gap-1">
+                          <label class="host-label" for="email-{{ row.guest.id }}">Email</label>
+                          <input class="host-input" id="email-{{ row.guest.id }}" type="email"
+                                 name="email" value="{{ row.guest.email or '' }}">
+                        </div>
+                        <div class="flex flex-col gap-1">
+                          <label class="host-label" for="seats-{{ row.guest.id }}">Seats</label>
+                          <input class="host-input host-input-narrow" id="seats-{{ row.guest.id }}"
+                                 type="number" name="party_size" min="1" max="20"
+                                 value="{{ row.seats }}">
+                        </div>
+                        <button class="host-btn" type="submit">Save</button>
+                      </form>
+
+                      <form method="post"
+                            action="/host/events/{{ event.id }}/guests/{{ row.guest.id }}/withdraw">
+                        <button class="host-btn-danger" type="submit">
+                          Withdraw invitation
+                        </button>
+                        <p class="host-hint">
+                          This deletes the invitation and its reply, and the link stops
+                          working. It cannot be undone, and re-adding them creates a
+                          different link.
+                        </p>
+                      </form>
+                    </div>
+                  </details>
+                </td>
+              </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% endif %}
+  </section>
+
+  <section class="flex flex-col gap-3" aria-labelledby="send-heading">
+    <h2 class="host-section-heading" id="send-heading">Send the invitations</h2>
+
+    {% if request.query_params.get('sent') is not none %}
+      <p class="host-hint" role="status">
+        Sent {{ request.query_params.get('sent') }}.
+        {% if request.query_params.get('failed') | int > 0 %}
+          <strong>{{ request.query_params.get('failed') }} could not be sent</strong> —
+          the guest list below says which.
+        {% endif %}
+      </p>
+    {% endif %}
+
+    <div class="host-edit-form">
+      <form method="post" action="/host/events/{{ event.id }}/send">
+        <input type="hidden" name="kind" value="invite">
+        <button class="host-btn" type="submit">Email everyone who has not had one</button>
+      </form>
+      <form method="post" action="/host/events/{{ event.id }}/send">
+        <input type="hidden" name="kind" value="reminder">
+        <button class="host-btn-quiet" type="submit">Remind everyone who has not replied</button>
+      </form>
+    </div>
+    <p class="host-hint">
+      An invitation goes only to guests with an address who have not already had one,
+      so pressing this twice does not send it twice. A reminder goes only to guests who
+      have not replied at all — someone who declined has answered.
+    </p>
+  </section>
+
+  <section class="flex flex-col gap-3" aria-labelledby="import-heading">
+    <h2 class="host-section-heading" id="import-heading">Import from a spreadsheet</h2>
+
+    {% if import_problems %}
+      {# Every problem at once, each with the line number to look at. A host fixing
+         one error per upload would rather be told all of them. Nothing was imported. #}
+      <div class="host-error" role="alert">
+        <p><strong>Nothing was imported.</strong> Fix these and try the file again:</p>
+        <ul class="host-note-list">
+          {% for problem in import_problems %}
+            <li>{{ problem }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <form class="host-edit-form" method="post" enctype="multipart/form-data"
+          action="/host/events/{{ event.id }}/import">
+      <div class="flex flex-col gap-1">
+        <label class="host-label" for="import-file">CSV file</label>
+        <input class="host-input" id="import-file" type="file" name="file"
+               accept=".csv,text/csv" required>
+      </div>
+      <button class="host-btn" type="submit">Import</button>
+    </form>
+    <p class="host-hint">
+      Three columns: name, email, seats. A header row is optional. The whole file is
+      checked before anything is saved — if any row is wrong, nothing is imported.
+    </p>
+  </section>
+
+  <section class="flex flex-col gap-3" aria-labelledby="add-heading">
+    <h2 class="host-section-heading" id="add-heading">Add an invitation</h2>
+    <form class="host-edit-form" method="post" action="/host/events/{{ event.id }}/guests">
+      <div class="flex flex-col gap-1">
+        <label class="host-label" for="new-name">Name</label>
+        <input class="host-input" id="new-name" type="text" name="name"
+               placeholder="The Calloway family" required>
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="host-label" for="new-email">Email</label>
+        <input class="host-input" id="new-email" type="email" name="email">
+      </div>
+      <div class="flex flex-col gap-1">
+        <label class="host-label" for="new-seats">Seats</label>
+        <input class="host-input host-input-narrow" id="new-seats" type="number"
+               name="party_size" min="1" max="20" value="2">
+      </div>
+      <button class="host-btn" type="submit">Add</button>
+    </form>
+  </section>
+{% endblock %}

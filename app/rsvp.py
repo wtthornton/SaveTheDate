@@ -35,16 +35,25 @@ def load_guest(token: str, db: Session) -> Guest:
     return guest
 
 
-def phase(event: Event) -> RsvpPhase:
-    """Which of the three RSVP phases the event is in right now.
+def phase(event: Event, now: datetime | None = None) -> RsvpPhase:
+    """Which of the three RSVP phases the event is in at `now`.
 
     A null `rsvp_opens_at` means open from the start; a null `rsvp_deadline` means
     it never closes.
+
+    Both stored bounds are aware instants — `EventCreate` refuses a naive one — so the
+    comparison below is already in the event's own day, whatever zone the server keeps.
+    The lower bound is inclusive and the upper bound exclusive: a deadline of "December
+    15" is held as midnight at the start of the 16th, which is what `deadline_date()`
+    renders back to a guest.
+
+    `now` defaults to the real clock for direct callers; the routes pass the `Now`
+    dependency so a test can pin it to a boundary. TAP-7729.
     """
-    now = datetime.now(UTC)
-    if event.rsvp_opens_at is not None and now < event.rsvp_opens_at:
+    moment = datetime.now(UTC) if now is None else now
+    if event.rsvp_opens_at is not None and moment < event.rsvp_opens_at:
         return "before_open"
-    if event.rsvp_deadline is not None and now >= event.rsvp_deadline:
+    if event.rsvp_deadline is not None and moment >= event.rsvp_deadline:
         return "closed"
     return "open"
 
@@ -55,9 +64,9 @@ def segments_for(event_id: uuid.UUID, db: Session) -> list[Segment]:
     )
 
 
-def require_open(event: Event) -> None:
+def require_open(event: Event, now: datetime | None = None) -> None:
     """Refuse a write outside the RSVP window, with wording that says which end."""
-    current = phase(event)
+    current = phase(event, now)
     if current == "before_open":
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN, detail="RSVPs have not opened yet"

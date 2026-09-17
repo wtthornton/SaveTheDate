@@ -21,10 +21,16 @@ from sqlalchemy.orm import Session
 
 from app.config import get_settings
 from app.db import engine
-from app.models import Event, Guest, Segment
+from app.models import Event, Guest, Host, Segment
 
 CENTRAL = ZoneInfo("America/Chicago")
 SLUG = "bill-and-lisa"
+
+# The account the seeded event hangs off (TAP-7726). Not a login: the digest below is
+# not parseable as argon2, so verification always fails and nobody can sign in as it.
+# This is the throwaway review deployment; a real host is registered deliberately.
+REVIEW_HOST_EMAIL = "review@invalid.localhost"
+UNUSABLE_PASSWORD = "!no-login-review-instance"
 
 
 def _at(day: int, hour: int, minute: int = 0) -> datetime:
@@ -136,6 +142,22 @@ FAKE_GUESTS: list[tuple[str, int]] = [
 ]
 
 
+def review_host(session: Session) -> Host:
+    """The account that owns the seeded event. TAP-7726 gave events an owner.
+
+    Reused if it is already there, so re-seeding does not pile up host rows. It has an
+    unusable password hash: this is the throwaway review deployment and nobody should
+    be able to sign in to it. Register a real host to get a working login.
+    """
+    existing = session.scalar(select(Host).where(Host.email == REVIEW_HOST_EMAIL))
+    if existing is not None:
+        return existing
+    host = Host(email=REVIEW_HOST_EMAIL, password_hash=UNUSABLE_PASSWORD)
+    session.add(host)
+    session.flush()
+    return host
+
+
 def seed(session: Session, phase: str = "open") -> Event:
     existing = session.scalar(select(Event).where(Event.slug == SLUG))
     if existing is not None:
@@ -145,9 +167,10 @@ def seed(session: Session, phase: str = "open") -> Event:
 
     opens_at, deadline = rsvp_window(phase)
     event = Event(
+        host_id=review_host(session).id,
         slug=SLUG,
-        title="Bill & Lisa",
-        host_name="Bill Thornton and Lisa Gorden",
+        title="Lisa & Bill",
+        host_name="Lisa Gorden and Bill Thornton",
         event_date=_at(13, 15).date(),
         location="Port Aransas, Texas",
         details="Four days on Mustang Island. Come for the weekend, or come for the day.",

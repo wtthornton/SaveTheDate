@@ -1,0 +1,38 @@
+{% extends "host_base.html" %}
+
+{% block title %}Sign in — SaveTheDate{% endblock %}
+
+{% block main_class %}mx-auto flex w-full max-w-md flex-col gap-6 px-5 py-12{% endblock %}
+
+{% block content %}
+  <div class="flex flex-col gap-2">
+    <p class="eyebrow">Hosts only</p>
+    <h1 class="display-lg">Sign in</h1>
+    <p class="body-copy">
+      This is the organizers' side. Guests do not sign in — their invitation link is
+      all they ever need.
+    </p>
+  </div>
+
+  {% if error %}
+    {# One message for a wrong address and a wrong password alike, so this page is not
+       a way to find out which addresses have accounts. #}
+    <p class="host-error" role="alert">{{ error }}</p>
+  {% endif %}
+
+  <form class="flex flex-col gap-5" method="post" action="/host/login">
+    <div class="flex flex-col gap-2">
+      <label class="host-label" for="email">Email</label>
+      <input class="host-input" type="email" id="email" name="email"
+             value="{{ email }}" autocomplete="username" required>
+    </div>
+
+    <div class="flex flex-col gap-2">
+      <label class="host-label" for="password">Password</label>
+      <input class="host-input" type="password" id="password" name="password"
+             autocomplete="current-password" required>
+    </div>
+
+    <button class="host-btn" type="submit">Sign in</button>
+  </form>
+{% endblock %}

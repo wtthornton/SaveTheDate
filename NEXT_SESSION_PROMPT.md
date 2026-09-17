@@ -6,76 +6,81 @@ lands, or it will start lying.
 
 ---
 
-Picking up SaveTheDate — the wedding site for Bill Thornton & Lisa Gorden,
+Picking up SaveTheDate — the wedding site for Lisa Gorden & Bill Thornton,
 Port Aransas, Texas, Sunday 13 February 2028.
 
 Read these three first, in order: IMPLEMENTATION_PLAN.md (build order, harness,
-definition of done — note §7.1 and §8.1 on DNS and deployment), LESSONS_LEARNED.md
-(traps already paid for — read it before touching migrations, hooks or tests), and
-.claude/CLAUDE.md (always-on invariants).
+definition of done — note §7.1 on DNS, §8.1 on deployment, and §10 for what last
+shipped), LESSONS_LEARNED.md (traps already paid for — read §6 before writing a test),
+and .claude/CLAUDE.md (always-on invariants).
 
-Where things stand as of 2026-09-16:
-- Phase 0 is done. `.claude/` exists: CLAUDE.md, three subagents (std-schema,
-  std-templates, std-review), two slash commands (/std-gate, /std-issue), and the
-  migration-format hook.
-- TAP-7739 (schema redesign) is code-complete on branch
-  `tap-7739-schema-redesign-per-person-attendees-meal-options-rsvp`. Gate is green:
-  ruff, ruff format, mypy --strict over app/migrations/scripts/tests, migrations
-  up→down→up, 17 tests passing. It is NOT committed and NOT merged.
-- Every one of the 13 Linear issues is still in Backlog. Nothing has been moved.
+Where things stand as of 2026-09-17:
+- **11 of 15 Linear issues are Done.** Phases 0 through 3 are complete: the schema, the
+  guest pages, the review instance, the RSVP window, host auth, ownership scoping, rate
+  limiting, the host dashboard, CSV import and email delivery.
+- 199 tests. Gate green: ruff, ruff format, mypy --strict over 48 files, migrations
+  up→down→up against the test database.
+- The review instance is live and has been looked at on a real phone.
+- **Four issues remain, and none of them is blocked on code:**
+  - **TAP-7733** hosting. Needs your Render login and starts a ~$21–28/mo bill. Its real
+    deliverable is a *tested restore*, not a provisioned database.
+  - **TAP-7734** observability. Needs a Sentry DSN or equivalent.
+  - **TAP-7762** photography. Every image is an openly-licensed placeholder and the hero
+    is still someone else's wedding. Somebody has to take pictures.
+  - **TAP-7740** DNS → Cloudflare. **Read the comment on it before starting — it is
+    probably unnecessary, and it is the riskiest thing in the backlog.**
 
-Do this, in order:
-1. Confirm the gate is still green, then commit the TAP-7739 work and tell me what
-   you would put in the commit message before you push anything.
-2. Start TAP-7728 (guest invite page) with /std-issue TAP-7728. It is the goal that
-   matters most — getting the invite page in front of Lisa and family — and TAP-7739
-   unblocked it. Use the std-templates subagent for template work.
-3. TAP-7729 (RSVP window) is mostly already built: the API enforces both ends of the
-   window and reports a `phase` of before_open / open / closed. What remains is
-   template behavior. Tell me whether to fold it into TAP-7728 rather than assuming.
-
-Useful context for TAP-7728: `.venv/bin/python -m scripts.seed_review_data` creates the
-event, the six real schedule segments and five invented guests, and prints an invite
-link for each. `GET /invites/{token}` already returns the event, the guest, the
-schedule, the phase and any existing answer — the page has a real payload to render.
-The design is in the Design canvas: https://claude.ai/artifact/XqYdDkthQNiBbf2LhUhBwy
+Useful things that are true now and were not before:
+- Sign in to the dashboard at `/host/login`. **There is no registered host yet.** Set
+  `HOST_REGISTRATION_TOKEN`, `POST /auth/register` once with it, then unset it.
+- If a database was migrated before any host existed, its events belong to a placeholder
+  account nobody can sign in as. `python -m scripts.adopt_events --to you@example.com`
+  moves them; `--dry-run` first.
+- `EMAIL_PROVIDER` defaults to `console` and prints instead of sending. That is on
+  purpose. Resend with no API key stays inert rather than going live.
+- The bounce webhook signs with HMAC-SHA256 over the raw body. **Resend actually signs
+  through Svix over `{id}.{timestamp}.{body}`** — check the provider's docs before
+  pointing anything at it. The docstring says so.
 
 Non-negotiable:
 - guests.invite_token is in people's inboxes once sent. NEVER re-key a guests row.
+  Withdrawing an invitation deletes the row; that is what kills the link.
 - Guest routes stay anonymous. The link IS the credential. No guest login, ever.
-- Fake guest data only until TAP-7725 (host auth) lands.
 - htmx 2.x only — htmx 4 changed attribute inheritance and fails silently.
 - 18px body text, 44px touch targets, native form controls. The guest list skews old.
-- No # noqa, no # type: ignore, no skipped tests, no swallowed exceptions.
-  If the right fix is out of scope, stop and tell me.
+  When new CSS trips the 18px floor, **raise the type** — do not add an exemption. The
+  "eyebrow" loophole in LESSONS_LEARNED is exactly that mistake.
+- **Rebuild `app/static/app.css` after any template or CSS change, and commit it.**
+  `tests/test_stylesheet.py` will fail if you forget, which is new and is there because
+  a missing class shipped a broken image to a phone.
+- No # noqa, no # type: ignore, no skipped tests, no swallowed exceptions. There are
+  currently zero of all four in the repo; keep it that way.
 - American English. Postgres is on host port 5434, not 5432.
 - This repo is PUBLIC on GitHub. Never write a credential into it — record where a
-  secret lives, never its value.
+  secret lives, never its value. Invite tokens count as credentials: the review links
+  live in `.review/INVITE_LINKS.md`, which is gitignored on purpose.
 
 Do NOT use the Workflow tool unless I ask — the token pool is shared with my other
 sessions. Plain subagents are fine.
 
-Ask me before TAP-7740 (DNS move). It is worse than the backlog implies: the
-nltlabs.ai zone carries live Microsoft 365 email behind Proofpoint, and eleven
-hostnames across my Render services. See plan §7.1. For TAP-7738, plan on the
-Cloudflare Quick Tunnel route, which needs no DNS change at all — note `cloudflared`
-is not installed on this box yet.
+Three habits, all of which earned their place the hard way:
+- **If tests pass on the first run, they have proved nothing.** Break the source on
+  purpose and confirm the right test goes red. Roughly fifty mutations last session
+  found two real gaps — one where a shared fixture made three security tests vacuous,
+  and one where a documented rule was tested nowhere.
+- **A test that passes alone and fails in the suite is shared state**, not flakiness.
+- **Look at the page.** Three real problems in the dashboard were invisible to 158
+  passing tests, including an invite link clipped mid-token and a link pointing at
+  localhost. Screenshots go to `tests/screenshots/`.
 
-Two habits I want kept, both learned the hard way:
-- If tests pass on the first run, they have proved nothing. Break the thing on purpose
-  and confirm the right test goes red — and mutate the source of truth, not a copy a
-  fixture will regenerate.
-- Verify what a hook or subagent actually does, rather than trusting its declaration.
-  `tools:` on a subagent turned out not to be a hard allowlist.
-
-Linear: project SaveTheDate, team TappsCodingAgents (TAP), issues TAP-7725–7740.
+Linear: project SaveTheDate, team TappsCodingAgents (TAP), issues TAP-7725–7763.
 
 ---
 
 ## If you want a shorter version
 
-Read IMPLEMENTATION_PLAN.md, LESSONS_LEARNED.md and .claude/CLAUDE.md. Phase 0 and
-TAP-7739 are done; TAP-7739 is green but uncommitted on its branch, and all 13 Linear
-issues are still Backlog. Commit TAP-7739, then start TAP-7728 with /std-issue TAP-7728.
-Same non-negotiables as the plan. Don't use the Workflow tool. Ask before TAP-7740 —
-that zone carries live company email.
+Read IMPLEMENTATION_PLAN.md §10, LESSONS_LEARNED.md §6, and .claude/CLAUDE.md. Phases
+0–3 are done, 11 of 15 issues closed, 199 tests, gate green. What is left — hosting,
+observability, photography, and a DNS move that is probably unnecessary — all needs your
+accounts or your camera rather than more code. Same non-negotiables as the plan. Don't
+use the Workflow tool. Read the comment on TAP-7740 before touching that zone.

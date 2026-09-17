@@ -488,3 +488,92 @@ def test_htmx_is_pinned_to_2x(client: TestClient, db_session: Session) -> None:
     served = client.get("/static/vendor/htmx-2.0.10.min.js")
     assert served.status_code == 200
     assert 'version:"2.0.10"' in served.text
+
+
+# -- The order the names are written in -----------------------------------
+
+# Traditional wedding etiquette names the bride first on a save-the-date and on the
+# invitation, which is the order this site uses. It is easy to flip back by accident
+# while editing a hero, and nothing else on the page would notice.
+NAME_ORDER_PAGES = ("", "/wedding", "/rsvp")
+
+
+def test_the_bride_is_named_first_wherever_the_couple_appears(
+    client: TestClient, db_session: Session
+) -> None:
+    """Lisa before Bill, on every page that names them both.
+
+    Own text rather than `deep_text`, so an ancestor is not reported for wrapping the
+    heading that actually carries the names.
+    """
+    _, token = _open_event_with_guest(client, db_session)
+
+    wrong: list[str] = []
+    for suffix in NAME_ORDER_PAGES:
+        page = Document(client.get(f"/invites/{token}{suffix}").text)
+        for element in page.all:
+            own = element.text
+            if "Lisa" not in own or "Bill" not in own:
+                continue
+            if own.index("Bill") < own.index("Lisa"):
+                wrong.append(f"{suffix or '/'}: {element.tag} -> {own!r}")
+
+    assert not wrong, "the groom is named first on: " + "; ".join(wrong)
+
+
+def test_the_monogram_reads_in_the_same_order_as_the_names(
+    client: TestClient, db_session: Session
+) -> None:
+    """A monogram of "B & L" under a heading of "Lisa and Bill" is the flip half-done."""
+    _, token = _open_event_with_guest(client, db_session)
+
+    for suffix in ("", "/wedding"):
+        page = Document(client.get(f"/invites/{token}{suffix}").text)
+        monograms = [
+            element.text
+            for element in page.all
+            if "hero-monogram-text" in element.attrs.get("class", "")
+        ]
+        assert monograms, f"no monogram rendered on {suffix or '/'}"
+        for mark in monograms:
+            initials = [part for part in mark.replace("&", " ").split() if part]
+            assert initials == ["L", "B"], f"{suffix or '/'} monogram reads {mark!r}, want 'L & B'"
+
+
+# -- American English -----------------------------------------------------
+
+# `.claude/CLAUDE.md` requires American English; this is a Texas wedding. Two British
+# spellings reached rendered guest copy before this test existed — "travelling" in the
+# travel section and "licences" in the photo credit line — so the rule gets a gate
+# rather than a reviewer's eye. Comments and docs are out of scope: this checks only
+# what a guest actually reads.
+BRITISH_SPELLINGS = (
+    "apologis",
+    "behaviour",
+    "cancelled",
+    "centre",
+    "colour",
+    "favour",
+    "honour",
+    "licence",
+    "organis",
+    "realis",
+    "recognis",
+    "summaris",
+    "travelling",
+)
+
+
+def test_guest_copy_is_american_english(client: TestClient, db_session: Session) -> None:
+    _, token = _open_event_with_guest(client, db_session)
+
+    offenders: list[str] = []
+    for suffix in ("", "/wedding", "/rsvp", "/print"):
+        rendered = Document(client.get(f"/invites/{token}{suffix}").text).text.lower()
+        offenders += [
+            f"{suffix or '/'}: {spelling!r}"
+            for spelling in BRITISH_SPELLINGS
+            if spelling in rendered
+        ]
+
+    assert not offenders, "British spellings in guest copy: " + "; ".join(offenders)

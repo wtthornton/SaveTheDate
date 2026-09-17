@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  {# Host pages are noindex for the same reason the guest pages are: nothing here
+     belongs in a search result, and this one holds the guest list. #}
+  <meta name="robots" content="noindex, nofollow">
+  <title>{% block title %}SaveTheDate{% endblock %}</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="/static/app.css">
+</head>
+<body class="bg-ground text-ink">
+  {% if review_instance %}
+  <p class="draft-banner" role="status">
+    <strong>Draft preview.</strong> A work-in-progress copy for review — not the real
+    invitation. Every guest name on it is made up.
+  </p>
+  {% endif %}
+
+  {% block chrome %}
+  <header class="host-bar">
+    <a class="host-bar-mark" href="/host">SaveTheDate</a>
+    {% if host %}
+      <div class="host-bar-right">
+        <span class="host-bar-who">{{ host.email }}</span>
+        <form method="post" action="/host/logout">
+          <button class="host-btn-quiet" type="submit">Sign out</button>
+        </form>
+      </div>
+    {% endif %}
+  </header>
+  {% endblock %}
+
+  <main class="{% block main_class %}mx-auto flex w-full max-w-5xl flex-col gap-8 px-5 py-8{% endblock %}">
+    {% block content %}{% endblock %}
+  </main>
+
+  <script src="/static/vendor/htmx-2.0.10.min.js" defer></script>
+</body>
+</html>

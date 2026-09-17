@@ -8,7 +8,7 @@ itself is unchanged, which is the invariant the whole schema hangs off.
 from fastapi import APIRouter, HTTPException, status
 
 from app import rsvp as rsvp_domain
-from app.deps import DbSession
+from app.deps import DbSession, Now
 from app.models import Guest
 from app.schemas import (
     AttendanceOut,
@@ -42,14 +42,14 @@ def attendees_out(guest: Guest) -> list[AttendeeOut]:
 
 
 @router.get("/{token}", response_model=InviteOut)
-def get_invite(token: str, db: DbSession) -> InviteOut:
+def get_invite(token: str, db: DbSession, now: Now) -> InviteOut:
     guest = rsvp_domain.load_guest(token, db)
     answer = guest.rsvp
     return InviteOut(
         event=EventOut.model_validate(guest.event),
         guest_name=guest.name,
         party_size=guest.party_size,
-        phase=rsvp_domain.phase(guest.event),
+        phase=rsvp_domain.phase(guest.event, now),
         segments=[
             SegmentOut.model_validate(segment)
             for segment in rsvp_domain.segments_for(guest.event_id, db)
@@ -67,9 +67,9 @@ def get_invite(token: str, db: DbSession) -> InviteOut:
 
 
 @router.put("/{token}/rsvp", response_model=RsvpOut)
-def submit_rsvp(token: str, payload: RsvpCreate, db: DbSession) -> RsvpOut:
+def submit_rsvp(token: str, payload: RsvpCreate, db: DbSession, now: Now) -> RsvpOut:
     guest = rsvp_domain.load_guest(token, db)
-    rsvp_domain.require_open(guest.event)
+    rsvp_domain.require_open(guest.event, now)
 
     known = {segment.id for segment in rsvp_domain.segments_for(guest.event_id, db)}
     try:

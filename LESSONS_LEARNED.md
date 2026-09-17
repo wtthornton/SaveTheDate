@@ -393,3 +393,122 @@ file lying. Do not assume committed infrastructure YAML is what is running.
 - The four subagents `~/.claude/agents/ralph.md` delegates to
   (`ralph-explorer`/`-tester`/`-reviewer`/`-architect`) still **do not exist on disk**.
   Harmless while Ralph is unused; it will fail the moment it is pointed at this repo.
+
+---
+
+## 6. The session of 2026-09-17
+
+Blocks A, B and C of the implementation plan: TAP-7763, 7729, 7725, 7726, 7727, 7730,
+7732, 7731. The suite went from 74 tests to 199. What follows is only the part that
+cost something to learn.
+
+### Mutation testing found two defects that the tests themselves had
+
+This is the session's most useful result, and it happened twice.
+
+**A shared fixture made three security tests vacuous.** `client` was originally derived
+from `anonymous_client`, so they were *the same `TestClient` object*. Signing in through
+one signed in the other, and `test_listing_guests_anonymously_is_401` was quietly
+asserting that a 200 was a 401 — except it was not asserting anything, because the
+request carried a session cookie. All three "unauthenticated" tests passed for a reason
+that had nothing to do with the code under test. They are now two separate clients with
+separate cookie jars, and the docstring says why.
+
+**A behavior asserted only in a docstring.** `SlidingWindowLimiter.retry_after` says "a
+blocked call does NOT extend the window", which matters because otherwise one impatient
+guest reloading a throttled page pushes their own unlock further away. A mutation that
+made blocked calls count as hits passed the *entire* file. The rule was documented and
+tested nowhere.
+
+The pattern behind both: **a test can be green for a reason unrelated to the thing it
+names.** Watching it fail against a deliberate break is the only way to find that out.
+Every issue in this session was mutated after its tests went green; two of the roughly
+fifty mutations survived, and both were real gaps.
+
+### A committed build artifact goes stale in perfect silence
+
+`app/static/app.css` is committed on purpose so a deploy never runs Tailwind. The cost
+is that it can fall behind the templates with nothing failing. `h-[160px]` and
+`lg:h-[260px]` on the ferry photograph were never in the committed CSS, so that image
+had no height cap and rendered at its natural 900x599 aspect — most of a phone screen
+where 160px was intended.
+
+Every test was green, **including the browser-driven visual suite**, because the page
+was entirely valid. It just was not the page anyone had designed. Bill found it on a
+phone.
+
+`tests/test_stylesheet.py` now checks that every Tailwind-shaped class a template names
+resolves to a rule. It needs no Tailwind binary, so it runs in CI. The scope — tokens
+carrying a variant or an arbitrary value — is stated rather than an exemption list,
+because bare names like `.beat` are hooks `test_visual.py` selects on and are *supposed*
+to have no rule.
+
+### An issue can contradict the schema it was written against
+
+TAP-7730 asked for "counts per meal option". TAP-7739 had cut meal options months
+earlier, and `.claude/CLAUDE.md` says "No per-plate meal choice. Dietary tags only."
+Building the issue as written would have meant inventing a column that was deliberately
+removed.
+
+**Read an issue against the code before building it, not just for internal
+consistency.** The issue was corrected in Linear first, then built. This is the second
+time this project has hit it — §3's "Read the issue for self-contradiction" was the
+first — and the general form is: the backlog ages, and the schema is the thing that is
+true.
+
+### Process-global state has to be reset between tests
+
+The rate limiter counts in process memory, and every `TestClient` request arrives from
+the same address. So the whole suite shared one bucket: enough guest-page tests ran
+inside a minute to spend the allowance, and a later test got a 429 it never asked for.
+
+The tell was the shape of the failure — **it passed alone and failed in the full run**.
+Any test that passes in isolation and fails in the suite is shared state, not flakiness,
+and the fix is a reset fixture rather than a retry. `conftest` now drops the counters
+per test, and the suite gives the same answer twice in a row.
+
+### Watch for the second place the same value is written
+
+Flipping the couple's name order looked like three headings. The test that checked it
+named **nine** elements, because `event.title` and `host_name` are rendered into
+`<title>` and into headings and live in the database, not the templates. The test found
+the seed data and the fixtures; reading the templates had not.
+
+Worth generalising: when changing a value that appears in copy, grep for it rather than
+editing where you remember it being.
+
+### Looking at the page is still not optional
+
+Three problems in the host dashboard were invisible to 158 passing tests:
+
+- The invite link rendered inside a table column, showing 476px of the 826px it needs
+  and cutting off mid-token. The value was correct and the markup valid.
+- The link was built from `public_base_url`, so a host on the review tunnel would have
+  copied a **localhost** link and sent it to a guest. It now comes from the request.
+- The new upload form pushed the page 30px past a 390px viewport, because a file input
+  carries a wide intrinsic minimum and flex children will not shrink below it.
+
+Only the third was caught by a test, and only because the overflow test had been written
+an hour earlier. The other two needed a screenshot and a pair of eyes.
+
+### An unconfigured integration should be loud, not silent
+
+`ConsoleTransport` is the default mail transport, and that is a deliberate choice rather
+than a placeholder. An unconfigured deployment that prints is obvious and harmless; one
+that silently succeeds is a lie; one that mails real guests by accident is worse than
+both. `ResendTransport` stays inert without an API key, and a test asserts that
+`EMAIL_PROVIDER=resend` with no key does **not** produce a live transport.
+
+The same shape applies to `HOST_REGISTRATION_TOKEN` and `EMAIL_WEBHOOK_SECRET`: unset
+means closed, so forgetting to configure either fails safe rather than wide open.
+
+### Say what you cannot verify, rather than guessing at it
+
+The bounce webhook verifies HMAC-SHA256 over the raw body in constant time. Resend
+actually signs through Svix, whose signed payload is `{id}.{timestamp}.{body}` — not the
+bare body — and that cannot be confirmed without an account. The function is the right
+shape and the right comparison, the bounce path is real and tested, and the docstring
+says in capitals that the exact payload must be checked against the provider's
+documentation before pointing anything at it.
+
+That is better than either a stub or a guess dressed up as an implementation.
