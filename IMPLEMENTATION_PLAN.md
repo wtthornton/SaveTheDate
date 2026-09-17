@@ -484,7 +484,69 @@ for TAP-7733, and it removes some guesswork from the "Railway or Render" questio
 
 ---
 
-## 9. What changed on 2026-09-16
+## 9. The second session of 2026-09-16
+
+The first session's record is in §9.1. This one merged everything, put the site in front
+of a reviewer, and then spent most of its time on things the tests could not see.
+
+**Shipped and merged to `main`**
+
+- **TAP-7728** — the guest pages. `/invites/{token}` serves HTML; the JSON view moved to
+  `/api/invites/{token}` and the token itself is unchanged. Welcome, The Wedding, RSVP, a
+  print view and a 404, all anonymous and `noindex`. Per-person RSVP form honouring the
+  three phases, folding into `<details>` at three seats or more.
+- **TAP-7738** — a Cloudflare Quick Tunnel review instance, `scripts/review-instance.sh`.
+  No DNS change, so TAP-7740 stays untouched. Draft notice, `robots.txt` deny,
+  `X-Robots-Tag` on every response.
+- **Desktop layouts** for all three pages, from the three 1440px artboards.
+- **A browser-driven visual suite**, `tests/test_visual.py`. 74 tests in total.
+- **Ten photographs**, two of Port Aransas itself.
+
+**What this session got wrong, because the pattern matters more than the list**
+
+Four things shipped looking finished and were caught by a person, not by the gate: an
+empty grey box where the hero should be; a whole missing breakpoint; a hero date that
+measured smaller than body text; and grey rectangles where pictures belonged. Every one
+was green at the time.
+
+The tests written to prevent each of those then failed in the same way. The
+narrow-column test visited one of three pages. The 18px floor exempted any class
+containing "eyebrow" — a loophole that was then used, with approval, by renaming a
+caption. A duplicate-name test scanned `h1, h2` and passed against a page plainly
+showing the name twice.
+
+The rule that came out of it is in `LESSONS_LEARNED.md` and is worth carrying: **a new
+test must be watched failing against the actual broken thing**, not merely against a
+mutation, and not in principle.
+
+**Two traps with teeth, both live**
+
+- `/std-gate`'s migration round trip resolved `DATABASE_URL` to the **dev** database and
+  dropped every table — wiping the running review instance and re-keying five published
+  invite links a minute after they were verified working. Now pinned to
+  `TEST_DATABASE_URL`.
+- Jinja reloads templates but imports Python once, so a change under `app/*.py` left the
+  public URL serving a 500 while the suite was green. Use
+  `scripts/review-instance.sh reload`, which keeps the URL and the tokens.
+
+**Open, and filed**
+
+- **TAP-7729** — narrowed to its two real gaps: `EventCreate` accepts a naive
+  `rsvp_deadline` that Postgres reads in the server's zone, and there are no
+  frozen-time tests.
+- **TAP-7762** — the photography is all placeholder. The hero is someone else's wedding.
+- **TAP-7763** — the design canvas is now stale and is the document somebody will believe.
+
+**Standing facts for the next session**
+
+- Tailwind v4.3.3 and cloudflared 2026.9.1 are installed at `~/.local/bin/`, outside the
+  repo. The built `app/static/app.css` is committed on purpose.
+- The review instance's URL is random and dies with the box. `up` prints a new one and
+  re-keys every token; `reload` does not.
+- Five photographs are CC BY and their credits render from `PHOTO_CREDITS`. Keep that
+  list in step with what is actually shown.
+
+## 9.1. What changed earlier on 2026-09-16
 
 Recorded so a later session does not re-derive it. The reasoning behind each is in
 `LESSONS_LEARNED.md`.
