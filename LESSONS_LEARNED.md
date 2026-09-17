@@ -594,3 +594,177 @@ templates toward a product that has no customer.
 and why. Recorded as plan §12. The rule generalises: if answering "what is this?"
 requires reading the code, the documentation has a hole in it, and the hole is where
 someone else's well-meant refactor goes.
+
+---
+
+## 7. The public front door, 2026-09-17
+
+TAP-7775 and TAP-7781: the two pages anyone can reach without a token. Most of what
+follows is about the gap between *a test passing* and *a person being able to use the
+page*, which turned out to be wider than the suite could see.
+
+### A cached stylesheet makes a correct server look broken
+
+Bill opened the new card and reported it looked wrong — "is it missing css or
+animations?" The server was serving the right file. It had been the whole time. The
+stylesheet fetched over the tunnel was byte-identical to the local build, all eleven
+new rules present.
+
+The response carried `cache-control: max-age=14400`. Cloudflare returns `/static/*`
+with a four-hour browser TTL and caches it at its own edge, and `/static/app.css` never
+changed its URL when its contents changed. He had loaded the page while the file was
+being rebuilt — a mutation sweep rewrote it a dozen times and one rebuild failed
+outright, leaving broken CSS up for a few seconds — and his browser then held that
+version.
+
+**Nothing about the page could have told him.** No error, no console message, no
+version anywhere. A stale stylesheet renders as a plausible design, which is the worst
+possible failure mode: it looks like a bug in the work rather than a bug in delivery.
+
+The fix is that **a changed file lives at a changed address**: `static_url()` appends a
+content hash, so a rebuild moves the URL and the cache cannot answer for it. The HTML
+itself is uncached (`cf-cache-status: DYNAMIC`), so the new address is seen at once.
+
+A cache header would have been the wrong fix. The goal is not to cache less — caching a
+stylesheet for four hours is correct and desirable. The goal is that a different file
+should have a different name. `host_base.html` had the same bug; a grep found it, and a
+test now fails on any template that hard-codes the path.
+
+### An element at `opacity: 0` is still hit-tested
+
+The envelope's panels end their animation invisible, and stay exactly where they are in
+the layout. Invisible is not intangible: `elementFromPoint` still returns them, and a
+tap still lands on them.
+
+This bit twice, and the second time was worse than the first. Once with the pocket
+resting across the bottom edge of the link to the wedding site, taking the taps that
+landed there. Then again after the envelope was rebuilt, when the new back panel lay
+across the *entire* card — every line of it, not just the link.
+
+Anything that fades out but stays in the flow needs `pointer-events: none`. It happens
+to inherit through `display: contents`, so one declaration on the group covers all of
+it.
+
+### A `z-index` tie is settled by document order
+
+The rebuilt back panel and the card both had `z-index: 1`. The envelope comes after the
+card in the markup, so the paper won — and sat on top of the thing it was supposed to be
+behind.
+
+Nothing about `z-index: 1` looks wrong when you read it. The card's own rule said 1, the
+panel's said 1, and each was individually defensible. **A stacking order is a total
+order, and every element in it has to be written down as one** — the fix was a five-line
+comment listing all five layers and their numbers, so the next edit can see the whole
+ladder instead of one rung.
+
+### Waiting for the wrong thing made every screenshot a lie
+
+The visual tests wait for the reveal to finish before measuring and shooting. The wait
+watched the flap. The flap finishes 900ms before the pocket does.
+
+So every screenshot was taken with half the card still inside the envelope, and **not
+one assertion noticed**, because none of them was looking at the pocket. The tests were
+green, the geometry checks all passed, and the picture on disk showed a card with its
+date and its link obscured. Only looking at the file caught it.
+
+The wait now asks the browser which animations are still running, rather than naming an
+element and hoping it is the last one:
+
+```js
+document.getAnimations()
+  .filter(a => a.effect.getComputedTiming().iterations !== Infinity)
+  .every(a => a.playState === 'finished')
+```
+
+**Ask the system for the condition, do not re-derive it from a part you happened to
+think of.** The derived version was wrong the moment a second animation existed.
+
+### Sampling the centre of an element is not sampling the element
+
+The obstruction test hit-tested the middle of each line of the card. It passed with the
+pocket lying across the bottom edge of the link, because the pocket cleared the link's
+centre and not its lower half.
+
+Worse than a missed bug: the test's own docstring and a CSS comment both claimed the
+pocket "swallows every tap meant for the link", which the evidence did not support. It
+was covering part of it. A claim written into a comment gets believed later, so an
+overstated one is a small lie left in the source.
+
+Five points per element — centre and four inset corners — catches it, and the comment
+now says what is actually true. **When a mutation you expect to be caught is not, the
+test is sampling too thin; and when you write what a bug does, write what you measured
+it doing.**
+
+### A mutation that does not apply has proved nothing
+
+Two of the roughly twenty mutations reported "NOT CAUGHT" and both were wrong:
+
+- One removed a line and a comment terminator together, breaking the CSS. The Tailwind
+  build failed, the *old* `app.css` stayed on disk, and the tests ran against unmutated
+  code.
+- One passed `-k 'javascript or envelope'` through an unquoted shell variable, which
+  split into four arguments and selected zero tests. "1 warning in 0.00s" is not a pass.
+
+Mutation testing is a test of the tests, which makes it a thing that can itself silently
+pass. **Assert that the mutation applied** — the script now fails if the replacement
+did not change the file, and prints the test count so an empty selection is visible.
+
+### `SIGHUP` does not reload this cloudflared, and the documented risk was the wrong one
+
+Two things were wrong in the same five minutes, both of them written down beforehand as
+if known.
+
+I said SIGHUP would reload the tunnel's ingress in place without dropping connections.
+It terminated the process. `Restart=always` brought it back with a new PID in about
+three seconds, so the effect was a restart — and the unit has no `ExecReload` either
+(`CanReload=no`), which was checkable in advance and which I checked only afterwards.
+
+And the risk I had asked Bill to weigh — that restarting cloudflared might disturb Home
+Assistant — did not exist. `home.tapphouse.co` is a CNAME straight to Nabu Casa and
+never touches this tunnel. One `dig` would have shown it, and the plan and the handoff
+prompt had both been carrying the wrong caution since the hosting session.
+
+**A caution aimed at the wrong risk is worse than none**: it spends the reader's care on
+nothing while the real cost goes unmentioned. Both documents now say what a tunnel
+restart actually costs, which is a few seconds of the review instance.
+
+### The `reload` path has to carry the same environment as the `up` path
+
+`scripts/review-instance.sh` needed a new environment variable so one hostname serves
+the card. Setting it in `up` alone would have meant that a `reload` — the command the
+project tells you to run after every Python change — quietly dropped that hostname back
+to the wrong page.
+
+That is the same shape as the bug `reload` exists to prevent, one level up. **Every
+place a process is started is a place its environment is declared**, and they drift
+apart silently because only one of them is exercised on the day you write it.
+
+### A reference beats a description
+
+The first envelope was, structurally, an envelope: a flap, a pocket, a seal. It read as
+a card with two rectangles fading off it, and no assertion could have told me so.
+
+Bill sent a link to Greenvelope's animated save-the-dates. Reading what they actually
+do — a closed envelope with the names and a stamp on the front, a flap that opens to
+show a *lined* interior, the card drawn up out of it — named the three things mine was
+missing in one go. The liner in particular is the detail that makes an envelope look
+chosen rather than generated, and no amount of describing "an envelope opening" would
+have produced it.
+
+**When taste is the specification, ask for the reference rather than more adjectives** —
+and then go and read the reference rather than guessing at what is on the page.
+
+### Two public pages, one hostname each
+
+The card was first served at `/save-the-date` on every hostname, so that it could be
+reviewed without a DNS entry. That also put it on `dev-wedding.tapphouse.co`, and Bill
+rejected it the moment he saw the URL.
+
+He was right, and the reasoning generalises: **a page reachable under two names is one
+that gets linked to by the wrong one.** A convenience for the developer became a second
+public address for a page that should have exactly one.
+
+The replacement costs nothing: browsers resolve every `*.localhost` name to loopback, so
+`savethedate.localhost` gives local review a second hostname with no DNS, no hosts file
+and no second process — and the visual tests now drive the real Host-header dispatch in
+a real browser instead of a path that only existed for them.

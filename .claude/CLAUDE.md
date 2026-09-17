@@ -20,7 +20,8 @@ FastAPI + PostgreSQL. Server-rendered Jinja2 + htmx 2.x + Tailwind. No Node tool
   not.
 - Visual gate: `tests/test_visual.py` drives Chromium at 390px and 1440px and writes
   screenshots to `tests/screenshots/`. Look at them. No non-visual test noticed that
-  the hero was an empty grey box, or that a whole breakpoint was missing.
+  the hero was an empty grey box, that a whole breakpoint was missing, or that every
+  save-the-date screenshot was taken with half the card still inside the envelope.
 - Seed fake review data: `.venv/bin/python -m scripts.seed_review_data`
 - CSS: `~/.local/bin/tailwindcss -i app/static/src/app.css -o app/static/app.css`
   Tailwind v4 standalone binary, no Node, no `package.json`. The built
@@ -39,6 +40,21 @@ FastAPI + PostgreSQL. Server-rendered Jinja2 + htmx 2.x + Tailwind. No Node tool
   `next` is 4.0.0. A test asserts the loaded file reports `version:"2.0.10"`.
 - `/invites/{token}` serves the guest HTML. The JSON view is `/api/invites/{token}`.
   The token itself never changes — only what the URL renders.
+- **Two pages need no token, and both live at `/`.** The hostname decides: the
+  save-the-date card on a hostname in `SAVE_THE_DATE_HOSTS`, the wedding welcome on
+  every other. An explicit list, never a substring test — this project is itself called
+  savethedate. There is **no `/save-the-date` path**; local review uses
+  `savethedate.localhost`, which browsers resolve to loopback. Neither page reads a
+  guest row, neither takes input, and neither may ever grow a name-lookup box — on an
+  anonymous page that is a guest-list oracle.
+- **Reference static files with `static_url('app.css')`, never `/static/app.css`.**
+  Cloudflare serves `/static/*` with `max-age=14400` and caches it at its edge, so a
+  fixed URL keeps handing returning browsers a stale stylesheet for four hours after a
+  rebuild. It presents as "the design is broken", not as a cache. A test fails on any
+  template that hard-codes the path.
+- **Anything that animates to `opacity: 0` and stays in the layout needs
+  `pointer-events: none`.** Invisible is not intangible: it still gets hit-tested, and
+  it will quietly eat taps meant for whatever is underneath it.
 - No per-plate meal choice. Dietary tags only. Headcounts are per DAY, not per plate.
 - Generated Alembic migrations need `ruff check --fix` AND `ruff format`, or CI fails.
   `ruff format` alone does NOT fix the UP007/UP035 errors Alembic generates.
