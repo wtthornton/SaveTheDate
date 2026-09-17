@@ -3,13 +3,16 @@ from collections.abc import Awaitable, Callable
 from pathlib import Path
 
 from fastapi import FastAPI, Request, Response, status
+from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
 from app.ratelimit import client_address, get_limiter
 from app.routers import auth, events, host, invites, pages, webhooks
+from app.templating import templates
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -89,6 +92,41 @@ app.include_router(host.router)
 app.include_router(invites.router)
 app.include_router(pages.router)
 app.include_router(webhooks.router)
+
+
+# Prefixes whose callers are programs or signed-in hosts rather than guests. A 404 from
+# any of these stays machine-readable: a caterer's script should not have to parse
+# wedding prose, and a host looking at somebody else's event should not be told their
+# *invitation* could not be found.
+MACHINE_READABLE_PREFIXES = ("/api/", "/events", "/auth/", "/webhooks/", "/host")
+
+
+@app.exception_handler(StarletteHTTPException)
+async def guest_facing_not_found(request: Request, exc: StarletteHTTPException) -> Response:
+    """Serve the written 404 to people, and JSON to everything else.
+
+    The site has had a designed "We could not find that invitation" page since
+    TAP-7728, but it was only reachable through a token that parsed and matched
+    nothing. Anyone typing the bare hostname, or pasting a link that lost its whole
+    tail rather than one character, got FastAPI's raw `{"detail":"Not Found"}`.
+
+    Only 404 is special-cased; every other status goes to the default handler, so a
+    401 or a 422 keeps the body its caller expects.
+    """
+    if exc.status_code != status.HTTP_404_NOT_FOUND:
+        return await http_exception_handler(request, exc)
+
+    path = request.url.path
+    wants_html = "text/html" in request.headers.get("accept", "")
+    if path.startswith(MACHINE_READABLE_PREFIXES) or not wants_html:
+        return await http_exception_handler(request, exc)
+
+    return templates.TemplateResponse(
+        request=request,
+        name="not_found.html",
+        context={"review_instance": get_settings().review_instance},
+        status_code=status.HTTP_404_NOT_FOUND,
+    )
 
 
 @app.get("/robots.txt", response_class=PlainTextResponse, include_in_schema=False)

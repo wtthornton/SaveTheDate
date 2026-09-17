@@ -577,3 +577,124 @@ def test_guest_copy_is_american_english(client: TestClient, db_session: Session)
         ]
 
     assert not offenders, "British spellings in guest copy: " + "; ".join(offenders)
+
+
+# -- The 404 a stranger actually meets ------------------------------------
+
+# A guest who types the bare hostname, or whose link lost its whole tail rather than
+# one character, used to get FastAPI's raw `{"detail":"Not Found"}`. The site has had a
+# written, designed 404 the whole time — it was only reachable via a token that parsed
+# but matched nothing. Found by Bill opening the root of the new hostname.
+GUEST_FACING_MISSES = ("/", "/some-random-path", "/invites", "/invitation", "/rsvp")
+
+# Paths whose callers are programs or hosts, not guests. These keep a machine-readable
+# 404: a caterer's script and a signed-in host are both worse off with wedding prose.
+NON_GUEST_MISSES = (
+    "/api/invites/nope",
+    "/events/00000000-0000-0000-0000-000000000000/guests",
+    "/auth/nope",
+    "/webhooks/nope",
+)
+
+# What a browser actually sends. `TestClient` defaults to `*/*`, which is what a script
+# sends — and a script should get JSON, so the tests have to say which one they are.
+BROWSER = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
+
+
+def test_a_stranger_at_the_root_gets_the_written_404(client: TestClient) -> None:
+    response = client.get("/", headers=BROWSER)
+
+    assert response.status_code == 404
+    assert response.headers["content-type"].startswith("text/html")
+    assert "We could not find that invitation" in response.text
+
+
+def test_every_guest_facing_miss_gets_the_written_404(client: TestClient) -> None:
+    for path in GUEST_FACING_MISSES:
+        response = client.get(path, headers=BROWSER)
+        assert response.status_code == 404, path
+        assert response.headers["content-type"].startswith("text/html"), path
+        assert "We could not find that invitation" in response.text, path
+        assert '{"detail"' not in response.text, path
+
+
+def test_the_404_page_is_still_noindex(client: TestClient) -> None:
+    """It is reachable without a token, so it must not be the way the site gets indexed."""
+    response = client.get("/", headers=BROWSER)
+
+    assert response.headers["x-robots-tag"] == "noindex, nofollow, noarchive"
+    assert "noindex" in response.text
+
+
+def test_api_and_host_misses_stay_machine_readable(client: TestClient) -> None:
+    """A script calling the API should not have to parse wedding prose to find a 404.
+
+    Sent WITH a browser Accept header on purpose. With `*/*` these pass whatever the
+    prefix list says, because content negotiation alone sends them to JSON — a mutation
+    that emptied the prefix list passed the whole suite. The header is what makes this
+    test about the prefixes rather than about `TestClient`'s defaults.
+    """
+    for path in NON_GUEST_MISSES:
+        response = client.get(path, headers=BROWSER)
+        assert response.status_code in (401, 404), path
+        assert response.headers["content-type"].startswith("application/json"), path
+        assert "We could not find that invitation" not in response.text, path
+
+
+def test_a_host_looking_at_someone_elses_event_is_not_told_about_an_invitation(
+    client: TestClient,
+) -> None:
+    """The case the prefix list exists for.
+
+    A signed-in host opening another host's event in a browser sends `Accept: text/html`
+    and gets a 404 (TAP-7726). Without `/host` on the machine-readable list they would
+    be shown the guest page — "We could not find that invitation" — which is about the
+    wrong thing entirely and reads like their own link is broken.
+    """
+    missing = "00000000-0000-0000-0000-000000000000"
+
+    response = client.get(f"/host/events/{missing}", headers=BROWSER)
+
+    assert response.status_code == 404
+    assert "We could not find that invitation" not in response.text
+
+
+def test_only_404_becomes_the_guest_page(client: TestClient) -> None:
+    """A 403 or a 401 must keep its own body.
+
+    The handler is registered for every `HTTPException`, so without the status check a
+    permission error on a guest-facing path would render "We could not find that
+    invitation" — telling somebody their link is wrong when it is not. There is no
+    guest-facing route that raises one today, which is exactly why this is asserted
+    against the handler directly rather than through a URL that might stop existing.
+    """
+    import anyio
+    from starlette.exceptions import HTTPException as StarletteHTTPException
+    from starlette.requests import Request as StarletteRequest
+
+    from app.main import guest_facing_not_found
+
+    request = StarletteRequest(
+        {
+            "type": "http",
+            "method": "GET",
+            "path": "/anything",
+            "headers": [(b"accept", b"text/html")],
+            "query_string": b"",
+        }
+    )
+
+    for code in (401, 403, 410):
+        refused = StarletteHTTPException(status_code=code, detail="no")
+        response = anyio.run(guest_facing_not_found, request, refused)
+
+        assert response.status_code == code
+        assert b"could not find that invitation" not in bytes(response.body)
+
+
+def test_a_non_browser_request_does_not_get_html(client: TestClient) -> None:
+    """A favicon fetch, an image request or a script has no use for a rendered page."""
+    for accept in ("image/*", "application/json", "*/*"):
+        response = client.get("/favicon.ico", headers={"Accept": accept})
+        assert response.status_code == 404, accept
+        assert not response.headers["content-type"].startswith("text/html"), accept
