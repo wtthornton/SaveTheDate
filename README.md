@@ -13,7 +13,7 @@ welcome at the root of the wedding site for anyone who arrives without their lin
 limiting, a host dashboard with per-day headcounts, CSV import and export, email
 delivery with per-guest delivery state, and the two public pages — running in
 production on `wedding.tapphouse.co` and `savethedate.tapphouse.co` since 2026-09-17,
-on their own database. 270 tests against a real Postgres.
+on their own database. 272 tests against a real Postgres.
 
 What is left is mostly not code: an off-machine home for the backups, error reporting,
 and real photographs. Until the backups actually leave this machine, keep invented guests

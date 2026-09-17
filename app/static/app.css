@@ -187,6 +187,9 @@
   .visible {
     visibility: visible;
   }
+  .absolute {
+    position: absolute;
+  }
   .fixed {
     position: fixed;
   }
@@ -418,6 +421,10 @@
   }
   .italic {
     font-style: italic;
+  }
+  .shadow {
+    --tw-shadow: 0 1px 3px 0 var(--tw-shadow-color, rgb(0 0 0 / 0.1)), 0 1px 2px -1px var(--tw-shadow-color, rgb(0 0 0 / 0.1));
+    box-shadow: var(--tw-inset-shadow), var(--tw-inset-ring-shadow), var(--tw-ring-offset-shadow), var(--tw-ring-shadow), var(--tw-shadow);
   }
   .filter {
     filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
@@ -2228,9 +2235,15 @@
     width: min(100%, 500px);
     perspective: 1400px;
   }
-  .std-card {
+  .std-pocket {
     position: relative;
     z-index: 2;
+    overflow: hidden;
+    border-radius: 3px;
+    box-shadow: 0 26px 60px rgba(8, 14, 19, 0.55);
+  }
+  .std-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -2239,7 +2252,6 @@
     text-align: center;
     background-color: var(--color-card);
     border-radius: 3px;
-    box-shadow: 0 26px 60px rgba(8, 14, 19, 0.55);
     animation: std-rise-out 1200ms cubic-bezier(0.22, 0.7, 0.24, 1) 1700ms backwards;
   }
   .std-card::before {
@@ -2497,35 +2509,35 @@
     .std-envelope {
       display: none;
     }
-    .std-card {
+    .std-pocket {
       box-shadow: 0 26px 60px rgba(8, 14, 19, 0.55);
     }
   }
   @media (min-width: 1024px) {
     .std-stage {
-      width: min(100%, 680px);
+      width: min(100%, 580px);
     }
     .std-card {
-      gap: 20px;
-      padding: 58px 52px 54px;
+      gap: 18px;
+      padding: 50px 44px 46px;
     }
     .std-tag {
       font-size: 20px;
     }
     .std-names {
-      font-size: 82px;
+      font-size: 72px;
     }
     .std-and {
-      font-size: 34px;
+      font-size: 30px;
     }
     .std-weekday {
       font-size: 22px;
     }
     .std-day {
-      font-size: 54px;
+      font-size: 46px;
     }
     .std-place {
-      font-size: 23px;
+      font-size: 22px;
     }
     .std-note {
       font-size: 20px;
@@ -2534,16 +2546,16 @@
       font-size: 20px;
     }
     .std-addressee {
-      font-size: 42px;
+      font-size: 36px;
     }
     .std-stamp {
-      width: 68px;
-      height: 81px;
+      width: 60px;
+      height: 71px;
     }
     .std-seal {
-      width: 78px;
-      height: 78px;
-      font-size: 26px;
+      width: 68px;
+      height: 68px;
+      font-size: 23px;
     }
   }
 }
@@ -2570,6 +2582,71 @@
 @property --tw-font-weight {
   syntax: "*";
   inherits: false;
+}
+@property --tw-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-shadow-color {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-shadow-alpha {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 100%;
+}
+@property --tw-inset-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-inset-shadow-color {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-inset-shadow-alpha {
+  syntax: "<percentage>";
+  inherits: false;
+  initial-value: 100%;
+}
+@property --tw-ring-color {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-ring-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-inset-ring-color {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-inset-ring-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
+}
+@property --tw-ring-inset {
+  syntax: "*";
+  inherits: false;
+}
+@property --tw-ring-offset-width {
+  syntax: "<length>";
+  inherits: false;
+  initial-value: 0px;
+}
+@property --tw-ring-offset-color {
+  syntax: "*";
+  inherits: false;
+  initial-value: #fff;
+}
+@property --tw-ring-offset-shadow {
+  syntax: "*";
+  inherits: false;
+  initial-value: 0 0 #0000;
 }
 @property --tw-blur {
   syntax: "*";
@@ -2637,6 +2714,20 @@
       --tw-skew-x: initial;
       --tw-skew-y: initial;
       --tw-font-weight: initial;
+      --tw-shadow: 0 0 #0000;
+      --tw-shadow-color: initial;
+      --tw-shadow-alpha: 100%;
+      --tw-inset-shadow: 0 0 #0000;
+      --tw-inset-shadow-color: initial;
+      --tw-inset-shadow-alpha: 100%;
+      --tw-ring-color: initial;
+      --tw-ring-shadow: 0 0 #0000;
+      --tw-inset-ring-color: initial;
+      --tw-inset-ring-shadow: 0 0 #0000;
+      --tw-ring-inset: initial;
+      --tw-ring-offset-width: 0px;
+      --tw-ring-offset-color: #fff;
+      --tw-ring-offset-shadow: 0 0 #0000;
       --tw-blur: initial;
       --tw-brightness: initial;
       --tw-contrast: initial;

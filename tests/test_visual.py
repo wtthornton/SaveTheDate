@@ -689,6 +689,21 @@ def _settled(page: Page) -> None:
     page.wait_for_function(REVEAL_SETTLED, timeout=8000)
 
 
+# Pause every finite animation and move it to an exact moment. Waiting on the wall
+# clock and screenshotting does not work for inspecting a reveal mid-flight: each
+# screenshot costs a few hundred milliseconds and the error accumulates, so the fifth
+# "frame" is nowhere near the time it claims. Scrubbing asks the browser to be at a
+# time instead of hoping it is.
+SCRUB_TO = """(t) => {
+    document.getAnimations().forEach(a => {
+      const timing = a.effect && a.effect.getComputedTiming();
+      if (!timing || timing.iterations === Infinity) { a.cancel(); return; }
+      a.pause();
+      a.currentTime = Math.min(t, (timing.delay || 0) + (timing.activeDuration || 0));
+    });
+}"""
+
+
 @pytest.mark.parametrize("width_name,viewport", [("phone", PHONE), ("desktop", DESKTOP)])
 @pytest.mark.parametrize("page_name", PUBLIC_PAGES)
 def test_capture_the_public_pages(
@@ -884,6 +899,57 @@ def test_no_paragraph_on_the_public_welcome_runs_too_long_a_line(
     too_long = [p for p in longest if p["longest"] > MAX_CHARACTERS_PER_LINE]
     offenders = "\n  ".join(f"{p['longest']}ch — {p['text']}…" for p in too_long)
     assert not too_long, f"lines longer than {MAX_CHARACTERS_PER_LINE} characters:\n  {offenders}"
+    page.context.close()
+
+
+@pytest.mark.parametrize("width_name,viewport", [("phone", PHONE), ("desktop", DESKTOP)])
+def test_the_card_never_hangs_out_of_the_envelope_while_it_rises(
+    browser: Browser, live_url: str, width_name: str, viewport: ViewportSize
+) -> None:
+    """Mid-reveal, no part of the card is painted below the envelope's bottom edge.
+
+    `std-rise-out` starts the card at `translateY(46%)`, which puts nearly half its
+    height below the envelope — and `.std-front` stops exactly at that edge, so for
+    the whole rise the card's lower half was visible hanging out underneath the
+    paper: the date, the place and the link, sitting on the beach below the envelope.
+    It slid *past* the envelope instead of coming out of it.
+
+    Every existing assertion measured the END state, where the transform is `none`
+    and nothing overhangs, so all of them stayed green. It was found by scrubbing to
+    the middle and looking.
+
+    Hit-testing rather than measuring: a clipped element still reports its full
+    `getBoundingClientRect`, so geometry cannot tell whether the overhang is
+    actually painted. `elementFromPoint` respects the clip, which is the question.
+    """
+    page = _page(browser, viewport)
+    page.goto(_public_url(live_url, "save-the-date"), wait_until="networkidle")
+
+    # 1800ms is 100ms into the 1200ms rise, so the card is still almost fully
+    # displaced; 2400 is halfway up. Both are moments a person would actually see.
+    for moment_ms in (1800, 2100, 2400):
+        page.evaluate(SCRUB_TO, moment_ms)
+        leaked = page.evaluate(
+            """() => {
+                 const envelope = document.querySelector('.std-back').getBoundingClientRect();
+                 const card = document.querySelector('.std-card');
+                 const hits = [];
+                 for (const frac of [0.15, 0.35, 0.5, 0.65, 0.85]) {
+                   const x = envelope.left + envelope.width * frac;
+                   for (const below of [6, 40, 120]) {
+                     const el = document.elementFromPoint(x, envelope.bottom + below);
+                     if (el && (el === card || card.contains(el))) {
+                       hits.push(`${Math.round(x)},${Math.round(envelope.bottom + below)}`);
+                     }
+                   }
+                 }
+                 return hits;
+               }"""
+        )
+        assert not leaked, (
+            f"{width_name}: at {moment_ms}ms the card is painted below the envelope "
+            f"at {leaked} — it is sliding past the envelope, not out of it"
+        )
     page.context.close()
 
 

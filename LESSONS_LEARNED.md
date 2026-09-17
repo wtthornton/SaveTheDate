@@ -977,3 +977,42 @@ rest means cutting copy, which is a content decision rather than a CSS one.
 Reporting "it fits now" would have been true of the screen it was checked on and false
 of the one most guests will use. **A layout claim without a viewport attached is not a
 claim.**
+
+### Making something bigger is a way of finding the bugs it already had
+
+Enlarging the save-the-date card produced two complaints in one sentence from Bill —
+"the automation is a mess" and "maybe it is too big" — and they were two different
+problems that the same change had surfaced.
+
+**Too big** was a proportion problem. At 680px the stage measured 680x708: a square,
+which is not a shape an envelope comes in, with the addressee and stamp adrift in a
+large empty expanse of paper. The near-square ratio had always been there; scale is
+what made it legible as wrong.
+
+**The mess** was a genuine defect, and older than the change. The card rises from
+`translateY(46%)` — nearly half its height below the envelope — and the front panel
+stops exactly at the envelope's bottom edge, so nothing ever covered the overhang. For
+the whole rise, the date, the place and the link were visible hanging out underneath
+the paper. Enlarging it only made the overhang taller and moved it up into the middle
+of the screen.
+
+**Every assertion measured the end state**, where the transform is `none` and nothing
+overhangs, so the suite was green for the bug's entire life — including the tests
+written specifically to check the envelope gets out of the card's way.
+
+Two techniques came out of it, both worth keeping.
+
+**Scrub the animation; do not wait for it.** Screenshotting at wall-clock offsets drifts
+badly, because each screenshot costs a few hundred milliseconds and the error
+accumulates — by the fifth frame the picture is nowhere near the time it claims. Pausing
+every finite animation and setting `currentTime` asks the browser to *be* at a moment
+rather than hoping it is. This is the same lesson as `document.getAnimations()` for the
+settle-wait, one step further on.
+
+**Hit-test, do not measure, when the question is "is this painted?"** A clipped element
+still reports its full `getBoundingClientRect`, so no amount of geometry could tell
+whether the overhang was visible. `elementFromPoint` respects the clip.
+
+The general form: **a visual bug that only exists mid-transition is invisible to a suite
+that only measures rest states**, and rest states are what everything naturally asserts,
+because they are the only moment that holds still.

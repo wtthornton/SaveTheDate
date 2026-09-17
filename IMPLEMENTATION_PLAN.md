@@ -12,7 +12,7 @@ disciplined without burning the token pool.
 ## 1. Where this stands
 
 > **Updated 2026-09-17.** Phases 0-3 are done and **Phase 4 is most of the way**:
-> **13 of 17 issues closed** (one canceled), **270 tests**. Production is live on
+> **13 of 17 issues closed** (one canceled), **272 tests**. Production is live on
 > `wedding.tapphouse.co` and `savethedate.tapphouse.co` with its own database, and the
 > backup pipeline is built with its restore proven — **but the dumps are not yet
 > leaving this machine**, because the R2 bucket is Bill's to create. That is the one
@@ -1118,11 +1118,19 @@ already sent. A `+ interval '7 days'` on `events.event_date` and on every segmen
 `starts_at`/`ends_at` left the `guests` rows untouched — the md5 of all invite tokens
 was identical before and after. Production needed nothing; it is empty.
 
-### The save-the-date card is bigger
+### The save-the-date card is bigger — and 680px was too big
 
 520px of stage on a 1440px screen read as a postcard on a beach rather than as the
-only thing on the page. The stage is now 680px at desktop with type to match — names
-82px, the date 54px — and modestly larger on a phone.
+only thing on the page. The first attempt went to 680px; Bill looked at it and said
+the animation was a mess and it was probably too big. He was right on both counts,
+and they turned out to be two separate things.
+
+**Too big:** at 680 the stage measured 680x708, which is essentially a square. A
+square is not a shape an envelope comes in, and the front panel's addressee and stamp
+sat in the middle of a large empty expanse of paper. The proportion had always been
+near-square; making it bigger is what made it obvious. Settled at **580px**, which
+gives 580x644 — the same portrait-ish 0.9 ratio the original had, and still
+meaningfully larger than 520.
 
 The envelope needed almost nothing: it is laid out in percentages of the stage, so it
 grew on its own. Only three pieces are fixed pixels — the addressee, the stamp and the
@@ -1130,6 +1138,30 @@ wax seal — and those were scaled by hand.
 
 The ceiling is the phone, not the laptop: the card must fit inside 844px, because a
 save-the-date whose date needs scrolling is a date nobody read.
+
+### The card was sliding past the envelope, not out of it
+
+The "mess" was a real bug, and older than this session. `std-rise-out` starts the card
+at `translateY(46%)` — nearly half its height below the envelope — and `.std-front`
+stops exactly at the envelope's bottom edge, so **nothing covered the overhang**. For
+the whole 1200ms rise, the date, the place and the link sat visible on the beach
+underneath the paper.
+
+It was always wrong. Enlarging the card only made the overhang bigger and moved it
+further up the screen, which is why it went from unnoticed to obvious.
+
+The card now sits in a `.std-pocket` wrapper with `overflow: hidden`. The drop shadow
+moved onto the wrapper, because `overflow: hidden` clips an element's *children* and
+never its own box-shadow — so the card stays lifted off the photograph and the
+overhang is cut.
+
+**Every existing assertion measured the end state**, where the transform is `none` and
+nothing overhangs, so all of them stayed green through the entire life of the bug. It
+was found by scrubbing the animation to the middle and looking at it.
+
+The new test hit-tests rather than measures: a clipped element still reports its full
+`getBoundingClientRect`, so geometry cannot say whether the overhang is *painted*.
+`elementFromPoint` respects the clip, which is the actual question.
 
 ### The welcome page now fits a laptop without scrolling
 

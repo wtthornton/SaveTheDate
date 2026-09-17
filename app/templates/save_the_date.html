@@ -59,6 +59,16 @@
       {# The card is ordinary centered content in the normal flow. The envelope is
          two overlays on top of it that animate away, so the card's final position is
          never the product of a transform and cannot end up clipped or off-screen. #}
+      {# The pocket exists only to CLIP the card. The card rises from
+         `translateY(46%)`, which puts nearly half its height below the envelope's
+         bottom edge — and the front panel stops at that edge, so there was nothing
+         covering the overhang: the date, the place and the button were all visible
+         hanging out underneath the paper while the card "rose". Clipping here makes
+         the card come OUT of the envelope instead of sliding past it.
+
+         The drop shadow lives on this wrapper rather than on the card, because
+         `overflow: hidden` clips an element's children and not its own shadow. #}
+      <div class="std-pocket">
       <article class="std-card">
         <p class="std-tag">Save the date</p>
 
@@ -81,6 +91,7 @@
 
         <a class="std-link" href="{{ wedding_site_url }}">Visit the wedding site</a>
       </article>
+      </div>
 
       {# The envelope, over the card. Closed at first: a front panel with the names
          and a stamp on it, a flap sealed with wax. The flap lifts to show its liner,

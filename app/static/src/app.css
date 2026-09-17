@@ -1987,12 +1987,28 @@
     perspective: 1400px;
   }
 
-  .std-card {
+  /* The pocket the card is drawn out of. Its only job is to clip.
+     `std-rise-out` starts the card at `translateY(46%)`, which puts nearly half its
+     height BELOW the envelope's bottom edge — and `.std-front` stops at that edge,
+     so nothing covered the overhang. The date, the place and the link were all
+     visible hanging out under the paper for the whole rise. Clipping is what makes
+     the card come out of the envelope rather than slide past it.
+     The shadow sits here, not on the card: `overflow: hidden` clips an element's
+     CHILDREN, never its own box-shadow, so this keeps the card lifted off the
+     photograph while still cutting the overhang. */
+  .std-pocket {
     position: relative;
     /* 2, not 1: it sits between the back of the envelope (1) and its front (3).
        At 1 it tied with the back panel, and a tie is settled by document order —
        which put the paper over the card it is meant to be behind. */
     z-index: 2;
+    overflow: hidden;
+    border-radius: 3px;
+    box-shadow: 0 26px 60px rgba(8, 14, 19, 0.55);
+  }
+
+  .std-card {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
@@ -2001,8 +2017,7 @@
     text-align: center;
     background-color: var(--color-card);
     border-radius: 3px;
-    box-shadow: 0 26px 60px rgba(8, 14, 19, 0.55);
-    /* Drawn up out of the envelope, and clipped by the front panel on the way
+    /* Drawn up out of the envelope, and clipped by the pocket on the way
        because the panel sits above it. It ends at `transform: none`: the finished
        position is ordinary layout, never the residue of an animation. */
     animation: std-rise-out 1200ms cubic-bezier(0.22, 0.7, 0.24, 1) 1700ms backwards;
@@ -2337,7 +2352,7 @@
       display: none;
     }
 
-    .std-card {
+    .std-pocket {
       box-shadow: 0 26px 60px rgba(8, 14, 19, 0.55);
     }
   }
@@ -2352,12 +2367,12 @@
      roughly 700px tall in a 900px viewport here, and comfortably shorter on a phone. */
   @media (min-width: 1024px) {
     .std-stage {
-      width: min(100%, 680px);
+      width: min(100%, 580px);
     }
 
     .std-card {
-      gap: 20px;
-      padding: 58px 52px 54px;
+      gap: 18px;
+      padding: 50px 44px 46px;
     }
 
     .std-tag {
@@ -2365,11 +2380,11 @@
     }
 
     .std-names {
-      font-size: 82px;
+      font-size: 72px;
     }
 
     .std-and {
-      font-size: 34px;
+      font-size: 30px;
     }
 
     .std-weekday {
@@ -2377,11 +2392,11 @@
     }
 
     .std-day {
-      font-size: 54px;
+      font-size: 46px;
     }
 
     .std-place {
-      font-size: 23px;
+      font-size: 22px;
     }
 
     .std-note {
@@ -2396,18 +2411,18 @@
        These three are the exceptions — fixed pixel furniture that would otherwise
        look like a child's stamp on an adult's envelope. */
     .std-addressee {
-      font-size: 42px;
+      font-size: 36px;
     }
 
     .std-stamp {
-      width: 68px;
-      height: 81px;
+      width: 60px;
+      height: 71px;
     }
 
     .std-seal {
-      width: 78px;
-      height: 78px;
-      font-size: 26px;
+      width: 68px;
+      height: 68px;
+      font-size: 23px;
     }
   }
 }
