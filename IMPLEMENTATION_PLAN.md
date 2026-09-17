@@ -1165,8 +1165,21 @@ only make a page that already scrolls scroll further.
 Two new tests hold both results, each confirmed by mutation: the welcome page fits
 1440x900, and no paragraph on it exceeds 85 characters a line.
 
-### Still true afterwards
+### Still true afterwards, and deliberately so
 
 The welcome page **still scrolls on a phone**, by about 190px — down from 414px. Its
 text alone is roughly 610px in a 390px column, and the 18px floor is not negotiable, so
-the remaining gap can only be closed by cutting copy. That is a content decision.
+the remaining gap could only be closed by cutting copy.
+
+**Bill decided on 2026-09-17 to leave it.** On a phone the names, the date, Port
+Aransas, the heading and most of the first paragraph are all above the fold; the scroll
+only reveals the reassurance copy. The measured alternative was dropping the "More to
+come" section, which is 211px with its divider and would have made the page fit almost
+exactly — and would have cost the page its only forward-looking promise. Do not
+"fix" this later without asking; it is a decision, not an oversight.
+
+**The RSVP deadline did not move with the wedding**, and that is also decided. It stays
+at 15 December 2027, now about nine and a half weeks ahead rather than eight and a half.
+The extra week is slack in the hosts' favor, and moving it would have put the deadline
+three days before Christmas, which is the worst week of the year to chase a
+non-responder.
