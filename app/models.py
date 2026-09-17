@@ -34,7 +34,15 @@ class Event(Base):
         PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
     )
     slug: Mapped[str] = mapped_column(String(80), unique=True, index=True)
+    # Who may touch this event. RESTRICT rather than CASCADE on purpose: deleting a
+    # host must not silently take a guest list with it, and losing the guest list is
+    # the one failure here with no recovery path. Move the events first. TAP-7726.
+    host_id: Mapped[uuid.UUID] = mapped_column(
+        ForeignKey("hosts.id", ondelete="RESTRICT"), index=True
+    )
     title: Mapped[str] = mapped_column(String(200))
+    # The couple's names as they appear to guests — unrelated to `host_id`, which is
+    # an account. "Lisa Gorden and Bill Thornton" is copy; the account is an email.
     host_name: Mapped[str] = mapped_column(String(200))
     # Null while the date is still "save the date, details to follow".
     event_date: Mapped[date | None] = mapped_column(Date, nullable=True)

@@ -1,5 +1,8 @@
+from __future__ import annotations
+
 import uuid
 from datetime import UTC, datetime, timedelta
+from typing import TYPE_CHECKING
 
 import pytest
 from alembic import command
@@ -10,6 +13,11 @@ from sqlalchemy.orm import Session
 
 from tests.conftest import alembic_config
 from tests.factories import add_guest, add_segments, create_event
+
+if TYPE_CHECKING:
+    # Importing `app.models` for real at module scope would build the engine before
+    # the session fixtures have pointed the settings at the test database.
+    from app.models import Host
 
 PREVIOUS_REVISION = "34c3f17d487b"
 
@@ -350,11 +358,11 @@ def test_after_the_deadline_the_answer_is_read_only(
     assert "deadline has passed" in late.json()["detail"]
 
 
-def test_database_rejects_an_attendee_who_attends_nothing(db_session: Session) -> None:
+def test_database_rejects_an_attendee_who_attends_nothing(db_session: Session, host: Host) -> None:
     """The consistency rule is enforced by the database, not only by the API."""
     from app.models import Attendee, Event, Guest, Segment
 
-    event = Event(slug="trigger-check", title="T", host_name="H", timezone="UTC")
+    event = Event(host_id=host.id, slug="trigger-check", title="T", host_name="H", timezone="UTC")
     db_session.add(event)
     db_session.flush()
     db_session.add(
@@ -373,11 +381,11 @@ def test_database_rejects_an_attendee_who_attends_nothing(db_session: Session) -
         db_session.commit()
 
 
-def test_database_accepts_a_consistent_attendee(db_session: Session) -> None:
+def test_database_accepts_a_consistent_attendee(db_session: Session, host: Host) -> None:
     """Negative control for the test above — the trigger is not simply always failing."""
     from app.models import Attendance, Attendee, Event, Guest, Segment
 
-    event = Event(slug="trigger-control", title="T", host_name="H", timezone="UTC")
+    event = Event(host_id=host.id, slug="trigger-control", title="T", host_name="H", timezone="UTC")
     db_session.add(event)
     db_session.flush()
     segment = Segment(
