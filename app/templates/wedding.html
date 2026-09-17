@@ -24,7 +24,7 @@
 
     <nav class="hero-nav flex" aria-label="Invitation sections">
       <span class="hero-monogram" aria-hidden="true">
-        <span class="hero-monogram-text">B&nbsp;&amp;&nbsp;L</span>
+        <span class="hero-monogram-text">L&nbsp;&amp;&nbsp;B</span>
       </span>
       <div class="hero-nav-links">
         <a class="hero-nav-link{{ ' hero-nav-link-on' if request.url.path == '/invites/' ~ token else '' }}"
@@ -36,7 +36,7 @@
     </nav>
 
     <div class="hero-copy">
-      <h1 class="hero-names wedding-hero-names">Bill <span class="hero-and wedding-hero-and">and</span> Lisa</h1>
+      <h1 class="hero-names wedding-hero-names">Lisa <span class="hero-and wedding-hero-and">and</span> Bill</h1>
       <p class="hero-married-tag">are getting married</p>
       <div class="hero-meta-row" aria-hidden="true">
         <span class="hero-meta-item">
@@ -63,7 +63,7 @@
 {% endblock %}
 
 {# Desktop.dc.html is a 1440px column of alternating full-bleed bands, not a
-   stretched phone column. Mobile keeps its centred card layout untouched. #}
+   stretched phone column. Mobile keeps its centered card layout untouched. #}
 {% block main_class %}mx-auto flex max-w-2xl flex-col gap-8 px-5 py-8 lg:max-w-none lg:gap-0 lg:px-0 lg:py-0{% endblock %}
 
 {% block content %}
@@ -141,7 +141,7 @@
       <div class="lg:flex lg:max-w-[660px] lg:flex-col lg:gap-3">
         <h2 class="display-lg lg:text-[48px] lg:leading-[1.06]">The days either side</h2>
         <p class="body-copy lg:text-[19px]">
-          You are travelling a long way, so we have taken the whole weekend.
+          You are traveling a long way, so we have taken the whole weekend.
           Nothing is required, and all of it is on us.
         </p>
       </div>
@@ -224,7 +224,7 @@
   {% endif %}
 
   {# -- Band 5: travel -- light stacked blocks on mobile, dark full-bleed band
-     with a four-column grid at desktop. Recolouring lives on `.travel-band`. -- #}
+     with a four-column grid at desktop. Recoloring lives on `.travel-band`. -- #}
   <section class="travel-band flex flex-col gap-6 lg:gap-9 lg:px-[60px] lg:py-[62px]">
     <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between lg:gap-10">
       <h2 class="display-md lg:text-[44px]">Coming to the island</h2>

@@ -1,8 +1,8 @@
 # Photographs on the guest site
 
 **Every one of these is a placeholder.** They are openly-licensed photographs, and none
-of them is of Bill, Lisa, or A Shore Thing. Several *are* of Port Aransas and Mustang
-Island, which is worth the search it took: a guest who knows the island will recognise
+of them is of Lisa, Bill, or A Shore Thing. Several *are* of Port Aransas and Mustang
+Island, which is worth the search it took: a guest who knows the island will recognize
 the ferry and the Tarpon Inn porch, and a generic beach would have told them nothing.
 
 ## Of the actual place
@@ -46,7 +46,7 @@ is Jason's house, but it is still a stand-in. Jason's house is Bill's to photogr
 
 Decided in `app/templating.py` (`segment_image`), matched on keywords rather than a
 database column, because a schedule is host-entered content and not a fixed vocabulary.
-Anything unrecognised falls back to a Gulf sunset, so a card can never render empty.
+Anything unrecognized falls back to a Gulf sunset, so a card can never render empty.
 
 The mapping is tested by name rather than by matching the filename — bay fishing is
 illustrated by `pier-sunset.jpg`, an actual fishing pier, and a filename check called

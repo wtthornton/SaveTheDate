@@ -21,8 +21,8 @@ def create_event(
 ) -> dict[str, Any]:
     payload: dict[str, Any] = {
         "slug": slug,
-        "title": "Bill & Lisa",
-        "host_name": "Bill Thornton and Lisa Gorden",
+        "title": "Lisa & Bill",
+        "host_name": "Lisa Gorden and Bill Thornton",
         "event_date": event_date,
         "location": "Port Aransas, TX",
         "timezone": timezone,

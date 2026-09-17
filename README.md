@@ -291,7 +291,7 @@ Two things it does that a stylesheet scan cannot:
 ### Photography
 
 Ten photographs in `app/static/img/`, all openly-licensed placeholders, all listed with
-their licences in [`app/static/img/CREDITS.md`](app/static/img/CREDITS.md). Two are of
+their licenses in [`app/static/img/CREDITS.md`](app/static/img/CREDITS.md). Two are of
 Port Aransas itself. Five are CC BY and carry a credit line rendered at the foot of every
 guest page from `PHOTO_CREDITS` in `app/templating.py` — **if a CC BY photograph is
 removed, remove its name too.** Which picture goes with which scheduled item is decided

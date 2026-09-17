@@ -141,7 +141,7 @@
 {% block content %}
 
   {# Desktop-only left panel. `pier-sunset.jpg` is a stock placeholder — never
-     claimed to be Bill, Lisa or Port Aransas (see img/CREDITS.md) — so its alt
+     claimed to be Lisa, Bill or Port Aransas (see img/CREDITS.md) — so its alt
      text stays generic on purpose. Hidden entirely on mobile: RsvpForm.dc.html
      has no photograph. #}
   <aside class="rsvp-side hidden lg:block lg:w-[450px] lg:flex-shrink-0" aria-hidden="true">
@@ -149,7 +149,7 @@
     <div class="rsvp-side-scrim"></div>
     <div class="rsvp-side-content">
       <div class="flex flex-col gap-3">
-        <p class="rsvp-side-names">Bill <span class="rsvp-side-and">and</span> Lisa</p>
+        <p class="rsvp-side-names">Lisa <span class="rsvp-side-and">and</span> Bill</p>
         <p class="eyebrow-rsvp-side-date">
           {% if event.event_date %}{{ event.event_date | plain_date }}{% else %}Date to follow{% endif %}
         </p>

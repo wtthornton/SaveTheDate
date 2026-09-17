@@ -155,10 +155,10 @@ def deadline_date(moment: datetime, timezone: str) -> str:
 
 # Every scheduled item gets a photograph. Several are of Port Aransas itself —
 # the Tarpon Inn porch, the ferry — rather than generic stock, which is worth the
-# search: a guest who knows the island will recognise them.
+# search: a guest who knows the island will recognize them.
 #
 # Matched on keywords rather than a column, because `segments` is host-entered content
-# and a wedding's schedule is not a fixed vocabulary. Anything unrecognised still gets
+# and a wedding's schedule is not a fixed vocabulary. Anything unrecognized still gets
 # a picture — see DEFAULT_SEGMENT_IMAGE — so no card can render blank.
 SEGMENT_IMAGES: tuple[tuple[tuple[str, ...], str, str], ...] = (
     (
@@ -208,7 +208,7 @@ DEFAULT_SEGMENT_IMAGE = (
 def segment_image(name: str) -> tuple[str, str]:
     """The picture and alt text for one scheduled item, as (src, alt).
 
-    Never returns nothing: an unrecognised segment falls back to a Gulf sunset, so a
+    Never returns nothing: an unrecognized segment falls back to a Gulf sunset, so a
     schedule the hosts change later cannot leave a grey rectangle on the page.
     """
     lowered = name.casefold()
@@ -231,9 +231,9 @@ PHOTO_CREDITS: tuple[tuple[str, str], ...] = (
 
 
 def photo_credit_line() -> str:
-    """One readable sentence naming everyone whose licence requires naming."""
+    """One readable sentence naming everyone whose license requires naming."""
     names = ", ".join(name for name, _ in PHOTO_CREDITS)
-    return f"Placeholder photography by {names}, used under Creative Commons licences."
+    return f"Placeholder photography by {names}, used under Creative Commons licenses."
 
 
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
