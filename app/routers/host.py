@@ -18,8 +18,9 @@ import uuid
 from fastapi import APIRouter, HTTPException, Request, Response, status
 from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import select
+from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from app import auth, dashboard
+from app import auth, dashboard, guest_import
 from app.auth import CurrentHost, current_host
 from app.config import get_settings
 from app.deps import DbSession, Now
@@ -253,6 +254,76 @@ async def edit_invitation(
 
     db.commit()
     return RedirectResponse(url=f"/host/events/{event.id}", status_code=status.HTTP_303_SEE_OTHER)
+
+
+@router.post("/events/{event_id}/import", response_class=HTMLResponse)
+async def import_guests(
+    event_id: uuid.UUID, request: Request, db: DbSession, host: CurrentHost
+) -> Response:
+    """Import a guest list from a spreadsheet. TAP-7732.
+
+    All or nothing. The file is parsed and checked in full before a single row is
+    written, and any problem at all refuses the whole thing with every bad line
+    numbered. A partial import of a wedding guest list is worse than a rejected one:
+    the host cannot tell what landed, and re-running the file would double it.
+    """
+    event = _owned_event(event_id, db, host)
+    form = await request.form()
+    upload = form.get("file")
+
+    if not isinstance(upload, StarletteUploadFile):
+        return _import_failed(request, host, event, db, ["Choose a CSV file to import."])
+
+    raw = await upload.read()
+    try:
+        text = raw.decode("utf-8-sig")
+    except UnicodeDecodeError:
+        # utf-8-sig also eats the BOM Excel writes, which would otherwise turn the
+        # first header cell into "﻿name" and silently lose the name column.
+        try:
+            text = raw.decode("cp1252")
+        except UnicodeDecodeError:
+            return _import_failed(
+                request,
+                host,
+                event,
+                db,
+                ["That file is not text this can read. Export it from your spreadsheet as CSV."],
+            )
+
+    existing = set(db.scalars(select(Guest.name).where(Guest.event_id == event.id)).all())
+    plan = guest_import.parse(text, existing)
+
+    if not plan.ok:
+        return _import_failed(request, host, event, db, [str(p) for p in plan.problems])
+
+    for row in plan.rows:
+        db.add(Guest(event_id=event.id, name=row.name, email=row.email, party_size=row.party_size))
+    db.commit()
+
+    return RedirectResponse(
+        url=f"/host/events/{event.id}?imported={len(plan.rows)}",
+        status_code=status.HTTP_303_SEE_OTHER,
+    )
+
+
+def _import_failed(
+    request: Request, host: Host, event: Event, db: DbSession, problems: list[str]
+) -> Response:
+    """Re-render the dashboard with the errors, so nothing the host typed is lost."""
+    return templates.TemplateResponse(
+        request=request,
+        name="host_dashboard.html",
+        context={
+            "review_instance": get_settings().review_instance,
+            "host": host,
+            "event": event,
+            "view": dashboard.build(event, db),
+            "base_url": str(request.base_url).rstrip("/"),
+            "import_problems": problems,
+        },
+        status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+    )
 
 
 @router.post("/events/{event_id}/guests/{guest_id}/withdraw")

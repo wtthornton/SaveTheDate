@@ -219,6 +219,37 @@
     {% endif %}
   </section>
 
+  <section class="flex flex-col gap-3" aria-labelledby="import-heading">
+    <h2 class="host-section-heading" id="import-heading">Import from a spreadsheet</h2>
+
+    {% if import_problems %}
+      {# Every problem at once, each with the line number to look at. A host fixing
+         one error per upload would rather be told all of them. Nothing was imported. #}
+      <div class="host-error" role="alert">
+        <p><strong>Nothing was imported.</strong> Fix these and try the file again:</p>
+        <ul class="host-note-list">
+          {% for problem in import_problems %}
+            <li>{{ problem }}</li>
+          {% endfor %}
+        </ul>
+      </div>
+    {% endif %}
+
+    <form class="host-edit-form" method="post" enctype="multipart/form-data"
+          action="/host/events/{{ event.id }}/import">
+      <div class="flex flex-col gap-1">
+        <label class="host-label" for="import-file">CSV file</label>
+        <input class="host-input" id="import-file" type="file" name="file"
+               accept=".csv,text/csv" required>
+      </div>
+      <button class="host-btn" type="submit">Import</button>
+    </form>
+    <p class="host-hint">
+      Three columns: name, email, seats. A header row is optional. The whole file is
+      checked before anything is saved — if any row is wrong, nothing is imported.
+    </p>
+  </section>
+
   <section class="flex flex-col gap-3" aria-labelledby="add-heading">
     <h2 class="host-section-heading" id="add-heading">Add an invitation</h2>
     <form class="host-edit-form" method="post" action="/host/events/{{ event.id }}/guests">

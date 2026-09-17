@@ -1724,6 +1724,22 @@
     gap: 1rem;
   }
 
+  /* A file input carries a wide intrinsic minimum (the browser's "Choose file"
+     button plus the filename), which pushed the page 30px past a 390px viewport.
+     Flex children default to min-width:auto, so they refuse to shrink below it. */
+  .host-edit-form > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+
+  .host-input {
+    max-width: 100%;
+  }
+
+  .host-input[type="file"] {
+    width: 100%;
+  }
+
   .host-row-actions td {
     padding-top: 0;
     background-color: var(--color-ground);

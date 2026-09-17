@@ -1992,6 +1992,16 @@
     align-items: flex-end;
     gap: 1rem;
   }
+  .host-edit-form > * {
+    min-width: 0;
+    max-width: 100%;
+  }
+  .host-input {
+    max-width: 100%;
+  }
+  .host-input[type="file"] {
+    width: 100%;
+  }
   .host-row-actions td {
     padding-top: 0;
     background-color: var(--color-ground);
