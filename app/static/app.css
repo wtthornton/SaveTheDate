@@ -221,6 +221,9 @@
   .h-\[150px\] {
     height: 150px;
   }
+  .h-\[160px\] {
+    height: 160px;
+  }
   .h-full {
     height: 100%;
   }
@@ -369,6 +372,9 @@
   .uppercase {
     text-transform: uppercase;
   }
+  .italic {
+    font-style: italic;
+  }
   .filter {
     filter: var(--tw-blur,) var(--tw-brightness,) var(--tw-contrast,) var(--tw-grayscale,) var(--tw-hue-rotate,) var(--tw-invert,) var(--tw-saturate,) var(--tw-sepia,) var(--tw-drop-shadow,);
   }
@@ -407,6 +413,9 @@
     }
     .lg\:hidden {
       display: none;
+    }
+    .lg\:h-\[260px\] {
+      height: 260px;
     }
     .lg\:h-\[300px\] {
       height: 300px;
