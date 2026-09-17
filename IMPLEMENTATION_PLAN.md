@@ -789,7 +789,8 @@ a convenience.
 | --- | --- |
 | `dev-wedding.tapphouse.co` | The review instance on :50681 — **live** |
 | `wedding.tapphouse.co` | Production — **503 on purpose** |
-| `savethedate.tapphouse.co` | Reserved — 503, contents undecided |
+| `savethedate.tapphouse.co` | Production — the save-the-date card. **503 until the production stack exists** |
+| `dev-savethedate.tapphouse.co` | The card on the review instance — **not yet routed** |
 
 `wedding` returns 503 rather than pointing at the development instance. A guest-facing
 hostname quietly serving the development database is how invented guests start looking
@@ -815,7 +816,13 @@ address space is blocklisted and SPF/DKIM/DMARC will not rescue it.
 
 - The production Compose stack behind `wedding.tapphouse.co`, with its own database.
 - Backups off the machine, and a restore actually performed.
-- What `savethedate.tapphouse.co` is for.
+- ~~What `savethedate.tapphouse.co` is for.~~ **Decided 2026-09-17 with Bill, and built:**
+  a public, tokenless animated save-the-date card — an envelope that opens itself over a
+  drifting Gulf horizon, carrying the couple, the date, Port Aransas and a link onward to
+  the wedding site. TAP-7781. Four hostnames, two stacks: `wedding`/`savethedate` in
+  production, `dev-wedding`/`dev-savethedate` in development, and dev and production keep
+  separate databases. What remains is routing `dev-savethedate` and building the
+  production stack — both in TAP-7733.
 - `tapphouse.co` expires **2027-08-01**, about six months before the wedding. `renewAuto`
   is on; if the card on file lapses, the guest site's domain goes with it, in the middle
   of the RSVP window.

@@ -221,23 +221,52 @@ def segment_image(name: str) -> tuple[str, str]:
 # CC BY requires the credit to be visible to a reader, not filed in a repository. Kept
 # beside the mapping above so a picture cannot be swapped without its credit following.
 # CC0 images need no entry — see img/CREDITS.md for the full list either way.
-PHOTO_CREDITS: tuple[tuple[str, str], ...] = (
-    ("Mike Dickison", "CC BY 4.0"),
-    ("Gruenemann", "CC BY 2.0"),
-    ("BlankBlankBlank", "CC BY 2.0"),
-    ("Helen.Yang", "CC BY 2.0"),
-    ("Dennis Wong", "CC BY 2.0"),
+#
+# Keyed by filename rather than held as a bare list of names, because the public pages
+# (TAP-7775, TAP-7781) show one photograph each rather than all ten. A page-wide credit
+# naming five photographers, four of whose work is not on the page, is as wrong as a
+# missing one — img/CREDITS.md says so in those words.
+CC_BY_PHOTOGRAPHS: tuple[tuple[str, str, str], ...] = (
+    ("beach-fire.jpg", "Mike Dickison", "CC BY 4.0"),
+    ("porch-tarpon-inn.jpg", "Gruenemann", "CC BY 2.0"),
+    ("ferry-sunset.jpg", "BlankBlankBlank", "CC BY 2.0"),
+    ("breakfast-coffee.jpg", "Helen.Yang", "CC BY 2.0"),
+    ("dinner-table.jpg", "Dennis Wong", "CC BY 2.0"),
 )
+
+PHOTO_CREDITS: tuple[tuple[str, str], ...] = tuple(
+    (photographer, license_name) for _, photographer, license_name in CC_BY_PHOTOGRAPHS
+)
+
+
+def _sentence(names: list[str]) -> str:
+    return f"Placeholder photography by {', '.join(names)}, used under Creative Commons licenses."
 
 
 def photo_credit_line() -> str:
     """One readable sentence naming everyone whose license requires naming."""
-    names = ", ".join(name for name, _ in PHOTO_CREDITS)
-    return f"Placeholder photography by {names}, used under Creative Commons licenses."
+    return _sentence([name for name, _ in PHOTO_CREDITS])
+
+
+def photo_credit_for(*files: str) -> str:
+    """The credit owed by exactly the photographs on one page, or an empty string.
+
+    A page built only from CC0 photographs owes nobody a line and gets none. Passing
+    the filenames rather than hard-coding the outcome is what makes that safe: swap a
+    CC0 picture for a CC BY one and the credit appears on its own, instead of the page
+    quietly breaching a license that nobody re-read.
+    """
+    names = [
+        photographer
+        for filename, photographer, _ in CC_BY_PHOTOGRAPHS
+        if any(filename in used for used in files)
+    ]
+    return _sentence(names) if names else ""
 
 
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 templates.env.globals["photo_credit_line"] = photo_credit_line
+templates.env.globals["photo_credit_for"] = photo_credit_for
 templates.env.globals["segment_image"] = segment_image
 templates.env.filters["formal_date"] = formal_date
 templates.env.filters["plain_date"] = plain_date

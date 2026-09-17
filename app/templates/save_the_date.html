@@ -1,0 +1,100 @@
+{% extends "base.html" %}
+
+{# TAP-7781. The public save-the-date at savethedate.tapphouse.co.
+
+   An envelope that opens itself into a card, over a drifting Gulf horizon.
+
+   THE ANIMATION IS PURE CSS, and that is the point rather than an economy. An
+   envelope that needed JavaScript to open would be a blank rectangle to anyone whose
+   script failed, blocked or simply had not arrived yet — on the one page whose entire
+   job is to say a date out loud. With no script involved there is no such state: the
+   markup below IS the opened card, and every envelope piece is a decorative overlay
+   that animates out of the way. Turn off JavaScript and the page is unchanged.
+
+   `prefers-reduced-motion: reduce` removes the drift and the reveal together, leaving
+   the card already open — see the `std-*` rules in app/static/src/app.css.
+
+   Nothing here reads a guest row, and nothing takes input. See app/routers/public.py
+   for why the couple, the date and the place are hard-coded. #}
+
+{% block title %}Save the date — Lisa and Bill, February 13, 2028{% endblock %}
+
+{% block hero %}{% endblock %}
+
+{# base.html's default tab bar is built from an invite token, and there is none here. #}
+{% block nav %}{% endblock %}
+
+{% block main_class %}std-main{% endblock %}
+
+{% block content %}
+
+  <div class="std-scene">
+
+    {# -- The moving background ------------------------------------------
+       All four layers are decorative and hidden from assistive technology: none of
+       them carries information the card does not also state in words. #}
+    {# Two photographs of the same water, chosen by shape rather than by size. The
+       landscape one is 480x320: cover-cropping it into a 390x844 phone at 2x scales
+       its 320px height to about 1700 device pixels, and the Gulf at sunset becomes
+       grey mush. The portrait one is 480x725 and survives the same crop. This is art
+       direction, which is what `<picture media>` is for — `srcset` alone picks by
+       width and would go on serving the wrong crop. #}
+    <picture aria-hidden="true">
+      <source media="(min-width: 700px)" srcset="/static/img/gulf-sunset.jpg">
+      <img
+        class="std-horizon"
+        src="/static/img/gulf-evening.jpg"
+        alt=""
+        aria-hidden="true">
+    </picture>
+    <div class="std-dusk" aria-hidden="true"></div>
+    <div class="std-glow" aria-hidden="true"></div>
+    <div class="std-motes" aria-hidden="true">
+      <span></span><span></span><span></span><span></span><span></span>
+      <span></span><span></span><span></span><span></span>
+    </div>
+
+    <div class="std-stage">
+
+      {# The card is ordinary centered content in the normal flow. The envelope is
+         two overlays on top of it that animate away, so the card's final position is
+         never the product of a transform and cannot end up clipped or off-screen. #}
+      <article class="std-card">
+        <p class="std-tag">Save the date</p>
+
+        <h1 class="std-names">Lisa <span class="std-and">and</span> Bill</h1>
+
+        <div class="std-ornament" aria-hidden="true">
+          <span class="std-ornament-line"></span>
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 L10 5 L5 10 L0 5 Z" fill="#A94E2B"/></svg>
+          <span class="std-ornament-line"></span>
+        </div>
+
+        <p class="std-date">
+          <span class="std-weekday">{{ wedding_day.strftime('%A') }}</span>
+          <span class="std-day">{{ wedding_day | plain_date }}</span>
+        </p>
+
+        <p class="std-place">{{ wedding_place }}</p>
+
+        <p class="std-note">Formal invitation to follow.</p>
+
+        <a class="std-link" href="{{ wedding_site_url }}">Visit the wedding site</a>
+      </article>
+
+      <div class="std-pocket" aria-hidden="true">
+        <span class="std-seal">L&nbsp;&amp;&nbsp;B</span>
+      </div>
+      <div class="std-flap" aria-hidden="true"></div>
+
+    </div>
+  </div>
+
+{% endblock %}
+
+{# One CC0 photograph, which obliges nobody. `photo_credit_for` returns an empty
+   string for it and a real credit the moment a CC BY picture is put in its place. #}
+{% block credits %}
+  {% set credit = photo_credit_for('gulf-sunset.jpg', 'gulf-evening.jpg') %}
+  {% if credit %}<p class="photo-credit std-credit">{{ credit }}</p>{% endif %}
+{% endblock %}

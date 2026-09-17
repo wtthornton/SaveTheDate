@@ -646,3 +646,256 @@ def test_the_dashboard_does_not_scroll_sideways(
             f"the dashboard overflows at {viewport['width']}px: body is {width}px"
         )
         page.context.close()
+
+
+# -- The public front door (TAP-7775, TAP-7781) ---------------------------
+
+# Neither page takes a token, so neither uses the `token` fixture. That is the whole
+# point of them and it is worth seeing in the signatures below.
+PUBLIC_PAGES = [("public-welcome", "/"), ("save-the-date", "/save-the-date")]
+
+# Every animation on the card that ends, having ended. Asking the browser which
+# animations are still running beats naming the elements: the first version of this
+# waited on the flap alone, and the flap finishes 900ms before the pocket does — so
+# every screenshot was taken with half the card still inside the envelope, and not one
+# assertion noticed, because none of them was looking at the pocket.
+#
+# The background drifts forever, so infinite animations are excluded rather than
+# waited for.
+REVEAL_SETTLED = """() => document.getAnimations()
+    .filter(a => a.effect && a.effect.getComputedTiming().iterations !== Infinity)
+    .every(a => a.playState === 'finished')"""
+
+
+def _settled(page: Page) -> None:
+    """Wait for the envelope to have finished opening, on pages that have one."""
+    page.wait_for_function(REVEAL_SETTLED, timeout=8000)
+
+
+@pytest.mark.parametrize("width_name,viewport", [("phone", PHONE), ("desktop", DESKTOP)])
+@pytest.mark.parametrize("page_name,path", PUBLIC_PAGES)
+def test_capture_the_public_pages(
+    browser: Browser,
+    live_url: str,
+    width_name: str,
+    viewport: ViewportSize,
+    page_name: str,
+    path: str,
+) -> None:
+    """Screenshots of the two tokenless pages. The files are the deliverable."""
+    page = _page(browser, viewport)
+    page.goto(f"{live_url}{path}", wait_until="networkidle")
+    _settled(page)
+    shot = _shoot(page, f"{page_name}-{width_name}")
+
+    assert shot.stat().st_size > 5000, f"{shot.name} looks blank"
+    overflow = page.evaluate(
+        "document.documentElement.scrollWidth > document.documentElement.clientWidth + 1"
+    )
+    assert not overflow, f"{page_name} at {width_name} scrolls horizontally"
+    page.context.close()
+
+
+@pytest.mark.parametrize("width_name,viewport", [("phone", PHONE), ("desktop", DESKTOP)])
+@pytest.mark.parametrize("page_name,path", PUBLIC_PAGES)
+def test_no_text_on_a_public_page_is_below_18px(
+    browser: Browser,
+    live_url: str,
+    width_name: str,
+    viewport: ViewportSize,
+    page_name: str,
+    path: str,
+) -> None:
+    """The same floor as everywhere else, and with no `eyebrow` escape hatch.
+
+    The invitation pages exempt `.eyebrow*`, which was a mistake worth not repeating:
+    these two pages carry no such class, so every word on them is measured.
+    """
+    page = _page(browser, viewport)
+    page.goto(f"{live_url}{path}", wait_until="networkidle")
+    _settled(page)
+
+    offenders = page.evaluate(
+        """() => {
+            const bad = [];
+            for (const el of document.querySelectorAll('body *')) {
+                const own = Array.from(el.childNodes)
+                    .filter(n => n.nodeType === Node.TEXT_NODE)
+                    .map(n => n.textContent.trim()).join('');
+                if (!own) continue;
+                const cs = getComputedStyle(el);
+                if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+                const px = parseFloat(cs.fontSize);
+                if (px < 18) bad.push(el.tagName.toLowerCase() + '.' +
+                    (el.className || '(none)') + ' = ' + px + 'px :: ' + own.slice(0, 40));
+            }
+            return bad;
+        }"""
+    )
+    assert not offenders, f"{page_name} at {width_name}: text below {MINIMUM_BODY_PX}px:\n  " + (
+        "\n  ".join(offenders)
+    )
+    page.context.close()
+
+
+@pytest.mark.parametrize("width_name,viewport", [("phone", PHONE), ("desktop", DESKTOP)])
+@pytest.mark.parametrize("page_name,path", PUBLIC_PAGES)
+def test_every_target_on_a_public_page_is_44px(
+    browser: Browser,
+    live_url: str,
+    width_name: str,
+    viewport: ViewportSize,
+    page_name: str,
+    path: str,
+) -> None:
+    page = _page(browser, viewport)
+    page.goto(f"{live_url}{path}", wait_until="networkidle")
+    _settled(page)
+
+    small = page.evaluate(
+        """(floor) => {
+            const bad = [];
+            for (const el of document.querySelectorAll('a[href], button')) {
+                const cs = getComputedStyle(el);
+                if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+                const r = el.getBoundingClientRect();
+                if (r.width === 0 && r.height === 0) continue;
+                if (r.height < floor) bad.push(
+                    el.tagName.toLowerCase() + '.' + (el.className || '(none)') +
+                    ' = ' + Math.round(r.height) + 'px');
+            }
+            return bad;
+        }""",
+        MINIMUM_TAP_PX,
+    )
+    assert not small, f"{page_name} at {width_name}: targets under {MINIMUM_TAP_PX}px:\n  " + (
+        "\n  ".join(small)
+    )
+    page.context.close()
+
+
+def test_the_whole_card_is_visible_without_scrolling_on_a_phone(
+    browser: Browser, live_url: str
+) -> None:
+    """A save-the-date is one glance. A date below the fold is a date nobody read."""
+    page = _page(browser, PHONE)
+    page.goto(f"{live_url}/save-the-date", wait_until="networkidle")
+    _settled(page)
+
+    card = _box(page, ".std-card")
+    viewport_height = page.evaluate("window.innerHeight")
+
+    assert card["y"] >= 0, "the card starts above the top of the screen"
+    assert card["y"] + card["height"] <= viewport_height + 1, (
+        f"the card runs {round(card['y'] + card['height'] - viewport_height)}px below the fold"
+    )
+    page.context.close()
+
+
+def test_the_card_needs_no_javascript(browser: Browser, live_url: str) -> None:
+    """The envelope is CSS. With scripting off the card is simply there, open.
+
+    Asserted rather than reasoned about, because "it degrades gracefully" is the kind
+    of claim that is true right up until somebody moves the reveal into a script.
+    """
+    context = browser.new_context(viewport=PHONE, device_scale_factor=2, java_script_enabled=False)
+    page = context.new_page()
+    page.goto(f"{live_url}/save-the-date", wait_until="load")
+    _shoot(page, "save-the-date-no-javascript")
+
+    body = page.content()
+    assert "February 13, 2028" in body
+    assert "Port Aransas" in body
+    card = _box(page, ".std-card")
+    assert card["height"] > 200, "the card did not render without scripting"
+    context.close()
+
+
+def test_reduced_motion_gets_the_finished_card_and_no_movement(
+    browser: Browser, live_url: str
+) -> None:
+    """Not a gentler animation — none at all, and the card already open.
+
+    Somebody whose system asks for reduced motion is saying that drifting embers and
+    a rotating flap make them unwell. The card is what the animation was working
+    toward, so they get it immediately.
+    """
+    context = browser.new_context(viewport=PHONE, device_scale_factor=2, reduced_motion="reduce")
+    page = context.new_page()
+    page.goto(f"{live_url}/save-the-date", wait_until="networkidle")
+    _shoot(page, "save-the-date-reduced-motion")
+
+    running = page.evaluate(
+        "() => document.getAnimations().map(a => a.animationName || a.constructor.name)"
+    )
+    assert running == [], f"animations still running under reduced motion: {running}"
+
+    hidden = page.evaluate(
+        """() => ['.std-flap', '.std-pocket', '.std-motes']
+               .filter(s => {
+                   const el = document.querySelector(s);
+                   return el && getComputedStyle(el).display !== 'none';
+               })"""
+    )
+    assert hidden == [], f"envelope pieces still shown under reduced motion: {hidden}"
+
+    card = page.evaluate("() => getComputedStyle(document.querySelector('.std-card')).opacity")
+    assert card == "1", "the card is not fully visible under reduced motion"
+    context.close()
+
+
+def test_the_envelope_gets_out_of_the_way_of_the_card(browser: Browser, live_url: str) -> None:
+    """Once open, nothing sits over the card — in sight or in the hit test.
+
+    Both halves of that matter and only one is visible. The pocket finishes at
+    `opacity: 0` but stays in the layout, and a transparent element is still hit-
+    tested: without `pointer-events: none` it comes to rest across the lower edge of
+    the card, over the bottom of the link to the wedding site, and takes the taps that
+    land there. A screenshot could never have shown that, so this asks the browser
+    what is actually on top.
+    """
+    page = _page(browser, PHONE)
+    page.goto(f"{live_url}/save-the-date", wait_until="networkidle")
+    _settled(page)
+
+    covered = page.evaluate(
+        """() => {
+            const bad = [];
+            const parts = ['.std-tag', '.std-names', '.std-day', '.std-place',
+                           '.std-note', '.std-link'];
+            for (const selector of parts) {
+                const el = document.querySelector(selector);
+                if (!el) { bad.push(selector + ' is missing'); continue; }
+                const r = el.getBoundingClientRect();
+                // Five points, not one. The centre alone passes while an overlay
+                // clips across the bottom edge of a target — and the bottom edge of
+                // the link is exactly where the emptied envelope comes to rest.
+                const points = [
+                    [r.x + r.width / 2, r.y + r.height / 2],
+                    [r.x + 2, r.y + 2],
+                    [r.right - 2, r.y + 2],
+                    [r.x + 2, r.bottom - 2],
+                    [r.right - 2, r.bottom - 2],
+                ];
+                for (const [x, y] of points) {
+                    const top = document.elementFromPoint(x, y);
+                    if (!top) { bad.push(selector + ' is off-screen'); break; }
+                    if (top === el || el.contains(top) || top.contains(el)) continue;
+                    bad.push(selector + ' is covered by ' + top.tagName.toLowerCase() +
+                             '.' + (top.className || '(none)') +
+                             ' at (' + Math.round(x) + ',' + Math.round(y) + ')');
+                    break;
+                }
+            }
+            return bad;
+        }"""
+    )
+    assert covered == [], "the opened card is obstructed:\n  " + "\n  ".join(covered)
+
+    # And it is actually painted. Laid out is not the same as visible: setting the
+    # card to `opacity: 0` leaves its box, its size and its position all intact, so
+    # every geometric assertion here — and the one that checks it renders without
+    # scripting — passes on a page a reader would call blank.
+    opacity = page.evaluate("() => getComputedStyle(document.querySelector('.std-card')).opacity")
+    assert opacity == "1", f"the card finished the reveal at opacity {opacity}"
+    page.context.close()

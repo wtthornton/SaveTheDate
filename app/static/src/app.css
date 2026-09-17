@@ -1785,3 +1785,429 @@
     color: var(--color-success);
   }
 }
+
+/* -- The public front door: the welcome root and the save-the-date card -------
+ *
+ * TAP-7775 and TAP-7781. Two pages nobody needs a token to see.
+ */
+
+@layer components {
+
+  /* The place line under the names on the welcome root. The invitation page sets the
+     same line as an `eyebrow` at 14px; this one is 18px, because the floor is the
+     floor and the answer to "it looks big" is smaller tracking, not an exemption. */
+  .hero-place {
+    margin-top: 10px;
+    font-size: 18px;
+    font-weight: 500;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--color-blush);
+  }
+}
+
+/* -- The save-the-date card (TAP-7781) ---------------------------------------
+ *
+ * The envelope opens ITSELF, in CSS, with no script anywhere on the page. The card
+ * is ordinary centered content in the normal flow; the flap and the pocket are two
+ * decorative overlays on top of it that rotate and slide away. Nothing the reader
+ * ends up looking at is positioned by a transform, so the finished layout cannot be
+ * clipped, cannot land off-screen, and measures the same as if there were no
+ * animation at all.
+ *
+ * Every duration below is long and every easing is soft on purpose: this is a
+ * wedding announcement, not a notification. Motion that snaps reads as an error.
+ */
+
+@layer components {
+
+  .std-main {
+    display: block;
+    max-width: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  .std-scene {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    /* svh, not vh: on a phone `100vh` is the height with the browser chrome hidden,
+       so the card sits low and its last line hides behind the address bar until the
+       reader scrolls — on a page that is meant to be one glance. */
+    min-height: 100vh;
+    min-height: 100svh;
+    padding: 32px 20px;
+    overflow: hidden;
+    background-color: #101B22;
+  }
+
+  /* -- The moving background --------------------------------------------- */
+
+  /* `<picture>` is a plain inline box that would otherwise sit in the flow between
+     the absolutely-positioned layers; `display: contents` lets the `<img>` inside it
+     position against the scene exactly as it did when it was a bare `<img>`. */
+  .std-scene picture {
+    display: contents;
+  }
+
+  .std-horizon {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: center 55%;
+    /* Transform-only, so the browser can keep this on its own layer and never
+       repaint the text above it. */
+    animation: std-tide 46s ease-in-out infinite alternate;
+    will-change: transform;
+  }
+
+  /* Dusk over the photograph. The card is cream on a dark ground, so this layer is
+     what buys the contrast — the source photograph runs bright through the middle. */
+  .std-dusk {
+    position: absolute;
+    inset: 0;
+    background:
+      linear-gradient(
+        to bottom,
+        rgba(16, 27, 34, 0.80) 0%,
+        rgba(16, 27, 34, 0.46) 38%,
+        rgba(16, 27, 34, 0.60) 72%,
+        rgba(16, 27, 34, 0.90) 100%
+      );
+  }
+
+  /* A warm low sun that breathes. Slow enough to be felt rather than watched. */
+  .std-glow {
+    position: absolute;
+    left: 50%;
+    top: 62%;
+    width: 150vmax;
+    height: 90vmax;
+    translate: -50% -50%;
+    background: radial-gradient(
+      ellipse at center,
+      rgba(233, 145, 79, 0.40) 0%,
+      rgba(169, 78, 43, 0.20) 34%,
+      rgba(16, 27, 34, 0) 68%
+    );
+    animation: std-breathe 21s ease-in-out infinite alternate;
+  }
+
+  /* Embers off a beach fire, drifting up and out. Nine of them: enough to read as
+     movement, few enough that a weak phone GPU is not asked to composite a storm. */
+  .std-motes {
+    position: absolute;
+    inset: 0;
+    overflow: hidden;
+  }
+
+  .std-motes span {
+    position: absolute;
+    bottom: -24px;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: rgba(240, 196, 150, 0.85);
+    opacity: 0;
+    animation: std-rise 26s linear infinite;
+  }
+
+  .std-motes span:nth-child(1) { left: 8%;  animation-delay: 0s;    animation-duration: 24s; }
+  .std-motes span:nth-child(2) { left: 19%; animation-delay: 3.5s;  animation-duration: 31s; }
+  .std-motes span:nth-child(3) { left: 31%; animation-delay: 8s;    animation-duration: 27s; }
+  .std-motes span:nth-child(4) { left: 43%; animation-delay: 13s;   animation-duration: 34s; }
+  .std-motes span:nth-child(5) { left: 55%; animation-delay: 5.5s;  animation-duration: 29s; }
+  .std-motes span:nth-child(6) { left: 66%; animation-delay: 17s;   animation-duration: 25s; }
+  .std-motes span:nth-child(7) { left: 78%; animation-delay: 10.5s; animation-duration: 33s; }
+  .std-motes span:nth-child(8) { left: 87%; animation-delay: 20s;   animation-duration: 28s; }
+  .std-motes span:nth-child(9) { left: 95%; animation-delay: 1.5s;  animation-duration: 36s; }
+
+  @keyframes std-tide {
+    from { transform: scale(1.14) translate3d(-1.4%, 0.6%, 0); }
+    to   { transform: scale(1.20) translate3d(1.4%, -0.8%, 0); }
+  }
+
+  @keyframes std-breathe {
+    from { opacity: 0.55; transform: scale(0.94); }
+    to   { opacity: 0.95; transform: scale(1.06); }
+  }
+
+  @keyframes std-rise {
+    0%   { opacity: 0; transform: translate3d(0, 0, 0); }
+    12%  { opacity: 0.8; }
+    78%  { opacity: 0.55; }
+    100% { opacity: 0; transform: translate3d(28px, -104vh, 0); }
+  }
+
+  /* -- The stage, the card, and the envelope over it ---------------------- */
+
+  .std-stage {
+    position: relative;
+    width: min(100%, 460px);
+    /* The flap rotates in three dimensions; without a perspective it reads as a
+       rectangle getting shorter rather than as a flap lifting. */
+    perspective: 1400px;
+  }
+
+  .std-card {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 14px;
+    padding: 34px 26px 30px;
+    text-align: center;
+    background-color: var(--color-card);
+    border-radius: 3px;
+    box-shadow: 0 26px 60px rgba(8, 14, 19, 0.55);
+    /* The card is already here. It only fades and settles the last few pixels — it
+       is never moved far enough that an interrupted animation would leave it
+       somewhere a reader cannot see it. */
+    animation: std-settle 1100ms cubic-bezier(0.2, 0.7, 0.3, 1) 900ms backwards;
+  }
+
+  /* An inner rule, the way a printed card is bordered rather than framed. */
+  .std-card::before {
+    content: "";
+    position: absolute;
+    inset: 9px;
+    border: 1px solid var(--color-rule);
+    pointer-events: none;
+  }
+
+  .std-tag {
+    position: relative;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.26em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+  }
+
+  .std-names {
+    position: relative;
+    font-family: var(--font-display);
+    font-size: 52px;
+    font-weight: 300;
+    line-height: 1.04;
+    color: var(--color-ink);
+  }
+
+  .std-and {
+    display: block;
+    font-size: 26px;
+    font-style: italic;
+    color: var(--color-muted);
+  }
+
+  .std-ornament {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 72%;
+  }
+
+  .std-ornament-line {
+    flex-grow: 1;
+    height: 1px;
+    background-color: var(--color-rule);
+  }
+
+  .std-date {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .std-weekday {
+    font-size: 19px;
+    font-weight: 500;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--color-muted);
+  }
+
+  /* The most important line on the page. Cormorant's x-height runs small, which is
+     why this is set far above the 18px floor rather than near it — the visual suite
+     measures x-height, not the nominal number. */
+  .std-day {
+    font-family: var(--font-display);
+    font-size: 36px;
+    font-weight: 500;
+    line-height: 1.15;
+    color: var(--color-ink);
+  }
+
+  .std-place {
+    position: relative;
+    font-size: 20px;
+    line-height: 1.5;
+    color: var(--color-body);
+  }
+
+  .std-note {
+    position: relative;
+    font-size: 18px;
+    font-style: italic;
+    line-height: 1.5;
+    color: var(--color-muted);
+  }
+
+  .std-link {
+    position: relative;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    margin-top: 6px;
+    padding: 10px 26px;
+    font-size: 18px;
+    font-weight: 700;
+    color: #FFFFFF;
+    text-decoration: none;
+    background-color: var(--color-accent);
+    border-radius: 2px;
+  }
+
+  .std-link:hover {
+    background-color: var(--color-accent-hover);
+    color: #FFFFFF;
+  }
+
+  /* -- The envelope: two overlays that leave ------------------------------ */
+
+  /* The front panel of the envelope, sitting over the lower half of the card. It
+     slides down and fades, as though the card were being drawn out of it. */
+  .std-pocket {
+    position: absolute;
+    z-index: 2;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    height: 58%;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 18px;
+    background: linear-gradient(to bottom, #F0E4D0 0%, #E6D6BD 100%);
+    border-radius: 0 0 3px 3px;
+    box-shadow: 0 -2px 18px rgba(8, 14, 19, 0.28);
+    /* The two diagonals of an envelope's front seam. */
+    clip-path: polygon(0 0, 50% 22%, 100% 0, 100% 100%, 0 100%);
+    /* Decorative, and it stays in the layout after it fades: an element at opacity 0
+       is still hit-tested. Where it comes to rest, it lies invisibly across the lower
+       edge of the card — including the bottom of the link to the wedding site — and
+       takes the taps that land there. Measured, not assumed: the test that covers
+       this samples five points per element, because sampling centres alone said the
+       link was fine. */
+    pointer-events: none;
+    animation: std-pocket-away 1000ms cubic-bezier(0.4, 0, 0.2, 1) 1150ms forwards;
+  }
+
+  .std-seal {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 54px;
+    height: 54px;
+    border-radius: 50%;
+    background-color: var(--color-accent);
+    color: #F7EDE2;
+    font-family: var(--font-display);
+    font-size: 19px;
+    letter-spacing: 0.04em;
+    box-shadow: 0 3px 10px rgba(8, 14, 19, 0.35);
+  }
+
+  /* The flap, hinged along the top edge. Starts closed over the card and lifts back
+     out of the way. */
+  .std-flap {
+    position: absolute;
+    z-index: 3;
+    left: 0;
+    right: 0;
+    top: 0;
+    height: 46%;
+    background: linear-gradient(to bottom, #F4EADA 0%, #E8DAC2 100%);
+    border-radius: 3px 3px 0 0;
+    clip-path: polygon(0 0, 100% 0, 50% 100%);
+    transform-origin: top center;
+    pointer-events: none;
+    animation: std-flap-open 900ms cubic-bezier(0.32, 0, 0.2, 1) 350ms forwards;
+  }
+
+  @keyframes std-flap-open {
+    from { transform: rotateX(0deg); }
+    to   { transform: rotateX(-168deg); opacity: 0; }
+  }
+
+  @keyframes std-pocket-away {
+    from { transform: translateY(0); opacity: 1; }
+    to   { transform: translateY(64%); opacity: 0; }
+  }
+
+  @keyframes std-settle {
+    from { opacity: 0; transform: translateY(14px) scale(0.985); }
+    to   { opacity: 1; transform: none; }
+  }
+
+  .std-credit {
+    background-color: #101B22;
+    color: rgba(247, 242, 232, 0.72);
+  }
+
+  /* -- Reduced motion: the card, and nothing that moves ------------------- */
+
+  /* Not a softened version of the animation — none of it. Somebody who has asked
+     their operating system for less motion is telling us that drifting embers and a
+     rotating flap make them unwell, and a wedding date is not worth that. They get
+     the finished card, immediately, which is what the animation was working toward
+     anyway. */
+  @media (prefers-reduced-motion: reduce) {
+    .std-horizon,
+    .std-glow,
+    .std-motes span,
+    .std-card {
+      animation: none;
+    }
+
+    .std-motes {
+      display: none;
+    }
+
+    .std-flap,
+    .std-pocket {
+      display: none;
+    }
+  }
+
+  @media (min-width: 1024px) {
+    .std-stage {
+      width: min(100%, 520px);
+    }
+
+    .std-card {
+      gap: 16px;
+      padding: 44px 36px 40px;
+    }
+
+    .std-names {
+      font-size: 64px;
+    }
+
+    .std-day {
+      font-size: 42px;
+    }
+
+    .std-place {
+      font-size: 21px;
+    }
+  }
+}

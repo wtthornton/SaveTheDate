@@ -11,7 +11,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
 from app.ratelimit import client_address, get_limiter
-from app.routers import auth, events, host, invites, pages, webhooks
+from app.routers import auth, events, host, invites, pages, public, webhooks
 from app.templating import templates
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
@@ -91,6 +91,7 @@ app.include_router(events.router)
 app.include_router(host.router)
 app.include_router(invites.router)
 app.include_router(pages.router)
+app.include_router(public.router)
 app.include_router(webhooks.router)
 
 

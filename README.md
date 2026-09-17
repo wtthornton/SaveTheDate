@@ -104,10 +104,17 @@ a named tunnel from the home lab.
 
 | Hostname | Serves | State |
 | --- | --- | --- |
-| `wedding.tapphouse.co` | Production | Reserved — 503 until the production stack exists |
+| `wedding.tapphouse.co` | Production — the wedding site | Reserved — 503 until the production stack exists |
 | `dev-wedding.tapphouse.co` | The review instance | **Live** |
-| `savethedate.tapphouse.co` | Undecided | Reserved — 503 |
+| `savethedate.tapphouse.co` | Production — the save-the-date card | Reserved — 503 until the production stack exists |
+| `dev-savethedate.tapphouse.co` | The save-the-date card on the review instance | Not yet routed |
 | `home.tapphouse.co` | Home Assistant (Nabu Casa) | Pre-existing, untouched |
+
+Two public faces, one codebase, one app per stack. `/save-the-date` serves the card on
+every hostname; `/` serves it only on a hostname listed in `SAVE_THE_DATE_HOSTS`, and
+serves the wedding welcome otherwise. The list is explicit rather than a substring test
+— this project is itself called savethedate, and a guest-facing hostname quietly serving
+the wrong page is the failure that list exists to prevent.
 
 `wedding.tapphouse.co` deliberately returns 503 rather than pointing at the development
 instance. A guest-facing hostname quietly serving the development database is how
@@ -375,10 +382,12 @@ and are deliberately not stubbed out:
   Postgres, plus a throwaway Cloudflare Quick Tunnel for review. A proper home-lab
   deployment with **automated backups and a tested restore** is TAP-7733, and it is the
   only gap that could cost the guest list.
-- **No production stack yet.** `wedding.tapphouse.co` is reserved and returns 503. It
-  needs its own Compose project and its own database, separate from development.
-- **`savethedate.tapphouse.co` is undecided.** The hostname is routed and reserved; what
-  runs there has not been settled.
+- **No production stack yet.** `wedding.tapphouse.co` and `savethedate.tapphouse.co` are
+  both reserved and both return 503. They need a Compose project and a database of their
+  own, separate from development. TAP-7733.
+- **`dev-savethedate.tapphouse.co` is not routed yet.** The card is built and tested, and
+  reachable at `/save-the-date` on any hostname; the DNS route and the tunnel ingress
+  rule for its own dev hostname are still to come.
 - **No error reporting**, and `/health` says the process is up rather than that the
   service works. TAP-7734.
 - **Every photograph is a placeholder**, and the hero is a stock photograph of another

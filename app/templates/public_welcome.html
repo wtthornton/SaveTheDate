@@ -1,0 +1,88 @@
+{% extends "base.html" %}
+
+{# TAP-7775. The root of the wedding site, for somebody who typed the domain or was
+   handed it by a relative without the link.
+
+   A deliberate subset of the invitation: the couple, the date, the state, and how to
+   get your own link. Not the schedule, not the address, not a guest name, and above
+   all not a box to type a name into — that would be a guest-list oracle on an
+   anonymous page. See app/routers/public.py. #}
+
+{% block title %}Lisa and Bill — February 13, 2028{% endblock %}
+
+{% block hero %}
+  <section class="hero" aria-label="Lisa and Bill, February 13, 2028">
+    {# CC0, and of the Gulf rather than of a couple: the stock wedding photograph on
+       the invitation pages is somebody else's wedding, which is tolerable behind a
+       token and not on the open internet. #}
+    <img
+      class="hero-photo"
+      src="/static/img/gulf-sunset.jpg"
+      alt="An orange and purple sunset over the Gulf of Mexico, waves breaking on the sand.">
+    <div class="hero-scrim" aria-hidden="true"></div>
+    <div class="hero-frame-outer" aria-hidden="true"></div>
+    <div class="hero-frame-inner" aria-hidden="true"></div>
+
+    <div class="hero-mark">
+      <span class="hero-monogram" aria-hidden="true">
+        <span class="hero-monogram-text">L&nbsp;&amp;&nbsp;B</span>
+      </span>
+    </div>
+
+    <div class="hero-copy">
+      <h1 class="hero-names">Lisa <span class="hero-and">and</span> Bill</h1>
+      <div class="hero-ornament" aria-hidden="true">
+        <span class="hero-ornament-line"></span>
+        <svg width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 L10 5 L5 10 L0 5 Z" fill="#E3B9A4"/></svg>
+        <span class="hero-ornament-line"></span>
+      </div>
+      {# The plain American date, not the spelled-out formal one the invitation uses.
+         This is the page somebody reads to put a date in a calendar. #}
+      <p class="hero-date">{{ wedding_day.strftime('%A') }}, {{ wedding_day | plain_date }}</p>
+      <p class="hero-place">Texas</p>
+    </div>
+  </section>
+{% endblock %}
+
+{# base.html's default tab bar is built from an invite token, and there is none here. #}
+{% block nav %}{% endblock %}
+
+{% block content %}
+
+  <section class="flex flex-col gap-4 text-center">
+    <h2 class="display-lg">Your invitation is a personal link</h2>
+    <p class="lede text-left">
+      We sent each invitation by email, as a link of its own. That link is how you
+      see the weekend and how you reply — there is no account to make and no
+      password to remember.
+    </p>
+    <p class="body-copy text-left">
+      If you cannot find yours, reply to the email we sent you and we will send the
+      link again. If you never received one and think you should have, get in touch
+      with us directly and we will sort it out.
+    </p>
+  </section>
+
+  <div class="section-divider">
+    <div class="section-divider-line"></div>
+    <svg class="section-divider-diamond" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 L10 5 L5 10 L0 5 Z" fill="#A94E2B"/></svg>
+    <div class="section-divider-line"></div>
+  </div>
+
+  <section class="flex flex-col gap-4 text-center">
+    <h2 class="display-md">More to come</h2>
+    <p class="body-copy text-left">
+      There is a great deal still to write down — the schedule, the ferry, what to
+      wear on a beach in February. It will be here, and it will be in your
+      invitation, well before you need it.
+    </p>
+  </section>
+
+{% endblock %}
+
+{# One CC0 photograph, which obliges nobody. `photo_credit_for` returns an empty
+   string for it and a real credit the moment a CC BY picture is put in its place. #}
+{% block credits %}
+  {% set credit = photo_credit_for('gulf-sunset.jpg') %}
+  {% if credit %}<p class="photo-credit">{{ credit }}</p>{% endif %}
+{% endblock %}

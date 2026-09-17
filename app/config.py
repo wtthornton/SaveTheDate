@@ -15,6 +15,18 @@ class Settings(BaseSettings):
     # sent. Defaults to False, so production has to do nothing to stay quiet.
     review_instance: bool = False
 
+    # -- The public front door (TAP-7781) ----------------------------------
+
+    # Hostnames whose ROOT serves the save-the-date card instead of the welcome page.
+    # Comma-separated, e.g. "savethedate.tapphouse.co,dev-savethedate.tapphouse.co".
+    #
+    # An explicit list rather than a substring test, because this project is itself
+    # called savethedate: matching on the name would put the card on `dev-wedding`
+    # the moment someone renamed something, and a guest-facing hostname silently
+    # serving the wrong page is the failure this list exists to make impossible.
+    # Unset means every hostname serves the welcome, which is the safe direction.
+    save_the_date_hosts: str = ""
+
     # -- Host authentication (TAP-7725) ------------------------------------
 
     session_cookie_name: str = "savethedate_host"
@@ -68,6 +80,13 @@ class Settings(BaseSettings):
     @property
     def registration_is_open(self) -> bool:
         return bool(self.host_registration_token)
+
+    @property
+    def save_the_date_host_list(self) -> list[str]:
+        """Lowercased, because a Host header's case is not the author's to assume."""
+        return [
+            host.strip().casefold() for host in self.save_the_date_hosts.split(",") if host.strip()
+        ]
 
     @property
     def cors_origin_list(self) -> list[str]:
