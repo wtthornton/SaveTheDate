@@ -226,8 +226,10 @@ else's:
 - ~~**Unattended restart**: the stack comes back on its own after a power cut.~~ Done:
   `restart: unless-stopped` throughout, Docker, the tunnel and both timers enabled at
   boot, and lingering on so the user units survive logout.
-- **Power and network continuity** through the RSVP window — a UPS, and a plan for what
-  happens if the house loses internet while you are in Texas. Still open; hardware.
+- ~~**Power continuity** through the RSVP window — a UPS.~~ Done: the box is on UPS
+  hardware. What remains is the *network* half, which a battery does not answer — what
+  happens if the house loses internet while you are in Texas. The tunnel reconnects by
+  itself, so the open question is long outages, and whether anyone would notice.
 
 Tracked as TAP-7733. The operational procedures are in [docs/RUNBOOK.md](docs/RUNBOOK.md),
 written to be followable by someone who has never seen this project.
@@ -458,9 +460,10 @@ and are deliberately not stubbed out:
   libraries than were tested here. The built image is what runs and rebuilding is
   deliberate, so this is a rebuild-time risk rather than a running one — but it is real
   across a 17-month deployment.
-- **No UPS.** Everything that can return unattended does, but a power cut long enough to
-  outlast the battery that does not exist still takes the site down until the line comes
-  back. TAP-7733.
+- **No answer for a long internet outage.** The box is on a UPS and everything returns
+  unattended after a power cut, so power is covered. A battery does nothing for the line
+  going down while the household is in Texas, though — the tunnel reconnects by itself,
+  so what is actually unsolved is a long outage, and whether anyone would know.
 - **No error reporting**, and `/health` says the process is up rather than that the
   service works. TAP-7734.
 - **Every photograph is a placeholder**, and the hero is a stock photograph of another

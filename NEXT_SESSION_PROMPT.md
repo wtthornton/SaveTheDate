@@ -52,7 +52,8 @@ steps, including scoping the token to the one bucket. Once he does:
 2. `./scripts/backup.sh` — it confirms the uploaded byte count, so a silent no-op fails.
 3. `./scripts/restore-drill.sh` — this is the deliverable. It must print
    `GUESTS RESTORED` and exit 0.
-4. Then TAP-7733 is done except for the UPS.
+4. **Then TAP-7733 is done.** The UPS half was closed on 2026-09-17 — the box is
+   already on UPS hardware — so the R2 credentials are the whole of what is left.
 
 Do not load the real guest list before step 3 passes against R2. Losing the guest list
 is the one failure with no recovery path, and the date cannot move.
@@ -74,8 +75,11 @@ is the one failure with no recovery path, and the date cannot move.
    is a CC0 Gulf beach rather than Port Aransas. `photo_credit_for()` builds each page's
    credit from the filenames the template names, so swapping a CC BY image in makes a
    credit line appear by itself.
-5. **A UPS**, and what happens if the line drops while the household is in Texas for
-   part of a months-long RSVP window. Hardware.
+5. **What happens if the line drops while the household is in Texas** for part of a
+   months-long RSVP window. The UPS is done, and a battery does not answer this: it
+   keeps the box alive through a power cut and does nothing for an internet outage. The
+   tunnel reconnects by itself, so the unsolved part is a *long* outage and whether
+   anyone would know. Overlaps with TAP-7734.
 6. **A dependency lockfile.** There is none, so a production image rebuilt in 2028 may
    resolve newer libraries than were tested. The built image is what runs and rebuilding
    is deliberate, so this is a rebuild-time risk, not a running one — but it is real

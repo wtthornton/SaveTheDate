@@ -573,7 +573,10 @@ decision — not dollars.
 These were somebody else's problem under a managed host and are now ours. They belong in
 TAP-7733 rather than being discovered during the RSVP window:
 
-- **Power.** A UPS, and unattended restart after it runs out.
+- ~~**Power.** A UPS, and unattended restart after it runs out.~~ **DONE.** The box is
+  on UPS hardware (confirmed by Bill 2026-09-17), and the unattended-restart half was
+  verified when the production stack was built: `restart: unless-stopped` throughout,
+  Docker, `cloudflared-tapphouse` and both backup timers enabled at boot, lingering on.
 - **Internet.** The RSVP window is months long and the household will be in Texas for
   part of it. What happens if the line drops while nobody is home?
 - **Unattended recovery.** Nobody should need to SSH in for the site to come back.
@@ -1075,10 +1078,15 @@ ignore it, which is how the real failure gets missed later.
   than were tested. The built image is what runs and a rebuild is deliberate, so this
   is a rebuild-time risk rather than a running one — but it is real over a 17-month
   deployment. `uv lock` is the fix, and it touches CI, so it is its own piece of work.
-- **A UPS, and what happens if the line drops while the household is in Texas.**
-  Hardware, not software. Everything that can return unattended does: `unless-stopped`
-  was verified by killing the app (RestartCount 0 → 1, back in about a second), and
-  `docker.service`, `cloudflared-tapphouse` and both timers are enabled with lingering
-  on.
+- ~~**A UPS.**~~ **Closed 2026-09-17** — the box is already on UPS hardware. The
+  software half was verified when this stack was built: `unless-stopped` proved by
+  killing the app (RestartCount 0 → 1, back in about a second), and `docker.service`,
+  `cloudflared-tapphouse` and both timers enabled at boot with lingering on. Power is
+  no longer on the critical path in either half.
+- **What happens if the line drops while the household is in Texas** for part of a
+  months-long RSVP window. Distinct from the UPS and not answered by it: a battery
+  keeps the box alive through a power cut, and does nothing for an internet outage.
+  The tunnel reconnects by itself, so this is only a question about outages long
+  enough to matter, and about whether anyone would know.
 - **Observability.** TAP-7734. A failed drill is currently only visible to
   `scripts/prod.sh status`, which now reports timer state and failed units.
