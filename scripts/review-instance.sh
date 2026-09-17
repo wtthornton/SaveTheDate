@@ -62,7 +62,12 @@ import socket
 s = socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1]); s.close()")"
 
   # REVIEW_INSTANCE puts the draft banner on every page.
-  REVIEW_INSTANCE=true nohup "${ROOT}/.venv/bin/uvicorn" app.main:app \
+  # SAVE_THE_DATE_HOSTS makes dev-savethedate.tapphouse.co serve the card at its root
+  # while dev-wedding.tapphouse.co keeps serving the wedding welcome (TAP-7781). Both
+  # hostnames reach this one process through the named tunnel; the app tells them
+  # apart by the Host header, so there is no second port and no second instance.
+  REVIEW_INSTANCE=true SAVE_THE_DATE_HOSTS=dev-savethedate.tapphouse.co \
+    nohup "${ROOT}/.venv/bin/uvicorn" app.main:app \
     --host 127.0.0.1 --port "$port" --log-level warning \
     >"$RUN/app.log" 2>&1 &
   echo $! >"$RUN/app.pid"
@@ -134,7 +139,8 @@ reload() {
 
   kill "$(cat "$RUN/app.pid")" 2>/dev/null || true
   sleep 1
-  REVIEW_INSTANCE=true nohup "${ROOT}/.venv/bin/uvicorn" app.main:app \
+  REVIEW_INSTANCE=true SAVE_THE_DATE_HOSTS=dev-savethedate.tapphouse.co \
+    nohup "${ROOT}/.venv/bin/uvicorn" app.main:app \
     --host 127.0.0.1 --port "$port" --log-level warning \
     >"$RUN/app.log" 2>&1 &
   echo $! >"$RUN/app.pid"

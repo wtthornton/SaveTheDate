@@ -107,7 +107,7 @@ a named tunnel from the home lab.
 | `wedding.tapphouse.co` | Production — the wedding site | Reserved — 503 until the production stack exists |
 | `dev-wedding.tapphouse.co` | The review instance | **Live** |
 | `savethedate.tapphouse.co` | Production — the save-the-date card | Reserved — 503 until the production stack exists |
-| `dev-savethedate.tapphouse.co` | The save-the-date card on the review instance | Not yet routed |
+| `dev-savethedate.tapphouse.co` | The save-the-date card on the review instance | **Live** |
 | `home.tapphouse.co` | Home Assistant (Nabu Casa) | Pre-existing, untouched |
 
 Two public faces, one codebase, one app per stack. **Both live at `/`**, and the
@@ -389,11 +389,10 @@ and are deliberately not stubbed out:
 - **No production stack yet.** `wedding.tapphouse.co` and `savethedate.tapphouse.co` are
   both reserved and both return 503. They need a Compose project and a database of their
   own, separate from development. TAP-7733.
-- **`dev-savethedate.tapphouse.co` is not routed yet.** The card is built and tested,
-  and reviewable at `savethedate.localhost`; the DNS route and the tunnel ingress rule
-  for its own dev hostname are still to come. Until then there is no published URL for
-  it, which is deliberate — it belongs on its own hostname, not as a path on the
-  wedding site.
+- **The save-the-date card has no production home yet.** It is live for review at
+  `dev-savethedate.tapphouse.co`, which reaches the same review instance as
+  `dev-wedding` and is told apart by the Host header. `savethedate.tapphouse.co` stays
+  at 503 until the production stack exists.
 - **No error reporting**, and `/health` says the process is up rather than that the
   service works. TAP-7734.
 - **Every photograph is a placeholder**, and the hero is a stock photograph of another

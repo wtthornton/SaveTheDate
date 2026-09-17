@@ -790,7 +790,7 @@ a convenience.
 | `dev-wedding.tapphouse.co` | The review instance on :50681 — **live** |
 | `wedding.tapphouse.co` | Production — **503 on purpose** |
 | `savethedate.tapphouse.co` | Production — the save-the-date card. **503 until the production stack exists** |
-| `dev-savethedate.tapphouse.co` | The card on the review instance — **not yet routed** |
+| `dev-savethedate.tapphouse.co` | The card on the review instance on :50681 — **live** |
 
 `wedding` returns 503 rather than pointing at the development instance. A guest-facing
 hostname quietly serving the development database is how invented guests start looking
