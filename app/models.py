@@ -120,6 +120,9 @@ class Guest(Base):
     attendees: Mapped[list["Attendee"]] = relationship(
         back_populates="guest", cascade="all, delete-orphan"
     )
+    deliveries: Mapped[list["Delivery"]] = relationship(
+        back_populates="guest", cascade="all, delete-orphan", order_by="Delivery.created_at"
+    )
 
 
 class Attendee(Base):
@@ -247,3 +250,37 @@ class HostSession(Base):
     expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
 
     host: Mapped[Host] = relationship(back_populates="sessions")
+
+
+class Delivery(Base):
+    """One attempt to email one guest. TAP-7731.
+
+    Per guest and per kind, so "the invite bounced" stays distinct from "the reminder
+    bounced", and a host can see which. A silently bounced invite looks identical to a
+    guest who ignored it, which is the failure mode that actually costs a seat at the
+    table — so the state is recorded rather than inferred.
+
+    Hanging off `guests` rather than adding columns to it: `guests` is stable and its
+    token is already in inboxes, and all change is absorbed by tables hanging off it.
+    """
+
+    __tablename__ = "deliveries"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    guest_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("guests.id", ondelete="CASCADE"))
+    # "invite" or "reminder". Not an enum in the database: a wedding may well want a
+    # third kind later, and a CHECK constraint here buys nothing a test does not.
+    kind: Mapped[str] = mapped_column(String(32))
+    # queued -> sent -> (delivered | bounced | complained | failed)
+    status: Mapped[str] = mapped_column(String(32), server_default="queued")
+    # The provider's id for the message, which is how a webhook finds this row again.
+    provider_message_id: Mapped[str | None] = mapped_column(String(255), nullable=True, index=True)
+    error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), server_default=func.now(), onupdate=func.now()
+    )
+
+    guest: Mapped[Guest] = relationship(back_populates="deliveries")

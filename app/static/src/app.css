@@ -1765,3 +1765,23 @@
     color: var(--color-ink);
   }
 }
+
+@layer components {
+  .host-delivery {
+    display: inline-block;
+    font-size: 18px;
+    color: var(--color-muted);
+  }
+
+  .host-delivery-bounced,
+  .host-delivery-failed,
+  .host-delivery-complained {
+    color: var(--color-accent);
+    font-weight: 500;
+  }
+
+  .host-delivery-delivered,
+  .host-delivery-sent {
+    color: var(--color-success);
+  }
+}

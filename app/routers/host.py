@@ -20,7 +20,7 @@ from fastapi.responses import HTMLResponse, RedirectResponse, StreamingResponse
 from sqlalchemy import select
 from starlette.datastructures import UploadFile as StarletteUploadFile
 
-from app import auth, dashboard, guest_import
+from app import auth, dashboard, guest_import, invitations, mail
 from app.auth import CurrentHost, current_host
 from app.config import get_settings
 from app.deps import DbSession, Now
@@ -323,6 +323,34 @@ def _import_failed(
             "import_problems": problems,
         },
         status_code=status.HTTP_422_UNPROCESSABLE_CONTENT,
+    )
+
+
+@router.post("/events/{event_id}/send")
+async def send_invitations(
+    event_id: uuid.UUID, request: Request, db: DbSession, host: CurrentHost
+) -> Response:
+    """Email the guest list. TAP-7731.
+
+    Synchronous rather than a background task, deliberately: under a hundred
+    invitations this takes a moment, and a host pressing "send invitations" wants to be
+    told what happened rather than redirected into hoping. `BackgroundTasks` would buy
+    a faster redirect and lose the report.
+
+    One address the provider refuses does not stop the rest of the list — the failure
+    is recorded against that guest and shows on the dashboard.
+    """
+    event = _owned_event(event_id, db, host)
+    form = await request.form()
+    kind = invitations.REMINDER if str(form.get("kind", "")) == "reminder" else invitations.INVITE
+
+    report = invitations.send(
+        event, db, mail.build_transport(), str(request.base_url).rstrip("/"), kind=kind
+    )
+
+    return RedirectResponse(
+        url=(f"/host/events/{event.id}?sent={report.sent}&failed={report.failed}&kind={kind}"),
+        status_code=status.HTTP_303_SEE_OTHER,
     )
 
 

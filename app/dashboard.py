@@ -110,6 +110,32 @@ class InvitationRow:
     def note(self) -> str | None:
         return self.guest.rsvp.note if self.guest.rsvp else None
 
+    @property
+    def delivery(self) -> str:
+        """What happened to this invitation's email, in words. TAP-7731.
+
+        The last attempt wins, because that is the one whose outcome still stands. A
+        bounce has to be visible: a bounced invite and a guest who ignored one look
+        identical on a guest list, and only one of them is the host's problem to fix.
+        """
+        if not self.guest.email:
+            return "no email address"
+        attempts = [d for d in self.guest.deliveries if d.kind == "invite"]
+        if not attempts:
+            return "not sent"
+        return {
+            "queued": "sending",
+            "sent": "sent",
+            "delivered": "delivered",
+            "bounced": "bounced",
+            "complained": "marked as spam",
+            "failed": "could not send",
+        }.get(attempts[-1].status, attempts[-1].status)
+
+    @property
+    def delivery_needs_attention(self) -> bool:
+        return self.delivery in {"bounced", "marked as spam", "could not send"}
+
 
 @dataclass(frozen=True)
 class Dashboard:
@@ -134,6 +160,7 @@ def build(event: Event, db: Session) -> Dashboard:
             .options(
                 selectinload(Guest.attendees).selectinload(Attendee.attendance),
                 selectinload(Guest.rsvp),
+                selectinload(Guest.deliveries),
             )
         )
     )

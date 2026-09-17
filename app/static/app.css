@@ -2023,6 +2023,18 @@
     font-size: 26px;
     color: var(--color-ink);
   }
+  .host-delivery {
+    display: inline-block;
+    font-size: 18px;
+    color: var(--color-muted);
+  }
+  .host-delivery-bounced, .host-delivery-failed, .host-delivery-complained {
+    color: var(--color-accent);
+    font-weight: 500;
+  }
+  .host-delivery-delivered, .host-delivery-sent {
+    color: var(--color-success);
+  }
 }
 @property --tw-font-weight {
   syntax: "*";

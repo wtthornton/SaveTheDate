@@ -140,6 +140,11 @@
                     {{ row.status }}
                   </span>
                   {% if row.note %}<span class="host-sub">“{{ row.note }}”</span>{% endif %}
+                  {# A bounced invite and an ignored one look identical on a guest
+                     list, and only one of them is the host's to fix. TAP-7731. #}
+                  <span class="host-delivery host-delivery-{{ row.delivery | replace(' ', '-') }}">
+                    Email: {{ row.delivery }}
+                  </span>
                 </td>
                 <td>
                   {% if row.guest.attendees %}
@@ -217,6 +222,36 @@
         </table>
       </div>
     {% endif %}
+  </section>
+
+  <section class="flex flex-col gap-3" aria-labelledby="send-heading">
+    <h2 class="host-section-heading" id="send-heading">Send the invitations</h2>
+
+    {% if request.query_params.get('sent') is not none %}
+      <p class="host-hint" role="status">
+        Sent {{ request.query_params.get('sent') }}.
+        {% if request.query_params.get('failed') | int > 0 %}
+          <strong>{{ request.query_params.get('failed') }} could not be sent</strong> —
+          the guest list below says which.
+        {% endif %}
+      </p>
+    {% endif %}
+
+    <div class="host-edit-form">
+      <form method="post" action="/host/events/{{ event.id }}/send">
+        <input type="hidden" name="kind" value="invite">
+        <button class="host-btn" type="submit">Email everyone who has not had one</button>
+      </form>
+      <form method="post" action="/host/events/{{ event.id }}/send">
+        <input type="hidden" name="kind" value="reminder">
+        <button class="host-btn-quiet" type="submit">Remind everyone who has not replied</button>
+      </form>
+    </div>
+    <p class="host-hint">
+      An invitation goes only to guests with an address who have not already had one,
+      so pressing this twice does not send it twice. A reminder goes only to guests who
+      have not replied at all — someone who declined has answered.
+    </p>
   </section>
 
   <section class="flex flex-col gap-3" aria-labelledby="import-heading">

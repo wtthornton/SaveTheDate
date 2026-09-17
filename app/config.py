@@ -45,6 +45,20 @@ class Settings(BaseSettings):
     # limiter off rather than on.
     trusted_client_ip_header: str | None = None
 
+    # -- Email delivery (TAP-7731) -----------------------------------------
+
+    # "console" prints instead of sending. The default on purpose: an unconfigured
+    # deployment that prints is obvious and harmless, whereas one that silently
+    # succeeds is a lie and one that mails real guests by accident is worse.
+    email_provider: str = "console"
+    resend_api_key: str | None = None
+    email_from: str = "SaveTheDate <invites@example.com>"
+
+    # Shared secret for the provider's bounce/complaint webhook. Unset means the
+    # webhook refuses everything, which is the right default for an endpoint that
+    # changes delivery state.
+    email_webhook_secret: str | None = None
+
     @property
     def cookie_secure(self) -> bool:
         if self.session_cookie_secure is not None:
