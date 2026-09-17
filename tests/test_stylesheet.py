@@ -36,6 +36,7 @@ JINJA_BLOCK = re.compile(r"\{%.*?%\}|\{#.*?#\}", re.DOTALL)
 JINJA_EXPR = re.compile(r"\{\{(.*?)\}\}", re.DOTALL)
 JINJA_STRING = re.compile(r"'([^']*)'|\"([^\"]*)\"")
 
+
 def _is_generated_utility(token: str) -> bool:
     """A token Tailwind must have generated a rule for, so its absence is a defect.
 

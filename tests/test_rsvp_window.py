@@ -21,7 +21,7 @@ because unlike a bare date it looks precise while carrying no zone at all.
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
 from zoneinfo import ZoneInfo
@@ -45,13 +45,23 @@ DEADLINE_INSTANT = datetime(2027, 12, 16, 0, 0, tzinfo=CHICAGO)
 
 
 class FrozenClock:
-    """The instant the routes see. Starts inside the window; each test moves it."""
+    """The instant the routes see, pinned from the first `set()` onwards.
 
-    def __init__(self) -> None:
+    Deliberately lazy. The same clock dependency also decides whether a host's session
+    has expired, so installing the override up front would run this file's setup —
+    creating the event and the guest, both host endpoints — at a time years after the
+    session cookie was issued, and every test would 401 before it asserted anything.
+    Setup therefore runs on the real clock, and time only stops once a test says so.
+    The routes under test here are public, so no session is consulted after that.
+    """
+
+    def __init__(self, install: Callable[[Callable[[], datetime]], None]) -> None:
         self.moment = datetime(2027, 11, 1, 12, 0, tzinfo=UTC)
+        self._install = install
 
     def set(self, moment: datetime) -> None:
         self.moment = moment
+        self._install(lambda: self.moment)
 
 
 @pytest.fixture
@@ -62,10 +72,11 @@ def frozen(client: TestClient) -> Iterator[FrozenClock]:
     from app import clock
     from app.main import app
 
-    handle = FrozenClock()
-    app.dependency_overrides[clock.now] = lambda: handle.moment
-    yield handle
-    del app.dependency_overrides[clock.now]
+    def install(reader: Callable[[], datetime]) -> None:
+        app.dependency_overrides[clock.now] = reader
+
+    yield FrozenClock(install)
+    app.dependency_overrides.pop(clock.now, None)
 
 
 def _event_with_window(

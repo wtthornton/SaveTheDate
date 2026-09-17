@@ -7,7 +7,7 @@ from fastapi.responses import PlainTextResponse
 from fastapi.staticfiles import StaticFiles
 
 from app.config import get_settings
-from app.routers import events, invites, pages
+from app.routers import auth, events, invites, pages
 
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
@@ -44,6 +44,7 @@ async def no_index(
 
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
+app.include_router(auth.router)
 app.include_router(events.router)
 app.include_router(invites.router)
 app.include_router(pages.router)

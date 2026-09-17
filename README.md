@@ -7,9 +7,10 @@ link. Guests open the link, see the event, and RSVP — no account, no password.
 Hosts read the responses back off the guest list.
 
 **Status:** early. The API below works end to end and is covered by tests. The
-guest-facing pages are built — an invite link opens a real page, not JSON — but the
-host-facing endpoints are still unauthenticated (see [Known gaps](#known-gaps)), so
-only invented guests may exist on any running instance.
+guest-facing pages are built — an invite link opens a real page, not JSON — and the
+host-facing endpoints now require a signed-in host. Events are not yet scoped to their
+owner, though (see [Known gaps](#known-gaps)), so only invented guests may exist on any
+running instance.
 
 ## Stack
 
@@ -303,9 +304,9 @@ These are tracked as epics in the
 [Linear project](https://linear.app/tappscodingagents/project/savethedate-6d14ff49f534)
 and are deliberately not stubbed out:
 
-- **Host endpoints are unauthenticated.** Anyone who can reach the API can create
-  events and read any guest list, including invite tokens. This must be closed
-  before the service is exposed publicly.
+- **Any signed-in host can reach any event.** Authentication proves who is calling;
+  it does not yet limit what they may touch, because `events` has no owner. With a
+  single host that is theoretical, but it is the next thing to close.
 - **No host dashboard.** The guest pages exist; the host-facing side does not.
 - **No email/SMS delivery.** Invite links have to be distributed by hand.
 - **No rate limiting** on invite-token lookups.

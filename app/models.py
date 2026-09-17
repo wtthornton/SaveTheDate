@@ -189,3 +189,53 @@ class Rsvp(Base):
     )
 
     guest: Mapped[Guest] = relationship(back_populates="rsvp")
+
+
+class Host(Base):
+    """Someone who runs an event. The only account in this system.
+
+    Guests deliberately have no row here and never will: the invite token is their
+    whole credential, and requiring anything more of an older relative is the one
+    advantage this has over Joy, Zola and Minted. TAP-7725.
+    """
+
+    __tablename__ = "hosts"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    # Stored casefolded, because people do not type their own address consistently and
+    # a second account created by a stray capital is a confusing way to lose an event.
+    email: Mapped[str] = mapped_column(String(320), unique=True, index=True)
+    # An argon2id digest, which carries its own parameters and salt inline.
+    password_hash: Mapped[str] = mapped_column(String(255))
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+
+    sessions: Mapped[list["HostSession"]] = relationship(
+        back_populates="host", cascade="all, delete-orphan"
+    )
+
+
+class HostSession(Base):
+    """One logged-in browser.
+
+    Server-side rather than a signed cookie, so signing out actually ends the session
+    and a stolen cookie can be revoked. The host UI is server-rendered Jinja like the
+    guest pages, so a cookie is the natural carrier; a bearer token would drag
+    JavaScript into a stack that deliberately has none.
+    """
+
+    __tablename__ = "host_sessions"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        PGUUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    host_id: Mapped[uuid.UUID] = mapped_column(ForeignKey("hosts.id", ondelete="CASCADE"))
+    # sha256 of the cookie value, hex. The raw token exists only in the cookie, so a
+    # dump of this table hands nobody a live session — the same reasoning that would
+    # apply to `guests.invite_token` if that token were not, by design, the credential.
+    token_hash: Mapped[str] = mapped_column(String(64), unique=True, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), server_default=func.now())
+    expires_at: Mapped[datetime] = mapped_column(DateTime(timezone=True))
+
+    host: Mapped[Host] = relationship(back_populates="sessions")

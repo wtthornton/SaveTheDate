@@ -215,3 +215,27 @@ class InviteOut(BaseModel):
     phase: RsvpPhase
     segments: list[SegmentOut]
     rsvp: RsvpOut | None
+
+
+# -- Host authentication (TAP-7725) ---------------------------------------
+
+
+class HostRegister(BaseModel):
+    email: EmailStr
+    # NIST SP 800-63B: length is what matters, composition rules are counterproductive.
+    # 12 is the floor here because this account holds the whole guest list.
+    password: str = Field(min_length=12, max_length=1024)
+    # Must match `host_registration_token`. Registration is closed when that is unset.
+    registration_token: str
+
+
+class HostLogin(BaseModel):
+    email: EmailStr
+    password: str = Field(min_length=1, max_length=1024)
+
+
+class HostOut(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    id: uuid.UUID
+    email: EmailStr
