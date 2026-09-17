@@ -21,6 +21,7 @@
     invitation. Every guest name on it is made up.
   </p>
   {% endif %}
+  {% block hero %}{% endblock %}
   {% block nav %}
   <nav class="pgnav" aria-label="Invitation sections">
     <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path == '/invites/' ~ token else '' }}"
