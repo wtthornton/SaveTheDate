@@ -254,6 +254,26 @@
     color: #FFFFFF;
   }
 
+  @media (min-width: 1024px) {
+    /* Welcome.dc.html: the quote goes full bleed at desktop. The template cancels
+       <main>'s side padding with a negative margin and reapplies it as the card's
+       own padding, so the background runs edge to edge while the text keeps the
+       same 60px gutter. */
+    .quote-card::before {
+      inset: 14px;
+      border-color: rgba(227, 185, 164, 0.32);
+    }
+
+    .quote-text {
+      font-size: 32px;
+    }
+
+    .eyebrow-signature {
+      font-size: 19px;
+      letter-spacing: 0.28em;
+    }
+  }
+
   /* -- The full-bleed welcome hero ---------------------------------------------
    * A photograph, not a placeholder. The scrim is deliberately stronger than the
    * approved artboard: the source photo runs very light (an overcast sky across
@@ -392,6 +412,123 @@
     letter-spacing: 0.2em;
     text-transform: uppercase;
     color: rgba(255, 255, 255, 0.9);
+  }
+
+  /* -- The hero's own nav, desktop only (Welcome.dc.html) -------------------
+   * Mobile keeps the separate `.pgnav` tab bar below the hero; at 1024px and up
+   * that tab bar is hidden (`lg:hidden`, in the template) and this row — living
+   * inside the photograph itself — takes over. `.hero-mark`, the mobile
+   * monogram-and-tag block, is likewise hidden at desktop from the template.
+   */
+
+  .hero-nav {
+    position: absolute;
+    top: 46px;
+    left: 60px;
+    right: 60px;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .hero-nav-links {
+    display: flex;
+    align-items: center;
+    gap: 34px;
+  }
+
+  .hero-nav-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: #E8E2D6;
+    text-decoration: none;
+  }
+
+  .hero-nav-link:hover {
+    color: #FFFFFF;
+  }
+
+  .hero-nav-link-on {
+    color: #FFFFFF;
+    box-shadow: inset 0 -2px 0 var(--color-blush);
+  }
+
+  .hero-nav-rsvp-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0 22px;
+    background-color: var(--color-ground);
+    color: var(--color-ink);
+    font-weight: 700;
+    font-size: 18px;
+    letter-spacing: 0.1em;
+    text-decoration: none;
+    border-radius: 2px;
+  }
+
+  @media (min-width: 1024px) {
+    .hero {
+      height: 760px;
+    }
+
+    .hero-photo {
+      object-position: center 26%;
+    }
+
+    .hero-frame-outer {
+      inset: 22px;
+    }
+
+    .hero-frame-inner {
+      inset: 29px;
+    }
+
+    .hero-monogram {
+      width: 54px;
+      height: 54px;
+    }
+
+    .hero-copy {
+      left: 0;
+      right: 0;
+      bottom: 78px;
+    }
+
+    .hero-names {
+      font-size: 96px;
+    }
+
+    .hero-and {
+      font-size: 44px;
+    }
+
+    .hero-ornament {
+      gap: 14px;
+    }
+
+    .hero-ornament-line {
+      width: 90px;
+    }
+
+    .hero-date {
+      font-size: 27px;
+    }
+
+    .eyebrow-hero-tag {
+      font-size: 12px;
+      letter-spacing: 0.44em;
+    }
+
+    .eyebrow-hero-location {
+      font-size: 13px;
+      letter-spacing: 0.26em;
+      padding-top: 12px;
+    }
   }
 
   /* -- Beat thumbnails: real photography for beats I and III --------------- */
@@ -560,6 +697,12 @@
     flex-shrink: 0;
   }
 
+  .tap-row-bare {
+    border: none;
+    background-color: transparent;
+    padding: 0;
+  }
+
   .tap-row-title {
     font-size: 18px;
     font-weight: 700;
@@ -693,10 +836,168 @@
     border: 1px solid var(--color-rule);
     border-radius: 4px;
     background-color: var(--color-card);
+    /* A flex/grid item's automatic minimum size is its content's min-content size
+       unless this is set — without it, one long unbroken diet-chip label (or any
+       nested flex row) refuses to shrink and forces the whole form to scroll
+       sideways at extreme zoom. `min-width: 0` removes that floor; `overflow-wrap`
+       lets a single very long word actually break instead of pushing the box wider
+       (`anywhere`, unlike `break-word`, also counts toward the min-content size the
+       browser computes, so the two together fix the size calculation itself rather
+       than just visually hiding an overflow). */
+    min-width: 0;
+  }
+
+  .rsvp-fieldset * {
+    min-width: 0;
+    overflow-wrap: anywhere;
   }
 
   .rsvp-fieldset > legend {
     padding: 0 8px;
+  }
+
+  /* -- Desktop guest grid (DesktopRsvp.dc.html) ----------------------------------
+   * `display: contents` below 1024px makes the wrapper invisible to layout, so the
+   * fieldsets stay direct flex children of the form — the exact stacked mobile
+   * arrangement RsvpForm.dc.html already has, untouched. At 1024px the wrapper
+   * becomes a real two-column grid, putting the guests side by side.
+   *
+   * `.rsvp-split-grid` (the "how much of the weekend" / "something to do in the
+   * morning" pair) stays `display: contents` at EVERY width, on purpose: the
+   * artboard's two-column grid for that pair lives at form level, a sibling of the
+   * guest grid, one grid for the whole page. Our form is per person, so that grid
+   * can only be nested inside a guest card — where the guests being side by side
+   * already halves the width, and a second nested 2-column grid quarters it,
+   * wrapping "Golf at Palmilla" onto two lines. Inside a guest card the two blocks
+   * stack instead, at every width.
+   */
+
+  .rsvp-guest-grid,
+  .rsvp-split-grid {
+    display: contents;
+  }
+
+  @media (min-width: 1024px) {
+    .rsvp-guest-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 22px;
+      min-width: 0;
+    }
+
+    .rsvp-guest-grid > * {
+      min-width: 0;
+    }
+  }
+
+  /* -- Desktop RSVP left panel (DesktopRsvp.dc.html) -----------------------------
+   * Hidden below 1024px — the mobile RSVP form has no photograph, matching
+   * RsvpForm.dc.html. `pier-sunset.jpg` is a stock placeholder: never claimed to
+   * be Bill, Lisa or Port Aransas (see img/CREDITS.md).
+   */
+
+  .rsvp-side {
+    position: relative;
+    overflow: hidden;
+  }
+
+  .rsvp-side-photo {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .rsvp-side-scrim {
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(
+      to bottom,
+      rgba(34, 48, 58, 0.74) 0%,
+      rgba(34, 48, 58, 0.72) 45%,
+      rgba(34, 48, 58, 0.92) 100%
+    );
+  }
+
+  .rsvp-side-content {
+    position: absolute;
+    inset: 0;
+    padding: 52px 42px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .rsvp-side-names {
+    font-family: var(--font-display);
+    font-size: 44px;
+    font-weight: 300;
+    line-height: 1;
+    color: #FFFFFF;
+  }
+
+  .rsvp-side-and {
+    font-style: italic;
+  }
+
+  .eyebrow-rsvp-side-date {
+    display: block;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: #FFFFFF;
+  }
+
+  .rsvp-side-location {
+    font-family: var(--font-display);
+    font-size: 23px;
+    font-style: italic;
+    color: #E8E2D6;
+  }
+
+  .rsvp-side-rule {
+    width: 34px;
+    height: 1px;
+    background-color: var(--color-blush);
+  }
+
+  .rsvp-side-note {
+    /* The artboard sets this at 17px. Raised to the 18px floor — the design
+       violates it, and the invariant wins over pixel-for-pixel fidelity. */
+    font-size: 18px;
+    line-height: 1.65;
+    color: #E8E2D6;
+  }
+
+  /* -- Desktop inline nav row, RSVP page (DesktopRsvp.dc.html) ------------------- */
+
+  .rsvp-nav-row {
+    display: flex;
+    align-items: center;
+    gap: 28px;
+  }
+
+  .rsvp-nav-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    /* The artboard sets this at 16px; raised to the 18px floor. */
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--color-muted);
+    text-decoration: none;
+  }
+
+  .rsvp-nav-link:hover {
+    color: var(--color-accent);
+  }
+
+  .rsvp-nav-link-on {
+    color: var(--color-accent);
+    box-shadow: inset 0 -2px 0 var(--color-accent);
   }
 
   .paid-card {
@@ -716,6 +1017,9 @@
   }
 
   .paid-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
     font-size: 18px;
     font-weight: 700;
   }

@@ -26,6 +26,9 @@ dev = [
     "httpx2>=2.13",
     "ruff>=0.14",
     "mypy>=1.18",
+    # Layout and visual tests drive a real browser: a stylesheet scan cannot see
+    # cascade, and no non-visual test caught the hero rendering as an empty box.
+    "playwright>=1.55",
 ]
 
 [build-system]

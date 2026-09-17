@@ -20,3 +20,6 @@ build/
 
 # TAP-7738 review instance: pid files, logs and the current tunnel URL.
 .review/
+
+# Visual-test output: regenerated on every run, reviewed by eye, not committed.
+tests/screenshots/

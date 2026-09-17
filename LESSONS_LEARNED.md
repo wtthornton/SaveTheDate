@@ -234,6 +234,47 @@ box, because CI's environment is part of what makes it safe. Before running anyt
 destructive locally, check what it resolves its target from — and check twice when
 something is actively serving from that target.
 
+### A whole breakpoint can be missing and every test still pass
+
+The design canvas has nine artboards. Four are mobile, three are desktop at 1440px, and
+the first build read only the mobile ones — because the brief handed to the subagent
+named only those. So there was no desktop layout at all: at 1440px every page rendered
+as a ~670px phone column centred in empty space, with 96px thumbnails where the design
+has 470px images.
+
+Forty-five tests were green. Not one of them knew what a page looks like. The gap was
+found by a person opening the site and saying "this looks nothing like the design",
+which is the most expensive possible detector.
+
+The fix was a browser-driven suite (`tests/test_visual.py`) that measures **rendered
+geometry** at phone and desktop widths and writes full-page screenshots to
+`tests/screenshots/` for a human to look at. On its first run it failed five ways: the
+desktop hero height, guests not side by side, the desktop rendering as a phone column,
+beats not alternating, and — an accessibility requirement that had been *claimed as
+met* — the RSVP form scrolling sideways at 200% zoom.
+
+Three things this changed for good:
+
+- **Measure computed styles, not the stylesheet.** A CSS scan cannot see the cascade,
+  inheritance, or which Tailwind utilities actually won. The browser test caught three
+  text links rendering at 29px that the stylesheet scan called fine.
+- **Screenshots are part of the deliverable.** An assertion only catches what someone
+  thought to assert. A person glancing at ten PNGs catches what nobody thought of.
+- **Check every artboard is accounted for before building.** Count them, and say out
+  loud which ones are in scope.
+
+### A test that passes is not a test that works, part two
+
+Writing the above, the first version of the "the couple is not named twice" test
+**passed against a page that plainly showed the name twice.** It scanned
+`h1, h2, .hero-names, [class*="wordmark"]`, and the side panel uses
+`<p class="rsvp-side-names">`, so it counted one and went green.
+
+Exactly the failure the lessons above describe, committed again while writing the test
+meant to prevent it. The rule holds and is easy to forget: **a new test must be seen
+failing against the actual defect** before it is trusted. Not against a mutation, not
+in principle — against the real broken thing in front of you.
+
 ### A green CI is not the same as the definition of done
 
 The project's stated definition of done required migrations to apply **and roll back**.

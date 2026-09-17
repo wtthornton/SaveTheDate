@@ -16,7 +16,20 @@
     <div class="hero-frame-outer" aria-hidden="true"></div>
     <div class="hero-frame-inner" aria-hidden="true"></div>
 
-    <div class="hero-mark">
+    {# Desktop: the nav moves inside the hero. Mobile keeps the tab bar below it
+       (in the `nav` block) and shows a centered monogram + tag here instead. #}
+    <nav class="hero-nav hidden lg:flex" aria-label="Invitation sections">
+      <span class="hero-monogram" aria-hidden="true">
+        <span class="hero-monogram-text">B&nbsp;&amp;&nbsp;L</span>
+      </span>
+      <div class="hero-nav-links">
+        <a class="hero-nav-link hero-nav-link-on" href="/invites/{{ token }}">Welcome</a>
+        <a class="hero-nav-link" href="/invites/{{ token }}/wedding">The Wedding</a>
+        <a class="hero-nav-rsvp-btn" href="/invites/{{ token }}/rsvp">RSVP</a>
+      </div>
+    </nav>
+
+    <div class="hero-mark lg:hidden">
       <span class="hero-monogram" aria-hidden="true">
         <span class="hero-monogram-text">B&nbsp;&amp;&nbsp;L</span>
       </span>
@@ -24,6 +37,7 @@
     </div>
 
     <div class="hero-copy">
+      <span class="eyebrow-hero-tag hidden lg:block">Save the date</span>
       <h1 class="hero-names">Bill <span class="hero-and">and</span> Lisa</h1>
       <div class="hero-ornament" aria-hidden="true">
         <span class="hero-ornament-line"></span>
@@ -40,21 +54,46 @@
   </section>
 {% endblock %}
 
+{% block nav %}
+  <nav class="pgnav lg:hidden" aria-label="Invitation sections">
+    <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path == '/invites/' ~ token else '' }}"
+       href="/invites/{{ token }}">Welcome</a>
+    <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path.endswith('/wedding') else '' }}"
+       href="/invites/{{ token }}/wedding">The Wedding</a>
+    <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path.endswith('/rsvp') else '' }}"
+       href="/invites/{{ token }}/rsvp">RSVP</a>
+  </nav>
+{% endblock %}
+
+{# The mobile column (max-w-2xl, px-5, gap-8) is kept exactly as it was. At desktop
+   the 672px cap and main's own padding come off — Welcome.dc.html is a 1440px
+   layout where each section carries its own 60px gutter, not a stretched phone
+   column — and the vertical rhythm comes from each section's own padding too. #}
+{% block main_class %}mx-auto flex max-w-2xl flex-col gap-8 px-5 py-8 lg:max-w-none lg:gap-0 lg:px-0 lg:py-0{% endblock %}
+
 {% block content %}
 
-  <section class="flex flex-col gap-3">
-    <h2 class="display-lg">We are so glad you are here</h2>
-    <p class="lede">
-      There is plenty of practical detail on the next page — schedule, times, what
-      to bring for a beach in February. First we wanted to tell you why we are
-      asking you to come all this way to a small island in Texas.
-    </p>
-    <p class="body-copy">
-      This invitation is for {{ guest.name }}{% if guest.party_size > 1 %} and guest{% endif %}.
-    </p>
+  <section class="flex flex-col gap-3 lg:flex-row lg:items-start lg:gap-16 lg:px-[60px] lg:pt-[52px] lg:pb-[26px]">
+    <h2 class="display-lg lg:w-[420px] lg:flex-shrink-0 lg:text-[46px] lg:leading-[1.08]">
+      We are so glad you are here
+    </h2>
+    <div class="flex flex-col gap-3 lg:gap-3.5 lg:pt-1.5">
+      <p class="lede lg:text-[19px]">
+        There is plenty of practical detail on the next page — schedule, times, what
+        to bring for a beach in February. First we wanted to tell you why we are
+        asking you to come all this way to a small island in Texas.
+      </p>
+      <p class="body-copy hidden lg:block lg:text-[19px]">
+        The short version: this island has been part of Lisa's family for decades,
+        and we would like it to be part of ours.
+      </p>
+      <p class="body-copy lg:text-[19px]">
+        This invitation is for {{ guest.name }}{% if guest.party_size > 1 %} and guest{% endif %}.
+      </p>
+    </div>
   </section>
 
-  <div class="section-divider">
+  <div class="section-divider lg:px-[60px] lg:pb-[26px]">
     <div class="section-divider-line"></div>
     <svg class="section-divider-diamond" width="9" height="9" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 L10 5 L5 10 L0 5 Z" fill="#A94E2B"/></svg>
     <span class="eyebrow">Why Port Aransas</span>
@@ -62,17 +101,17 @@
     <div class="section-divider-line"></div>
   </div>
 
-  <section class="grid grid-cols-[96px_minmax(0,1fr)] items-start gap-4">
-    <div class="beat-thumb">
+  <section class="beat grid grid-cols-[96px_minmax(0,1fr)] items-start gap-4 lg:grid-cols-[470px_minmax(0,1fr)] lg:items-center lg:gap-12 lg:px-[60px] lg:py-[26px]">
+    <div class="beat-thumb lg:h-[300px]">
       <img
         class="beat-thumb-img"
         src="/static/img/gulf-sunset.jpg"
         alt="An orange and purple sunset over the Gulf of Mexico, waves breaking on the sand.">
       <div class="beat-thumb-warm" aria-hidden="true"></div>
     </div>
-    <div class="flex flex-col gap-2">
+    <div class="flex flex-col gap-2 lg:gap-3">
       <p class="beat-roman">I</p>
-      <h3 class="display-md">It began as a family vacation</h3>
+      <h3 class="display-md lg:text-[40px]">It began as a family vacation</h3>
       <p class="body-copy">
         Long before any of this, this was where Lisa's family came on vacation.
         Her parents loading up the car, the wait for the ferry, the same stretch
@@ -83,15 +122,15 @@
     </div>
   </section>
 
-  <div class="section-divider-line"></div>
+  <div class="section-divider-line lg:mx-[60px]"></div>
 
-  <section class="grid grid-cols-[96px_minmax(0,1fr)] items-start gap-4">
-    <div class="photo-slot h-[122px]">
+  <section class="beat grid grid-cols-[96px_minmax(0,1fr)] items-start gap-4 lg:grid-cols-[minmax(0,1fr)_470px] lg:items-center lg:gap-12 lg:px-[60px] lg:py-[26px]">
+    <div class="photo-slot h-[122px] lg:order-2 lg:h-[300px]">
       <span class="photo-slot-eyebrow">A Shore Thing</span>
     </div>
-    <div class="flex flex-col gap-2">
+    <div class="flex flex-col gap-2 lg:order-1 lg:gap-3">
       <p class="beat-roman">II</p>
-      <h3 class="display-md">Then Jason built a place</h3>
+      <h3 class="display-md lg:text-[40px]">Then Jason built a place</h3>
       <p class="body-copy">
         Some years ago Lisa's brother Jason bought a piece of the island and built
         a house on it — A Shore Thing — and what had been a vacation turned into
@@ -102,19 +141,19 @@
     </div>
   </section>
 
-  <div class="section-divider-line"></div>
+  <div class="section-divider-line lg:mx-[60px]"></div>
 
-  <section class="grid grid-cols-[96px_minmax(0,1fr)] items-start gap-4">
-    <div class="beat-thumb">
+  <section class="beat grid grid-cols-[96px_minmax(0,1fr)] items-start gap-4 lg:grid-cols-[470px_minmax(0,1fr)] lg:items-center lg:gap-12 lg:px-[60px] lg:py-[26px]">
+    <div class="beat-thumb lg:h-[300px]">
       <img
         class="beat-thumb-img"
         src="/static/img/gulf-evening.jpg"
         alt="A silhouette wading into the surf at dusk, the sunset reflected in the wet sand.">
       <div class="beat-thumb-warm" aria-hidden="true"></div>
     </div>
-    <div class="flex flex-col gap-2">
+    <div class="flex flex-col gap-2 lg:gap-3">
       <p class="beat-roman">III</p>
-      <h3 class="display-md">And now we would like you to see it</h3>
+      <h3 class="display-md lg:text-[40px]">And now we would like you to see it</h3>
       <p class="body-copy">
         This is not a venue we found in a brochure. It is a place that has held
         this family for decades, and when we asked ourselves where we ought to
@@ -128,8 +167,8 @@
     </div>
   </section>
 
-  <div class="quote-card">
-    <p class="quote-text">
+  <div class="quote-card lg:rounded-none lg:px-[60px] lg:py-[46px]">
+    <p class="quote-text lg:mx-auto lg:max-w-[860px]">
       Thank you for coming so far. It means a great deal more than we can fit on
       a website.
     </p>
@@ -138,9 +177,20 @@
     </p>
   </div>
 
-  <section class="flex flex-col gap-3">
+  <section class="flex flex-col gap-3 lg:hidden">
     <a class="btn-primary btn-block" href="/invites/{{ token }}/wedding">The ceremony &amp; the weekend</a>
     <a class="btn-outline btn-block" href="/invites/{{ token }}/rsvp">RSVP</a>
+  </section>
+
+  <section class="hidden lg:flex lg:items-center lg:justify-between lg:gap-12 lg:px-[60px] lg:py-[40px]">
+    <div class="flex flex-col gap-1.5">
+      <h3 class="display-lg">The practical part</h3>
+      <p class="muted-copy">The ceremony, the days either side, and everything you need to get here.</p>
+    </div>
+    <div class="flex items-center gap-3.5">
+      <a class="btn-primary lg:min-h-[54px] lg:px-9" href="/invites/{{ token }}/wedding">The wedding</a>
+      <a class="btn-outline lg:min-h-[54px] lg:px-9" href="/invites/{{ token }}/rsvp">RSVP</a>
+    </div>
   </section>
 
 {% endblock %}

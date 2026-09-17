@@ -31,33 +31,82 @@
   </section>
 {% endmacro %}
 
-{% macro segments_and_diet(row, segments, dietary_options, event) %}
-  {% if segments %}
-    <div class="flex flex-col gap-2">
-      <p class="field-label">How much of the weekend can they join?</p>
-      {% for segment in segments %}
-        <label class="tap-row">
-          <input
-            type="checkbox"
-            name="attendee-{{ row.index }}-segments"
-            value="{{ segment.id }}"
-            {% if row.is_coming_to(segment) %}checked{% endif %}>
-          <span>
-            <span class="tap-row-title">{{ segment.name }}</span>
-            <span class="tap-row-meta">
-              {{ local_day(segment.starts_at, event.timezone) }} ·
-              {{ local_range(segment.starts_at, segment.ends_at, event.timezone) }}
-              {% if segment.is_optional %} · optional, booked separately{% endif %}
+{% macro segments_and_diet(row, required_segments, optional_segments, dietary_options, event) %}
+  <div class="rsvp-split-grid">
+    {% if required_segments %}
+      <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-0.5">
+          <p class="field-label">
+            {% if row.index == 0 %}How much of the weekend can you join us for?
+            {% else %}How much of the weekend can they join?{% endif %}
+          </p>
+          <p class="field-hint">All of it is on us. Come to as much or as little as you can.</p>
+        </div>
+        {% for segment in required_segments %}
+          <label class="tap-row">
+            <input
+              type="checkbox"
+              name="attendee-{{ row.index }}-segments"
+              value="{{ segment.id }}"
+              {% if row.is_coming_to(segment) %}checked{% endif %}>
+            <span>
+              <span class="tap-row-title">{{ segment.name }}</span>
+              <span class="tap-row-meta">
+                {{ local_day(segment.starts_at, event.timezone) }} ·
+                {{ local_range(segment.starts_at, segment.ends_at, event.timezone) }}
+              </span>
             </span>
-          </span>
-        </label>
-      {% endfor %}
-    </div>
-  {% endif %}
+          </label>
+        {% endfor %}
+      </div>
+    {% endif %}
+
+    {% if optional_segments %}
+      <div class="flex flex-col gap-2">
+        <div class="flex flex-col gap-0.5">
+          <p class="field-label">Something to do in the morning</p>
+          <p class="field-hint">Entirely optional, booked separately, paid on the day.</p>
+        </div>
+        <div class="flex flex-col gap-2">
+          {% for segment in optional_segments %}
+            <div class="paid-card">
+              <label class="tap-row tap-row-bare">
+                <input
+                  type="checkbox"
+                  name="attendee-{{ row.index }}-segments"
+                  value="{{ segment.id }}"
+                  {% if row.is_coming_to(segment) %}checked{% endif %}>
+                <span>
+                  <span class="tap-row-title">{{ segment.name }}</span>
+                  <span class="tap-row-meta">
+                    {{ local_day(segment.starts_at, event.timezone) }} ·
+                    {{ local_range(segment.starts_at, segment.ends_at, event.timezone) }}
+                  </span>
+                </span>
+              </label>
+              <div class="flex flex-wrap items-center justify-between gap-3 pl-8">
+                {% if segment.price %}
+                  <span class="paid-price">${{ segment.price }} per person</span>
+                {% else %}
+                  <span class="paid-price">Price to be confirmed</span>
+                {% endif %}
+                {% if segment.booking_url %}
+                  <a class="paid-link" href="{{ segment.booking_url }}">Book separately &rarr;</a>
+                {% endif %}
+              </div>
+            </div>
+          {% endfor %}
+        </div>
+      </div>
+    {% endif %}
+  </div>
 
   {% if dietary_options %}
     <div class="flex flex-col gap-2">
-      <p class="field-label">Anything we should know about them?</p>
+      <p class="field-label">
+        {% if row.index == 0 %}Anything we should know about you?
+        {% else %}Anything we should know about them?{% endif %}
+      </p>
       <div class="flex flex-wrap gap-2">
         {% for tag, label in dietary_options %}
           <label class="chip-tap">
@@ -74,10 +123,70 @@
   {% endif %}
 {% endmacro %}
 
+{% block nav %}
+  <nav class="pgnav lg:hidden" aria-label="Invitation sections">
+    <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path == '/invites/' ~ token else '' }}"
+       href="/invites/{{ token }}">Welcome</a>
+    <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path.endswith('/wedding') else '' }}"
+       href="/invites/{{ token }}/wedding">The Wedding</a>
+    <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path.endswith('/rsvp') else '' }}"
+       href="/invites/{{ token }}/rsvp">RSVP</a>
+  </nav>
+{% endblock %}
+
+{# DesktopRsvp.dc.html is a 1440px flex ROW: a fixed 450px photo panel, then the
+   form filling the rest. Mobile keeps the current centered column untouched. #}
+{% block main_class %}mx-auto flex max-w-2xl flex-col gap-8 px-5 py-8 lg:mx-0 lg:max-w-none lg:flex-row lg:items-stretch lg:gap-0 lg:p-0{% endblock %}
+
 {% block content %}
 
-  <section class="flex flex-col items-center gap-2 text-center">
-    <h1 class="display-lg">{{ event.title }}</h1>
+  {# Desktop-only left panel. `pier-sunset.jpg` is a stock placeholder — never
+     claimed to be Bill, Lisa or Port Aransas (see img/CREDITS.md) — so its alt
+     text stays generic on purpose. Hidden entirely on mobile: RsvpForm.dc.html
+     has no photograph. #}
+  <aside class="rsvp-side hidden lg:block lg:w-[450px] lg:flex-shrink-0" aria-hidden="true">
+    <img class="rsvp-side-photo" src="/static/img/pier-sunset.jpg" alt="A figure on a fishing pier at sunset, a stock placeholder photo.">
+    <div class="rsvp-side-scrim"></div>
+    <div class="rsvp-side-content">
+      <div class="flex flex-col gap-3">
+        <p class="rsvp-side-names">Bill <span class="rsvp-side-and">and</span> Lisa</p>
+        <p class="eyebrow-rsvp-side-date">
+          {% if event.event_date %}{{ event.event_date | plain_date }}{% else %}Date to follow{% endif %}
+        </p>
+        {% if event.location %}<p class="rsvp-side-location">{{ event.location }}</p>{% endif %}
+      </div>
+      <div class="flex flex-col gap-3.5">
+        <div class="rsvp-side-rule"></div>
+        <p class="rsvp-side-note">
+          {% if event.rsvp_deadline %}
+            Replies by {{ deadline_date(event.rsvp_deadline, event.timezone) }}, please.
+          {% endif %}
+          If you would like to golf or go out on the boat, tell us here and we will
+          keep track.
+        </p>
+      </div>
+    </div>
+  </aside>
+
+  <div class="flex flex-1 flex-col gap-8 lg:gap-6 lg:px-[60px] lg:py-12">
+
+  <nav class="rsvp-nav-row hidden lg:flex" aria-label="Invitation sections">
+    <a class="rsvp-nav-link{{ ' rsvp-nav-link-on' if request.url.path == '/invites/' ~ token else '' }}"
+       href="/invites/{{ token }}">Welcome</a>
+    <a class="rsvp-nav-link{{ ' rsvp-nav-link-on' if request.url.path.endswith('/wedding') else '' }}"
+       href="/invites/{{ token }}/wedding">The Wedding</a>
+    <a class="rsvp-nav-link{{ ' rsvp-nav-link-on' if request.url.path.endswith('/rsvp') else '' }}"
+       href="/invites/{{ token }}/rsvp">RSVP</a>
+  </nav>
+
+  {# This masthead is the mobile "phone header" — the desktop RSVP already carries
+     the couple's names in the side panel, and repeating them here as well reads as
+     a mistake rather than a flourish, so it is hidden at `lg`. It is also
+     deliberately a <p>, not an <h1>: the real page heading is the phase-specific
+     one below ("We hope you can be there" and friends), so the page never ends up
+     with two h1 elements. #}
+  <section class="flex flex-col items-center gap-2 text-center lg:hidden">
+    <p class="display-lg lg:hidden">{{ event.title }}</p>
     <p class="eyebrow">
       {% if event.event_date %}{{ event.event_date | plain_date }}{% else %}Date to follow{% endif %}
       {% if event.location %} · {{ event.location }}{% endif %}
@@ -87,7 +196,7 @@
   {% if phase == "before_open" %}
 
     <section class="flex flex-col gap-3">
-      <h2 class="display-lg">Save the date</h2>
+      <h1 class="display-lg">Save the date</h1>
       <p class="body-copy">
         We are so glad you will be part of it, {{ guest.name }}. RSVPs are not
         open quite yet — please check back after
@@ -98,7 +207,7 @@
   {% elif phase == "closed" %}
 
     <section class="flex flex-col gap-3">
-      <h2 class="display-lg">RSVPs are closed</h2>
+      <h1 class="display-lg">RSVPs are closed</h1>
       <p class="body-copy">
         The window for replies has closed
         {% if event.rsvp_deadline %} — it passed on {{ deadline_date(event.rsvp_deadline, event.timezone) }}{% endif %}.
@@ -119,14 +228,14 @@
 
     {% if answer %}
       <section class="flex flex-col gap-3">
-        <h2 class="display-lg">Thank you, {{ guest.name }}</h2>
+        <h1 class="display-lg">Thank you, {{ guest.name }}</h1>
         <p class="body-copy">We have your reply. You can change it any time before the deadline.</p>
       </section>
       {{ answer_summary(rows, segments) }}
     {% else %}
       <section class="flex flex-col gap-2">
         <h1 class="display-lg">We hope you can be there</h1>
-        <p class="body-copy">
+        <p class="body-copy lg:max-w-[640px]">
           Your invitation is for {{ guest.party_size }}
           {{ 'guest' if guest.party_size == 1 else 'guests' }}.
           {% if event.rsvp_deadline %}
@@ -147,83 +256,90 @@
 
       {% set fold_rows = rows | length >= 3 %}
 
-      {% for row in rows %}
-        <fieldset class="rsvp-fieldset">
-          <legend class="eyebrow">Guest {{ loop.index }}</legend>
+      <div class="rsvp-guest-grid">
+        {% for row in rows %}
+          <fieldset class="rsvp-fieldset">
+            <legend class="eyebrow">Guest {{ loop.index }}</legend>
 
-          <div>
-            <label class="field-label" for="attendee-{{ row.index }}-name">
-              {% if row.index == 0 %}Your name{% else %}Their name{% endif %}
-            </label>
-            <input
-              class="field"
-              type="text"
-              id="attendee-{{ row.index }}-name"
-              name="attendee-{{ row.index }}-name"
-              value="{{ row.name }}"
-              placeholder="Who will be joining?">
-          </div>
-
-          <div class="flex flex-wrap gap-3">
-            <label class="opt-tile">
+            <div>
+              <label class="field-label" for="attendee-{{ row.index }}-name">
+                {% if row.index == 0 %}Your name{% else %}Their name{% endif %}
+              </label>
               <input
-                type="radio"
-                name="attendee-{{ row.index }}-attending"
-                value="yes"
-                {% if row.attending %}checked{% endif %}>
-              Will be there
-            </label>
-            <label class="opt-tile">
-              <input
-                type="radio"
-                name="attendee-{{ row.index }}-attending"
-                value="no"
-                {% if not row.attending %}checked{% endif %}>
-              Sadly cannot
-            </label>
-          </div>
+                class="field"
+                type="text"
+                id="attendee-{{ row.index }}-name"
+                name="attendee-{{ row.index }}-name"
+                value="{{ row.name }}"
+                placeholder="Who will be joining?">
+            </div>
 
-          {% if fold_rows %}
-            <details class="fold-panel" {% if loop.first %}open{% endif %}>
-              <summary class="fold-tap">
-                Which parts of the weekend, and anything we should know
-                <span class="fold-marker" aria-hidden="true">&#9662;</span>
-              </summary>
-              <div class="flex flex-col gap-4 pt-4">
-                {{ segments_and_diet(row, segments, dietary_options, event) }}
-              </div>
-            </details>
-          {% else %}
-            {{ segments_and_diet(row, segments, dietary_options, event) }}
-          {% endif %}
+            <div class="flex flex-wrap gap-3">
+              <label class="opt-tile">
+                <input
+                  type="radio"
+                  name="attendee-{{ row.index }}-attending"
+                  value="yes"
+                  {% if row.attending %}checked{% endif %}>
+                Will be there
+              </label>
+              <label class="opt-tile">
+                <input
+                  type="radio"
+                  name="attendee-{{ row.index }}-attending"
+                  value="no"
+                  {% if not row.attending %}checked{% endif %}>
+                Sadly cannot
+              </label>
+            </div>
 
-          <div>
-            <label class="field-label" for="attendee-{{ row.index }}-notes">Anything else for them?</label>
-            <textarea
-              class="field"
-              id="attendee-{{ row.index }}-notes"
-              name="attendee-{{ row.index }}-notes"
-              rows="2">{{ row.dietary_notes }}</textarea>
-          </div>
-        </fieldset>
-      {% endfor %}
+            {% if fold_rows %}
+              <details class="fold-panel" {% if loop.first %}open{% endif %}>
+                <summary class="fold-tap">
+                  Which parts of the weekend, and anything we should know
+                  <span class="fold-marker" aria-hidden="true">&#9662;</span>
+                </summary>
+                <div class="flex flex-col gap-4 pt-4">
+                  {{ segments_and_diet(row, required_segments, optional_segments, dietary_options, event) }}
+                </div>
+              </details>
+            {% else %}
+              {{ segments_and_diet(row, required_segments, optional_segments, dietary_options, event) }}
+            {% endif %}
+
+            <div>
+              <label class="field-label" for="attendee-{{ row.index }}-notes">
+                {% if row.index == 0 %}Anything else for you?{% else %}Anything else for them?{% endif %}
+              </label>
+              <textarea
+                class="field"
+                id="attendee-{{ row.index }}-notes"
+                name="attendee-{{ row.index }}-notes"
+                rows="2">{{ row.dietary_notes }}</textarea>
+            </div>
+          </fieldset>
+        {% endfor %}
+      </div>
 
       <div>
         <label class="field-label" for="note">A note for us (optional)</label>
         <textarea class="field" id="note" name="note" rows="3">{{ answer.note if answer else "" }}</textarea>
       </div>
 
-      <button type="submit" class="btn-primary btn-block">Send our reply</button>
-
-      {% if event.rsvp_deadline %}
-        <p class="muted-copy text-center">
-          You can change your reply at any time before
-          {{ deadline_date(event.rsvp_deadline, event.timezone) }}.
-        </p>
-      {% endif %}
+      <div class="flex flex-col items-stretch gap-4 lg:flex-row lg:items-center">
+        <button type="submit" class="btn-primary lg:min-h-[56px] lg:px-11 lg:flex-none">Send our reply</button>
+        {% if event.rsvp_deadline %}
+          <p class="muted-copy text-center lg:text-left">
+            You can change your reply at any time before
+            {{ deadline_date(event.rsvp_deadline, event.timezone) }}.
+          </p>
+        {% endif %}
+      </div>
 
     </form>
 
   {% endif %}
+
+  </div>
 
 {% endblock %}

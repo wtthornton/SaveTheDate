@@ -43,6 +43,11 @@ jobs:
           echo "$PWD/.venv/bin" >> "$GITHUB_PATH"
           uv pip install -e ".[dev]"
 
+      # The visual suite drives a real browser. Without this the layout tests fail
+      # here while passing locally, which is the wrong way round for a gate.
+      - name: Install the browser the visual tests need
+        run: playwright install --with-deps chromium
+
       - name: Lint
         run: |
           ruff check .
@@ -53,6 +58,9 @@ jobs:
 
       # The definition of done requires migrations to roll back, not just apply,
       # so the round trip is what gets checked.
+      # DATABASE_URL is the TEST database for this whole job (see env: above).
+      # `downgrade base` drops every table, so this must never run against a
+      # real database — see /std-gate, which pins the same thing locally.
       - name: Migrations apply and roll back
         run: |
           alembic upgrade head

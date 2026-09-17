@@ -33,7 +33,7 @@
   </nav>
   {% endblock %}
 
-  <main class="mx-auto flex max-w-2xl flex-col gap-8 px-5 py-8">
+  <main class="{% block main_class %}mx-auto flex max-w-2xl flex-col gap-8 px-5 py-8{% endblock %}">
     {% block content %}{% endblock %}
   </main>
 
