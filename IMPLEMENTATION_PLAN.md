@@ -59,7 +59,7 @@ go out ~6–8 weeks ahead; save-the-dates 6–12 months ahead. RSVP deadline 15 
 | Backlog | TAP-7725 … TAP-7763, 15 issues, 4 milestones. **11 done as of 2026-09-17**; TAP-7733, 7734, 7740 and 7762 remain |
 | Postgres | host port **5434** (5432/5433 are taken by other local projects) |
 | Hosting | **The home lab.** One Compose stack behind a named Cloudflare Tunnel. See §8.1. |
-| Hostnames | A dedicated wedding domain, **not yet registered** — see §7.1. Review runs on a Quick Tunnel. |
+| Hostnames | **`tapphouse.co`**, on Cloudflare since 2026-09-17. `dev-wedding` live, `wedding` and `savethedate` reserved. See §7.1. |
 | Claude Code | **2.1.258** installed. Feature notes below were checked against 2.1.271+ docs, so verify anything exotic before relying on it. |
 
 ---
@@ -444,14 +444,22 @@ nobody gets a warning.
 > **The record-level inventory lives on TAP-7740 in Linear, not here.** This repo is
 > public, and NLT Labs' mail configuration does not belong in a wedding site's history.
 
-**The answer is a separate wedding domain.** Register one — roughly $12 a year — and
-point *that* at Cloudflare. A brand-new zone has no mail, no existing records and no
-traffic, so delegating it risks nothing whatsoever, and the named tunnel then works
-exactly as intended. It also reads better to a guest than a consulting company's
-subdomain.
+**The answer was a separate domain, and it is done.** `tapphouse.co` — already owned,
+already registered — was delegated to Cloudflare on 2026-09-17 and now serves the guest
+site through a named tunnel. `nltlabs.ai` was never touched.
 
-**Still to do:** the domain is not registered yet, and nothing can serve a permanent
-hostname until it is. That is the first step of TAP-7733, not a detail.
+**It was not the empty zone this section originally assumed**, and that is the part worth
+carrying forward. The pre-flight check found no mail — no MX, SPF, DKIM or DMARC — which
+is the category where mistakes are silent. But it also held `home.tapphouse.co`, a live
+CNAME to Home Assistant Cloud (Nabu Casa), which no amount of probing from outside would
+have revealed; subdomains cannot be enumerated without a zone transfer. Cloudflare's scan
+surfaced it, and it was carried across **unproxied** — proxying would put Cloudflare's
+certificate in front of a service that issues its own.
+
+Before cutting over, Cloudflare's nameservers were queried directly to confirm the zone
+was built correctly, so a missing record would have been caught before the switch rather
+than after. The registry, the registrar and Cloudflare were then verified to agree, and
+no DS records existed, so DNSSEC could not strand the zone.
 
 If `nltlabs.ai` should move to Cloudflare for its own reasons, that is a separate piece
 of work deserving a full record export, a mail-flow test and a rollback window — not a
@@ -507,13 +515,17 @@ storage, and attention.
 
 ### Order of work
 
-1. **Register the wedding domain and delegate it to Cloudflare.** Nothing can serve a
-   permanent hostname until this exists. See §7.1 for why it is a new domain and not
-   `invite.nltlabs.ai`.
-2. **A named tunnel**, replacing the Quick Tunnel for the production hostname. The
-   review instance keeps its Quick Tunnel — disposable is the right property there.
+1. ~~**Register the wedding domain and delegate it to Cloudflare.**~~ **DONE
+   2026-09-17.** `tapphouse.co`, nameservers `anuj`/`blair.ns.cloudflare.com`.
+2. ~~**A named tunnel.**~~ **DONE 2026-09-17.** Tunnel `tapphouse`
+   (`bcf78f41-e048-429a-9375-43cf777173e8`), config at `~/.cloudflared/config.yml`,
+   running as the systemd user service `cloudflared-tapphouse` with `Restart=always`
+   and lingering on, so it returns unattended after a reboot. Three hostnames routed:
+   `dev-wedding` → the review instance on :50681, `wedding` and `savethedate` → 503.
 3. **Compose stack** with `restart: unless-stopped`, so the whole thing returns by
-   itself after a power cut without anyone logging in.
+   itself after a power cut without anyone logging in. **This is the next piece of
+   work**, and it is what `wedding.tapphouse.co` is waiting for — its own Compose
+   project and its own database, separate from development.
 4. **Migrations as a release step**, not on app boot. Two app instances racing
    `alembic upgrade` on start is a bad way to find out about locking.
 5. **Automated backups off this machine**, and a **restore that has actually been
@@ -724,8 +736,9 @@ rendered text.
 
 **What is left, and why it stops here**
 
-`TAP-7733` (home-lab hosting) needs a wedding domain registered and the lab itself
-standing. `TAP-7734` (observability) wants a Sentry DSN or a self-hosted equivalent.
+`TAP-7733` (home-lab hosting) now needs only the production Compose stack and the
+backup/restore work; the domain and tunnel landed on 2026-09-17. `TAP-7734`
+(observability) wants a Sentry DSN or a self-hosted equivalent.
 `TAP-7762` (photography) needs somebody to take photographs. None of the three is
 blocked on code.
 
@@ -740,3 +753,72 @@ blocked on code.
   `LESSONS_LEARNED.md` §6.
 - The bounce webhook's signature scheme must be checked against Resend's documentation
   before pointing anything at it. The docstring says so in capitals.
+
+---
+
+## 11. The hosting session of 2026-09-17
+
+Everything moved to the home lab, and the guest site got a real hostname.
+
+**The domain**
+
+`tapphouse.co` — already owned, on GoDaddy, carrying a stock GoDaddy Website Builder
+template and nothing else of value. Delegated to Cloudflare (`anuj`/`blair.ns.cloudflare.com`)
+via the GoDaddy API: `PATCH /v1/domains/{domain}` with the new `nameServers`. `PUT`
+returns 404 on that endpoint; `PATCH` is the verb, and it answers 204.
+
+The zone was **not** the empty one §7.1 originally assumed. No mail — verified before and
+after — but `home.tapphouse.co` is a live CNAME to Home Assistant Cloud, which probing
+from outside could never have found, because subdomains cannot be enumerated without a
+zone transfer. It was carried across unproxied and still resolves.
+
+Before the cutover, Cloudflare's own nameservers were queried directly to confirm the
+zone was built correctly, and the registry was checked for DS records — a stale DS with
+new nameservers is how a domain goes completely dark for validating resolvers. There were
+none.
+
+**The tunnel**
+
+Named tunnel `tapphouse`, id `bcf78f41-e048-429a-9375-43cf777173e8`, config at
+`~/.cloudflared/config.yml`, run by the systemd **user** service `cloudflared-tapphouse`
+with `Restart=always`, `StartLimitIntervalSec=0` and lingering enabled — so it comes back
+after a reboot or a power cut with nobody logged in. That is a TAP-7733 requirement, not
+a convenience.
+
+| Hostname | Serves |
+| --- | --- |
+| `dev-wedding.tapphouse.co` | The review instance on :50681 — **live** |
+| `wedding.tapphouse.co` | Production — **503 on purpose** |
+| `savethedate.tapphouse.co` | Reserved — 503, contents undecided |
+
+`wedding` returns 503 rather than pointing at the development instance. A guest-facing
+hostname quietly serving the development database is how invented guests start looking
+real, and how a genuine RSVP lands somewhere disposable.
+
+**A bug the new hostname exposed**
+
+Opening the bare hostname returned FastAPI's raw `{"detail":"Not Found"}`. The written
+404 has existed since TAP-7728 but was reachable only through a token that parsed and
+matched nothing — so nobody typing the domain, or pasting a link that lost its whole
+tail, ever saw it. Now handled, with content negotiation so scripts still get JSON and a
+prefix list so a host looking at another host's event is not told their *invitation* is
+missing.
+
+**Costs, checked rather than assumed**
+
+The software cost of the home lab is zero — every component is open source with no
+commercial restriction at this size. What it costs is electricity, hardware, offsite
+backup and attention. The one thing that cannot come home is outbound email: residential
+address space is blocklisted and SPF/DKIM/DMARC will not rescue it.
+
+**Still open after this session**
+
+- The production Compose stack behind `wedding.tapphouse.co`, with its own database.
+- Backups off the machine, and a restore actually performed.
+- What `savethedate.tapphouse.co` is for.
+- `tapphouse.co` expires **2027-08-01**, about six months before the wedding. `renewAuto`
+  is on; if the card on file lapses, the guest site's domain goes with it, in the middle
+  of the RSVP window.
+- `it13` has no IPv6 internet — only ULAs and no default route — so outbound checks from
+  the box flap between IPv4 and IPv6. It does not affect guests. Tailscale depends on
+  IPv6 ULAs, so nothing may disable IPv6 wholesale.

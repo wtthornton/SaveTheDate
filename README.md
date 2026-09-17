@@ -99,25 +99,40 @@ nothing is sent until that is deliberately configured.
 
 ### Hostnames
 
-| Use | Hostname |
-| --- | --- |
-| Guest-facing | the wedding domain — **still to be registered**, see below |
-| Review instance | a Cloudflare Quick Tunnel, random and disposable |
+The domain is **`tapphouse.co`**, delegated to Cloudflare on 2026-09-17 and served by
+a named tunnel from the home lab.
 
-**The guest site gets its own domain, not a subdomain of `nltlabs.ai`.** A named
-Cloudflare Tunnel needs its zone on Cloudflare nameservers — Cloudflare's partial
-(CNAME) setup, which would let the zone stay at GoDaddy, is Business-plan only. Moving
-`nltlabs.ai` is therefore the only way to get `invite.nltlabs.ai`, and that zone carries
-a live Microsoft 365 deployment behind a `quarantine` DMARC policy, where a mistake is
-silent and unrecoverable.
+| Hostname | Serves | State |
+| --- | --- | --- |
+| `wedding.tapphouse.co` | Production | Reserved — 503 until the production stack exists |
+| `dev-wedding.tapphouse.co` | The review instance | **Live** |
+| `savethedate.tapphouse.co` | Undecided | Reserved — 503 |
+| `home.tapphouse.co` | Home Assistant (Nabu Casa) | Pre-existing, untouched |
 
-A separate wedding domain costs about $12 a year, has no mail and no existing records,
-so pointing it at Cloudflare risks nothing at all — and it reads better to a guest than
-a consulting company's subdomain. `nltlabs.ai` is never touched.
+`wedding.tapphouse.co` deliberately returns 503 rather than pointing at the development
+instance. A guest-facing hostname quietly serving the development database is how
+invented guests start looking real, and how a genuine RSVP lands somewhere disposable.
 
-The review instance stays on a Quick Tunnel: the URL is random, changes whenever the
-tunnel restarts, and needs no DNS. `scripts/review-instance.sh reload` keeps the URL and
-the invite tokens; `up` mints a new URL.
+**Why a separate domain and not `invite.nltlabs.ai`.** A named Cloudflare Tunnel needs
+its zone on Cloudflare nameservers — the partial (CNAME) setup that would let a zone stay
+at GoDaddy is Business-plan only, around $200/month. So `invite.nltlabs.ai` would have
+meant migrating the `nltlabs.ai` zone, which carries a live Microsoft 365 deployment
+behind a `quarantine` DMARC policy, where a mistake is silent and unrecoverable.
+`tapphouse.co` carries no mail at all, so delegating it risked nothing. `nltlabs.ai` was
+never touched.
+
+**One record on `tapphouse.co` was not disposable.** `home.tapphouse.co` points at Home
+Assistant Cloud (Nabu Casa) and was carried across unproxied — a proxied record would put
+Cloudflare's certificate in front of a service that issues its own. It resolves correctly
+through the new nameservers.
+
+**The tunnel runs as a systemd user service**, `cloudflared-tapphouse`, with
+`Restart=always` and lingering enabled, so it returns by itself after a reboot or a power
+cut without anyone logging in. Config lives in `~/.cloudflared/config.yml`.
+
+The Quick Tunnel from `scripts/review-instance.sh` still works and still mints a random
+URL, but `dev-wedding.tapphouse.co` is the stable address for review — the invite token
+is hostname-independent, so every published link works on either.
 
 ### What the home lab has to provide
 
@@ -340,8 +355,10 @@ and are deliberately not stubbed out:
   Postgres, plus a throwaway Cloudflare Quick Tunnel for review. A proper home-lab
   deployment with **automated backups and a tested restore** is TAP-7733, and it is the
   only gap that could cost the guest list.
-- **No wedding domain registered yet.** The guest site needs its own name on Cloudflare
-  nameservers before a named tunnel can serve it. See [Hosting](#hosting--the-home-lab).
+- **No production stack yet.** `wedding.tapphouse.co` is reserved and returns 503. It
+  needs its own Compose project and its own database, separate from development.
+- **`savethedate.tapphouse.co` is undecided.** The hostname is routed and reserved; what
+  runs there has not been settled.
 - **No error reporting**, and `/health` says the process is up rather than that the
   service works. TAP-7734.
 - **Every photograph is a placeholder**, and the hero is a stock photograph of another

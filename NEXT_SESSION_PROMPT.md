@@ -14,7 +14,7 @@ definition of done — note §7.1 on DNS, §8.1 on deployment, and §10 for what
 shipped), LESSONS_LEARNED.md (traps already paid for — read §6 before writing a test),
 and .claude/CLAUDE.md (always-on invariants).
 
-Where things stand as of 2026-09-17:
+Where things stand as of 2026-09-17 (second update that day — hosting):
 - **11 of 15 Linear issues are Done.** Phases 0 through 3 are complete: the schema, the
   guest pages, the review instance, the RSVP window, host auth, ownership scoping, rate
   limiting, the host dashboard, CSV import and email delivery.
@@ -22,14 +22,22 @@ Where things stand as of 2026-09-17:
   up→down→up against the test database.
 - The review instance is live and has been looked at on a real phone.
 - **Four issues remain, and none of them is blocked on code:**
-  - **TAP-7733** hosting — **on the home lab**, decided 2026-09-17. Needs a wedding
-    domain registered and delegated to Cloudflare first (see plan §7.1), then a Compose
-    stack behind a named tunnel. Its real deliverable is a *tested restore*.
+  - **TAP-7733** hosting — **on the home lab**. The domain and the tunnel are DONE
+    (see plan §11): `tapphouse.co` is on Cloudflare and `dev-wedding.tapphouse.co` is
+    live. What remains is the **production Compose stack** behind
+    `wedding.tapphouse.co` — its own project, its own database — plus backups off the
+    machine and a restore actually performed. The restore is the deliverable.
   - **TAP-7734** observability. Needs a Sentry DSN or equivalent.
   - **TAP-7762** photography. Every image is an openly-licensed placeholder and the hero
     is still someone else's wedding. Somebody has to take pictures.
   - ~~**TAP-7740** DNS → Cloudflare.~~ **Closed 2026-09-17.** The guest site gets its
     own wedding domain on Cloudflare; `nltlabs.ai` is never touched. Plan §7.1.
+
+The site is reachable. `https://dev-wedding.tapphouse.co/invites/<token>` serves the
+guest pages over a named Cloudflare Tunnel from this box; the tunnel is the systemd user
+service `cloudflared-tapphouse` and survives reboots. `wedding.tapphouse.co` and
+`savethedate.tapphouse.co` are routed and deliberately return 503 — do NOT point
+`wedding` at the development instance to make it look finished.
 
 Useful things that are true now and were not before:
 - Sign in to the dashboard at `/host/login`. **There is no registered host yet.** Set

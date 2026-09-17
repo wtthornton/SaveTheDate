@@ -549,3 +549,25 @@ says in capitals that the exact payload must be checked against the provider's
 documentation before pointing anything at it.
 
 That is better than either a stub or a guess dressed up as an implementation.
+
+### You cannot enumerate a zone from outside, so "essentially empty" is a guess
+
+I checked `tapphouse.co` before recommending it and reported the zone as essentially
+empty: no MX, no SPF, no DKIM, no DMARC, no autodiscover. All true, and it is the right
+category to check first, because mail is where a DNS mistake is silent and unrecoverable.
+
+Then Cloudflare's import scan showed `home.tapphouse.co` — a live CNAME to Home Assistant
+Cloud. A record I would never have found, because **subdomains cannot be enumerated from
+outside without a zone transfer**, and `home` was not a name I thought to probe. If it had
+been dropped, or carried across proxied, remote access to the house would have broken.
+
+Two things follow. **Say "no mail, and I cannot see subdomains from here" rather than
+"essentially empty"** — the second is a claim the method cannot support. And **the
+registrar's own record list is the inventory**, not a guess assembled from outside; the
+scan is best-effort and its own docs say so.
+
+The pre-flight that did work is worth repeating: query the *new* nameservers directly
+before cutting over, so a missing record is caught while the old ones are still
+authoritative. Checking for DS records belongs in the same pass — a stale DS with new
+nameservers takes a domain completely dark for validating resolvers, and it is invisible
+until someone with a validating resolver complains.
