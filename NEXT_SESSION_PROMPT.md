@@ -54,9 +54,19 @@ second deployment, not a content model.
 | Hostname | Serves |
 | --- | --- |
 | `dev-wedding.tapphouse.co` | The review instance on :50681 — live |
+| `dev-savethedate.tapphouse.co` | The save-the-date card, same instance — live |
 | `wedding.tapphouse.co` | Production — **503 on purpose** |
-| `savethedate.tapphouse.co` | Reserved — 503, contents undecided |
+| `savethedate.tapphouse.co` | Production save-the-date — **503 until the stack exists** |
 | `home.tapphouse.co` | Home Assistant. **Not ours. Do not touch.** |
+
+The two dev hostnames reach **one** process and are told apart by the Host header
+(`SAVE_THE_DATE_HOSTS`). There is no `/save-the-date` path on either.
+
+**`home.tapphouse.co` does not go through the tunnel** — it is a CNAME straight to Nabu
+Casa. Leave it alone because it is not ours, not because cloudflared can break it: an
+ingress change costs a few seconds of `dev-wedding` and nothing else. Note that **SIGHUP
+does not reload cloudflared in place** — it exits, and `Restart=always` brings it back
+with a new PID in about three seconds. There is no `ExecReload` on the unit.
 
 **Do not point `wedding.tapphouse.co` at the development instance to make it look
 finished.** A guest-facing hostname quietly serving the development database is how
