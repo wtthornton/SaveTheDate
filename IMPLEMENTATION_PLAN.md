@@ -11,8 +11,8 @@ disciplined without burning the token pool.
 
 ## 1. Where this stands
 
-> **Updated 2026-09-16.** Phase 0 and TAP-7739 are done. See §9 for what changed and
-> `LESSONS_LEARNED.md` for the things that cost time.
+> **Updated 2026-09-17.** Phases 0-3 are done: 11 of 15 issues closed, 199 tests.
+> See §10 for what changed and `LESSONS_LEARNED.md` for the things that cost time.
 
 **Shipped.** A FastAPI + PostgreSQL API with events, invitations, token-based invite
 links and RSVPs. Alembic migrations apply and roll back. CI runs ruff, `mypy --strict`
@@ -35,7 +35,18 @@ visual suite; each assertion confirmed by deliberate mutation.
 18px floor the build now enforces. **The canvas is the one that is wrong** and should be
 updated before it is used as a reference again.
 
-**Not started.** Host authentication, and the host dashboard.
+**Shipped 2026-09-17.** The whole of M1 and M3, plus the rest of M2.
+**TAP-7729** — the RSVP window is judged in the event's own zone and a naive deadline is
+refused. **TAP-7725** — `hosts`, server-side sessions, argon2id, registration closed
+unless a bootstrap token is set. **TAP-7726** — `events.host_id`; another host's event
+answers 404, not 403. **TAP-7727** — a sliding-window throttle on the public guest
+routes, running before the token lookup. **TAP-7730** — the host dashboard: per-day
+headcounts, children separately, a dietary rollup, the guest list, CSV export, and an
+HTML login. **TAP-7732** — CSV import, all-or-nothing. **TAP-7731** — email delivery
+behind a fake-able transport, with per-guest delivery state and a bounce webhook.
+
+**Not started.** Only M4: hosting (TAP-7733) and observability (TAP-7734). Both need
+Bill's accounts, which is why they stop here.
 
 **The immovable fact.** The wedding is **Sunday 13 February 2028 at 3pm**. Invitations
 go out ~6–8 weeks ahead; save-the-dates 6–12 months ahead. RSVP deadline 15 December
@@ -45,7 +56,7 @@ go out ~6–8 weeks ahead; save-the-dates 6–12 months ahead. RSVP deadline 15 
 | --- | --- |
 | Repo | https://github.com/wtthornton/SaveTheDate |
 | Linear | Project **SaveTheDate**, team TappsCodingAgents (TAP) |
-| Backlog | TAP-7725 … TAP-7740, 13 issues, 4 milestones |
+| Backlog | TAP-7725 … TAP-7763, 15 issues, 4 milestones. **11 done as of 2026-09-17**; TAP-7733, 7734, 7740 and 7762 remain |
 | Postgres | host port **5434** (5432/5433 are taken by other local projects) |
 | Hostnames | `invite.nltlabs.ai` (live), `invite-review.nltlabs.ai` (review) |
 | Claude Code | **2.1.258** installed. Feature notes below were checked against 2.1.271+ docs, so verify anything exotic before relying on it. |
@@ -70,25 +81,33 @@ is safe *only* because the review instance runs on invented guests.
 | --- | --- |
 | ~~**TAP-7739** Schema redesign~~ | **DONE 2026-09-16**, merged. Per-person `attendees`, `segments`, `attendance`, `rsvp_opens_at`, `events.timezone`; meal choice dropped; `rsvps` thinned. |
 | ~~**TAP-7728** Guest invite page~~ | **DONE 2026-09-16**, merged. Jinja + htmx 2.x + Tailwind, five routes, 18px floor enforced by a test rather than by review. |
-| **TAP-7729** RSVP window | **Narrowed 2026-09-16, and not folded in.** TAP-7739 enforces both ends; TAP-7728 took the page behavior. What remains is genuinely backend: `_phase()` never reads `events.timezone`, and `EventCreate` accepts a **naive** `rsvp_deadline` that Postgres then interprets in the server's zone — the exact failure the issue was filed against. Plus frozen-time tests, which need a dependency the repo does not have. |
-| **TAP-7740** DNS → Cloudflare | Blocks TAP-7738. **Far riskier than first written — the zone carries live company email. See §7.** |
-| **TAP-7738** Review instance | Cloudflare Tunnel off the dev box. Fake data, `noindex`, visibly a draft. **Take the Quick Tunnel path: it needs no DNS change at all, so it does not wait on TAP-7740.** `cloudflared` is not yet installed on this box. |
+| ~~**TAP-7729** RSVP window~~ | **DONE 2026-09-17.** The window is judged in the event's zone; a bare date is read as a whole local day and a naive datetime is refused outright. The clock is a FastAPI dependency, so boundaries are asserted to the second with no frozen-time library. |
+| **TAP-7740** DNS → Cloudflare | **Probably unnecessary — see the comment on the issue.** Quick Tunnel needed no DNS, and a Render custom domain is a CNAME that works from GoDaddy. Recommended for closure; the decision is Bill's. |
+| ~~**TAP-7738** Review instance~~ | **DONE 2026-09-16.** Quick Tunnel off the dev box, so TAP-7740 was never on the path. |
+| ~~**TAP-7763** Stale design canvas~~ | **DONE 2026-09-17.** Retitled "original direction" with a banner listing every divergence from the built site. |
+| **TAP-7762** Photography | Open, and **not a coding task**. Every image is an openly-licensed placeholder and the hero is still someone else's wedding. |
 
-### Phase 2 — Make it safe (M1)
-`TAP-7725` host auth → `TAP-7726` ownership scoping (blocked by 7725) → `TAP-7727`
-rate-limit invite lookups. **Only after this may real guest data exist anywhere.**
+### Phase 2 — Make it safe (M1) — **DONE 2026-09-17**
+`TAP-7725` host auth → `TAP-7726` ownership scoping → `TAP-7727` rate limiting, in that
+order. **Real guest data may now exist**, with one caveat worth stating: the review
+tunnel is still seeded with invented guests and should stay that way until TAP-7733
+gives this a durable home. Losing the guest list has no recovery path.
 
-### Phase 3 — Host tooling (M3)
-`TAP-7730` dashboard and per-day headcounts → `TAP-7732` CSV import → `TAP-7731` email
-delivery and reminders.
+### Phase 3 — Host tooling (M3) — **DONE 2026-09-17**
+`TAP-7730` dashboard → `TAP-7732` CSV import → `TAP-7731` email delivery.
+
+TAP-7730's scope was corrected before it was built: it asked for "counts per meal
+option", which TAP-7739 had already removed from the schema. See §10.
 
 ### Phase 4 — Launch readiness (M4)
 `TAP-7733` managed hosting + tested restore → `TAP-7734` observability.
 
 **Deadline-driven checkpoints**
 
-- **By mid-2027** — Phases 0–2 done, real guest list loadable, save-the-dates can go out.
-- **By Oct 2027** — Phase 3 done, invitations sent, RSVP opens.
+- ~~**By mid-2027** — Phases 0–2 done, real guest list loadable.~~ **Met 2026-09-17**,
+  about nine months early.
+- ~~**By Oct 2027** — Phase 3 done.~~ **Met 2026-09-17.** Invitations can be sent when
+  the hosts choose to; the software is no longer what is waiting.
 - **15 Dec 2027** — RSVP closes. Headcounts must be exportable that day.
 - **Feb 2028** — read-only. Change nothing in the fortnight before.
 
@@ -435,7 +454,7 @@ Carry these into the next session:
    destination wedding where guests would rather give than fly with a gift.
 2. **FAQ page** — also standard. What to wear on a beach in February, kids or no kids,
    what happens if it rains.
-3. **Prices** for golf and the fishing charter still show `$[ CONFIRM ]`.
+3. ~~**Prices** for golf and the fishing charter still show `$[ CONFIRM ]`.~~ **Wrong as written** — checked 2026-09-17, the prices were removed rather than stubbed, and no placeholder renders. They are simply unconfirmed and absent.
 4. **Airport shuttle** is a marked placeholder on both travel pages.
 5. **Photography** — now tracked as **TAP-7762**. Every image is still an openly-licensed
    placeholder and the hero is still someone else's wedding, but no slot is empty: two
@@ -585,3 +604,71 @@ Recorded so a later session does not re-derive it. The reasoning behind each is 
 - `continuous-learning-v2` is **already installed** at user level (`PreToolUse` and
   `PostToolUse`, matcher `*`) and registered this project as `2ec864647abf` on
   2026-09-16. Nothing to install. It had extracted zero instincts as of that date.
+
+---
+
+## 10. The session of 2026-09-17
+
+Blocks A, B and C of the plan agreed at the start of the session: everything that is
+pure code, stopping where Bill's accounts become necessary. Eight issues closed, 74
+tests to 199, gate green on every commit.
+
+**Shipped**
+
+| Issue | What landed |
+| --- | --- |
+| **TAP-7763** | The design canvas is retitled *original direction* and carries a banner listing every place it disagrees with the built site, and why the site is right. |
+| **TAP-7729** | The RSVP window is judged in the event's own zone. A bare `2027-12-15` is read as that whole day locally; a naive datetime is refused rather than converted, because it looks precise while carrying no zone. The clock is a dependency, so boundaries are asserted to the second. |
+| **TAP-7725** | `hosts` and server-side `host_sessions`. argon2id for passwords, sha256 of the cookie for sessions. Registration is closed unless a bootstrap token is configured. Guest routes stay anonymous, with a test that walks all five of them holding no cookie. |
+| **TAP-7726** | `events.host_id`, NOT NULL, RESTRICT rather than CASCADE. Another host's event answers **404, not 403**. The backfill invents an un-loggable-into placeholder host when a database has events but none, and `scripts/adopt_events.py` moves them to a real account. |
+| **TAP-7727** | A sliding-window throttle on `/invites/*`, running in middleware **before** the token lookup, so a throttled real token and an invented one are byte-identical. In-process counters, no Redis. |
+| **TAP-7730** | The host dashboard: per-day headcounts with children separate, a dietary rollup with notes attributed by name, the guest list with readable invite links, CSV export without tokens, add/rename/withdraw, and an HTML login. |
+| **TAP-7732** | CSV import, all-or-nothing, every bad line numbered. Duplicates caught against the file and against the existing list. Handles the BOM Excel writes. |
+| **TAP-7731** | Email behind a Protocol with a recording fake, so no test opens a socket. Per-guest delivery state on the dashboard, reminders only to non-responders, and a signed bounce webhook. |
+
+**Also fixed, found by Bill on a phone rather than by the suite**
+
+The ferry photograph under "Coming to the island" took most of a phone screen:
+`h-[160px]` and `lg:h-[260px]` were never in the committed `app/static/app.css`, so the
+image had no height cap at all. `tests/test_stylesheet.py` now fails when the committed
+stylesheet falls behind the templates.
+
+**Also changed**
+
+The couple are named in the traditional order throughout — "Lisa and Bill", with an
+`L & B` monogram. The test written for it found nine places, not the three in the
+templates: `event.title` and `host_name` live in the database and render into `<title>`.
+
+Guest-facing copy was breaking the American English invariant in two places
+("travelling", "licences"). Both are fixed and both are now gated by a test that scans
+rendered text.
+
+**Corrections to the backlog**
+
+1. **TAP-7730 contradicted the schema.** It asked for "counts per meal option"; TAP-7739
+   had cut meal options and the invariants say "dietary tags only, headcounts per day".
+   Corrected in Linear before building, not worked around in code.
+2. **TAP-7740 is probably unnecessary.** Named Tunnel hostnames were the only thing that
+   needed the zone on Cloudflare, and a Render custom domain is a CNAME that resolves
+   from GoDaddy. Recommended for closure in a comment on the issue; not closed, because
+   descoping is Bill's call.
+3. **Plan §8 item 3 was stale.** Golf and charter prices are not shown as `$[ CONFIRM ]`;
+   they were removed. Corrected below.
+
+**What is left, and why it stops here**
+
+`TAP-7733` (hosting) needs a Render login and starts a real bill. `TAP-7734`
+(observability) wants a Sentry DSN. `TAP-7762` (photography) needs somebody to take
+photographs. None of the three is blocked on code.
+
+**Standing facts for the next session**
+
+- Sign in at `/host/login`. There is no registered host yet: set
+  `HOST_REGISTRATION_TOKEN`, `POST /auth/register` once, then unset it.
+- On a database migrated before any host existed, the events belong to a placeholder
+  nobody can sign in as. `python -m scripts.adopt_events --to you@example.com` moves
+  them, and `--dry-run` shows what it would do.
+- `EMAIL_PROVIDER` defaults to `console`, which prints. That is deliberate; see
+  `LESSONS_LEARNED.md` §6.
+- The bounce webhook's signature scheme must be checked against Resend's documentation
+  before pointing anything at it. The docstring says so in capitals.
