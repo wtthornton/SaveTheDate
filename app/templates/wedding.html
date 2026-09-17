@@ -2,9 +2,73 @@
 
 {% block title %}{{ event.title }} — The Wedding{% endblock %}
 
+{# The ceremony segment: not optional, and its local calendar day (in the event's
+   own timezone) matches the event date. Found from data, never hardcoded — a
+   differently-named or reordered segment list still finds the right one. #}
+{% set ns = namespace(ceremony=none) %}
+{% for segment in required_segments %}
+  {% if event.event_date and local_day(segment.starts_at, event.timezone) == event.event_date.strftime('%A, %B %-d') %}
+    {% set ns.ceremony = segment %}
+  {% endif %}
+{% endfor %}
+
+{% block hero %}
+  <section class="hero hero-short hidden lg:block" aria-label="{{ event.title }} — the wedding">
+    <img
+      class="hero-photo"
+      src="/static/img/hero-couple.jpg"
+      alt="A couple on the beach at dusk, the bride's veil lifted by the wind.">
+    <div class="hero-scrim" aria-hidden="true"></div>
+    <div class="hero-frame-outer" aria-hidden="true"></div>
+    <div class="hero-frame-inner" aria-hidden="true"></div>
+
+    <nav class="hero-nav flex" aria-label="Invitation sections">
+      <span class="hero-monogram" aria-hidden="true">
+        <span class="hero-monogram-text">B&nbsp;&amp;&nbsp;L</span>
+      </span>
+      <div class="hero-nav-links">
+        <a class="hero-nav-link{{ ' hero-nav-link-on' if request.url.path == '/invites/' ~ token else '' }}"
+           href="/invites/{{ token }}">Welcome</a>
+        <a class="hero-nav-link{{ ' hero-nav-link-on' if request.url.path.endswith('/wedding') else '' }}"
+           href="/invites/{{ token }}/wedding">The Wedding</a>
+        <a class="hero-nav-rsvp-btn" href="/invites/{{ token }}/rsvp">RSVP</a>
+      </div>
+    </nav>
+
+    <div class="hero-copy">
+      <h1 class="hero-names wedding-hero-names">Bill <span class="hero-and wedding-hero-and">and</span> Lisa</h1>
+      <p class="hero-married-tag">are getting married</p>
+      <div class="hero-meta-row" aria-hidden="true">
+        <span class="hero-meta-item">
+          {% if event.event_date %}{{ event.event_date | plain_date }}{% else %}Date to follow{% endif %}
+        </span>
+        {% if event.location %}
+          <span class="hero-meta-dot"></span>
+          <span class="hero-meta-item">{{ event.location }}</span>
+        {% endif %}
+      </div>
+    </div>
+  </section>
+{% endblock %}
+
+{% block nav %}
+  <nav class="pgnav lg:hidden" aria-label="Invitation sections">
+    <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path == '/invites/' ~ token else '' }}"
+       href="/invites/{{ token }}">Welcome</a>
+    <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path.endswith('/wedding') else '' }}"
+       href="/invites/{{ token }}/wedding">The Wedding</a>
+    <a class="pgnav-link{{ ' pgnav-link-on' if request.url.path.endswith('/rsvp') else '' }}"
+       href="/invites/{{ token }}/rsvp">RSVP</a>
+  </nav>
+{% endblock %}
+
+{# Desktop.dc.html is a 1440px column of alternating full-bleed bands, not a
+   stretched phone column. Mobile keeps its centred card layout untouched. #}
+{% block main_class %}mx-auto flex max-w-2xl flex-col gap-8 px-5 py-8 lg:max-w-none lg:gap-0 lg:px-0 lg:py-0{% endblock %}
+
 {% block content %}
 
-  <section class="flex flex-col items-center gap-2 text-center">
+  <section class="flex flex-col items-center gap-2 text-center lg:hidden">
     <h1 class="display-lg">{{ event.title }}</h1>
     <p class="eyebrow">
       {% if event.event_date %}{{ event.event_date | plain_date }}{% else %}Date to follow{% endif %}
@@ -12,7 +76,42 @@
     </p>
   </section>
 
-  <section class="flex flex-col gap-3">
+  {# -- Band 2: the ceremony, driven by `ns.ceremony` -- desktop only -- #}
+  <section id="ceremony" class="ceremony-band hidden lg:flex lg:items-stretch" aria-label="The ceremony">
+    <div class="lg:w-[600px] lg:flex-shrink-0 relative overflow-hidden">
+      <img
+        class="h-full w-full object-cover block"
+        src="/static/img/gulf-evening.jpg"
+        alt="The Gulf of Mexico at dusk, waves rolling toward a darkening sky.">
+    </div>
+    <div class="flex flex-1 flex-col justify-center gap-5 lg:px-[66px] lg:py-[76px]">
+      <p class="eyebrow-ceremony-tag">The ceremony</p>
+      {% if ns.ceremony %}
+        <h2 class="ceremony-heading">
+          {{ local_day(ns.ceremony.starts_at, event.timezone) }}, at {{ local_time(ns.ceremony.starts_at, event.timezone) }}
+        </h2>
+      {% else %}
+        <h2 class="ceremony-heading">Details to follow</h2>
+      {% endif %}
+      <p class="ceremony-copy">
+        We will be married on the beach, with the Gulf behind us. Come as you
+        are — barefoot is welcome, and expected.
+      </p>
+      <p class="ceremony-copy">
+        Afterwards we would like to keep you a while longer: dinner, dancing,
+        and a few speeches as the sun goes down.
+      </p>
+      {% if ns.ceremony and (ns.ceremony.location or ns.ceremony.description) %}
+        <div class="ceremony-rule" aria-hidden="true"></div>
+        <p class="ceremony-meta-line">
+          {{ ns.ceremony.description or ns.ceremony.location }}
+        </p>
+      {% endif %}
+    </div>
+  </section>
+
+  {# -- Mobile: the full schedule as one flat list, unchanged -- hidden at lg -- #}
+  <section class="flex flex-col gap-3 lg:hidden">
     <h2 class="display-md">The weekend</h2>
     {% if required_segments %}
       <div class="flex flex-col gap-3">
@@ -35,31 +134,95 @@
     {% endif %}
   </section>
 
-  {% if optional_segments %}
-    <section class="flex flex-col gap-3">
-      <h2 class="display-md">Optional extras</h2>
-      <p class="muted-copy">Entirely optional, booked separately, paid on the day.</p>
-      <div class="flex flex-col gap-3">
-        {% for segment in optional_segments %}
-          <div class="paid-card">
-            <p class="schedule-title">{{ segment.name }}</p>
-            <p class="tap-row-meta">
+  {# -- Band 3: "the days either side" -- the non-ceremony required segments,
+     three to a row -- desktop only -- #}
+  <section class="hidden lg:flex lg:flex-col lg:gap-9 lg:px-[60px] lg:pt-[76px] lg:pb-[60px]">
+    <div class="lg:flex lg:items-end lg:justify-between lg:gap-16">
+      <div class="lg:flex lg:max-w-[660px] lg:flex-col lg:gap-3">
+        <h2 class="display-lg lg:text-[48px] lg:leading-[1.06]">The days either side</h2>
+        <p class="body-copy lg:text-[19px]">
+          You are travelling a long way, so we have taken the whole weekend.
+          Nothing is required, and all of it is on us.
+        </p>
+      </div>
+      <p class="body-copy lg:max-w-[400px] lg:text-[18px] lg:leading-[1.65]">
+        We would love you for all four days. If you can only manage Sunday,
+        that is more than enough.
+      </p>
+    </div>
+
+    <div class="lg:grid lg:grid-cols-3 lg:gap-7">
+      {% for segment in required_segments if ns.ceremony is none or segment.id != ns.ceremony.id %}
+        <div class="card flex h-full flex-col">
+          {% if loop.first %}
+            <img
+              class="h-[150px] w-full object-cover"
+              src="/static/img/gulf-sunset.jpg"
+              alt="An orange and purple sunset over the Gulf of Mexico, waves breaking on the shore.">
+          {% else %}
+            <div class="photo-slot h-[150px]">
+              <span class="photo-slot-eyebrow">Photo — {{ segment.name }}</span>
+            </div>
+          {% endif %}
+          <div class="flex flex-grow flex-col gap-2.5 p-[26px]">
+            <p class="eyebrow-card-when">
               {{ local_day(segment.starts_at, event.timezone) }} ·
               {{ local_range(segment.starts_at, segment.ends_at, event.timezone) }}
-              {% if segment.location %} · {{ segment.location }}{% endif %}
             </p>
+            <h3 class="font-display text-[30px] font-normal">{{ segment.name }}</h3>
             {% if segment.description %}
               <p class="body-copy">{{ segment.description }}</p>
             {% endif %}
-            <div class="flex flex-wrap items-center justify-between gap-3">
-              {% if segment.price %}
-                <span class="paid-price">${{ segment.price }} per person</span>
-              {% else %}
-                <span class="paid-price">Price to be confirmed</span>
+            {% if segment.location %}
+              <p class="muted-copy mt-auto pt-3">{{ segment.location }}</p>
+            {% endif %}
+          </div>
+        </div>
+      {% endfor %}
+    </div>
+  </section>
+
+  {# -- The optional / paid extras: one shared card loop, reflowed responsively.
+     Heading text differs by breakpoint (two headings, one hidden each way);
+     everything else is the same markup made wider at lg. -- #}
+  {% if optional_segments %}
+    <section class="flex flex-col gap-3 lg:gap-5 lg:px-[60px] lg:pt-[26px] lg:pb-[58px]">
+      <h2 class="display-md lg:hidden">Optional extras</h2>
+      <div class="hidden lg:flex lg:max-w-[760px] lg:flex-col lg:gap-2.5">
+        <h2 class="display-md lg:text-[44px]">Something to do in the morning</h2>
+        <p class="body-copy lg:text-[18px]">
+          Two entirely optional mornings, for anyone who wants them. Booked
+          separately and paid on the day — just tell us on your reply so we
+          can keep track.
+        </p>
+      </div>
+      <p class="muted-copy lg:hidden">Entirely optional, booked separately, paid on the day.</p>
+      <div class="flex flex-col gap-3 lg:grid lg:grid-cols-2 lg:gap-7">
+        {% for segment in optional_segments %}
+          <div class="paid-card lg:flex-row lg:overflow-hidden lg:p-0">
+            <div class="photo-slot hidden lg:flex lg:h-auto lg:w-[250px] lg:flex-shrink-0 lg:rounded-none lg:p-0">
+              <span class="photo-slot-eyebrow">Photo — {{ segment.name }}</span>
+            </div>
+            <div class="flex flex-1 flex-col gap-2 lg:p-6">
+              <p class="schedule-title">{{ segment.name }}</p>
+              <p class="tap-row-meta">
+                {{ local_day(segment.starts_at, event.timezone) }} ·
+                {{ local_range(segment.starts_at, segment.ends_at, event.timezone) }}
+                {% if segment.location %} · {{ segment.location }}{% endif %}
+              </p>
+              {% if segment.description %}
+                <p class="body-copy">{{ segment.description }}</p>
               {% endif %}
-              {% if segment.booking_url %}
-                <a class="paid-link" href="{{ segment.booking_url }}">Book separately &rarr;</a>
-              {% endif %}
+              <div class="flex flex-wrap items-center justify-between gap-3 lg:mt-auto lg:pt-3">
+                {% if segment.price %}
+                  <span class="paid-price">${{ segment.price }} per person</span>
+                {% else %}
+                  <span class="paid-price">Price to be confirmed</span>
+                {% endif %}
+                {% if segment.booking_url %}
+                  <a class="paid-link" href="{{ segment.booking_url }}">Book separately &rarr;</a>
+                {% endif %}
+              </div>
             </div>
           </div>
         {% endfor %}
@@ -67,32 +230,90 @@
     </section>
   {% endif %}
 
-  <section class="flex flex-col gap-3">
-    <h2 class="display-md">Getting there</h2>
-    <p class="body-copy">
-      Port Aransas sits on a barrier island on the Texas Gulf Coast. It is reached
-      by a short car ferry from Aransas Pass, or by a passenger-only water taxi
-      from the same dock. The nearest airport is Corpus Christi International,
-      about forty minutes away including the ferry; San Antonio is a further
-      option if fares run better, at roughly three hours by car.
-    </p>
-    <p class="body-copy">
-      The ferry runs continuously and does not take reservations — on a busy
-      weekend, budget an extra half hour either way.
-    </p>
+  {# -- Band 5: travel -- light stacked blocks on mobile, dark full-bleed band
+     with a four-column grid at desktop. Recolouring lives on `.travel-band`. -- #}
+  <section class="travel-band flex flex-col gap-6 lg:gap-9 lg:px-[60px] lg:py-[62px]">
+    <div class="flex flex-col gap-2 lg:flex-row lg:items-end lg:justify-between lg:gap-10">
+      <h2 class="display-md lg:text-[44px]">Coming to the island</h2>
+      <p class="body-copy lg:max-w-[560px]">
+        We know we are asking you to travel a long way. Here is everything you
+        need, so that the getting there is the easy part.
+      </p>
+    </div>
+
+    <div class="travel-callout flex flex-col gap-3 lg:flex-row lg:items-center lg:gap-10">
+      <div class="flex flex-shrink-0 flex-col gap-1">
+        <p class="eyebrow">Where to stay</p>
+        <p class="display-md">Palmilla Beach</p>
+      </div>
+      <p class="body-copy lg:flex-grow">
+        The ceremony and the rest of the weekend are all inside Palmilla, so
+        staying there puts you a short golf-cart ride from everything. There
+        are rentals across the resort and houses along the beach either side
+        of it. Please book early — February is busy on this coast.
+      </p>
+      <a class="travel-callout-btn" href="https://www.palmillabeach.com/">Palmilla Beach</a>
+    </div>
+
+    <div class="grid grid-cols-1 gap-6 lg:grid-cols-4 lg:gap-[26px]">
+      <div class="travel-recommended flex flex-col gap-2.5">
+        <p class="eyebrow">Fly into</p>
+        <p class="travel-card-heading">Corpus Christi — CRP</p>
+        <p class="body-copy">
+          The closest airport, and a small, easy one — about forty-five
+          minutes from us by road. San Antonio has many more flights and is
+          about a three-hour drive.
+        </p>
+        <a class="travel-link" href="https://corpuschristiairport.com">Airport site &rarr;</a>
+      </div>
+
+      <div class="flex flex-col gap-2.5">
+        <p class="eyebrow">Rent a car</p>
+        <p class="travel-card-heading">You will want one</p>
+        <p class="body-copy">
+          All the usual rental companies are at the airport. Please book
+          early — February is busy on this coast, and the island fills up.
+        </p>
+        <a class="travel-link" href="https://corpuschristiairport.com">Car rentals at CRP &rarr;</a>
+      </div>
+
+      <div class="flex flex-col gap-2.5">
+        <p class="eyebrow">The last mile</p>
+        <p class="travel-card-heading">The ferry is free</p>
+        <p class="body-copy">
+          The island is reached by ferry from Aransas Pass. It runs day and
+          night, takes under ten minutes, and does not take reservations.
+        </p>
+        <a class="travel-link" href="https://www.portaransas.org/plan/transportation/ferry/">Ferry information &rarr;</a>
+      </div>
+
+      <div class="flex flex-col gap-2.5">
+        <p class="eyebrow">Getting around</p>
+        <p class="travel-card-heading">You will not need the car again</p>
+        <p class="body-copy">
+          Once you have landed, the island runs on golf carts and short
+          walks. {{ event.location }} and the beach are close enough that the
+          rental car can mostly stay parked.
+        </p>
+      </div>
+    </div>
   </section>
 
-  <section class="flex flex-col gap-3">
-    <h2 class="display-md">Where to stay</h2>
-    <p class="body-copy">
-      We have held a block of rooms at a few places on the island within walking
-      or golf-cart distance of {{ event.location }}. Details and booking links
-      will follow with your paper invitation.
-    </p>
-  </section>
-
-  <section class="flex flex-col gap-3">
+  {# -- Band 6: footer -- mobile keeps its single button; desktop adds the
+     text-left / buttons-right band, including the same print link. -- #}
+  <section class="flex flex-col gap-3 lg:hidden">
     <a class="btn-outline btn-block" href="/invites/{{ token }}/print">Printable itinerary</a>
+  </section>
+
+  <section class="hidden lg:flex lg:items-center lg:justify-between lg:gap-12 lg:bg-[#EFE7D9] lg:px-[60px] lg:py-[54px]">
+    <div class="flex flex-col gap-1.5">
+      <h3 class="display-sm">Keep a copy on hand</h3>
+      <p class="muted-copy">
+        A plain, printable page with the date, address and times — good for a
+        fridge door or a bag.
+      </p>
+    </div>
+    <a class="btn-outline lg:min-h-[54px] lg:px-9" href="/invites/{{ token }}/print">Printable itinerary</a>
   </section>
 
 {% endblock %}

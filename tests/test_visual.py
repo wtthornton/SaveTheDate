@@ -311,14 +311,55 @@ def test_guests_stack_on_a_phone(browser: Browser, live_url: str, token: str) ->
     page.context.close()
 
 
-def test_a_desktop_does_not_render_one_narrow_phone_column(
-    browser: Browser, live_url: str, token: str
+@pytest.mark.parametrize(
+    "page_name,suffix", [("welcome", ""), ("wedding", "/wedding"), ("rsvp", "/rsvp")]
+)
+def test_no_page_is_a_long_thin_column_on_a_desktop(
+    browser: Browser, live_url: str, token: str, page_name: str, suffix: str
 ) -> None:
-    """The desktop artboards are 1440px wide layouts, not a stretched phone.
+    """Every page, not just the one that happened to be checked first.
 
-    A single measure of body text centered in a sea of background is the signature of
-    never having built the desktop design at all.
+    The original version of this test loaded only the welcome page, because it looked
+    for `.beat`. The Wedding page therefore had no desktop layout at all and stayed
+    green until somebody opened it and said it was "long and skinny". A test that only
+    visits one of three pages is a test that covers one of three pages.
+
+    The measure: how tall is the page relative to how wide its content gets. A real
+    desktop layout is broad and comparatively short; a stretched phone is a ribbon.
     """
+    page = _page(browser, DESKTOP)
+    page.goto(f"{live_url}/invites/{token}{suffix}", wait_until="networkidle")
+
+    shape = page.evaluate(
+        """() => {
+            const main = document.querySelector('main') || document.body;
+            let widest = 0;
+            for (const el of main.querySelectorAll('*')) {
+                const cs = getComputedStyle(el);
+                if (cs.display === 'none') continue;
+                const own = Array.from(el.childNodes)
+                    .filter(n => n.nodeType === Node.TEXT_NODE)
+                    .map(n => n.textContent.trim()).join('');
+                if (!own) continue;
+                widest = Math.max(widest, el.getBoundingClientRect().width);
+            }
+            return {widest, height: document.documentElement.scrollHeight,
+                    viewport: window.innerWidth};
+        }"""
+    )
+    assert shape["widest"] > shape["viewport"] * 0.45, (
+        f"{page_name}: the widest text block is {round(shape['widest'])}px in a "
+        f"{shape['viewport']}px viewport — this is a phone column, not a desktop layout"
+    )
+    assert shape["height"] < 6000, (
+        f"{page_name}: the desktop page is {shape['height']}px tall — content is "
+        "stacking vertically instead of using the width"
+    )
+    page.context.close()
+
+
+def test_the_welcome_beats_use_the_full_width(browser: Browser, live_url: str, token: str) -> None:
+    """Welcome.dc.html gives the beats 470px pictures beside their text."""
     page = _page(browser, DESKTOP)
     page.goto(f"{live_url}/invites/{token}", wait_until="networkidle")
 
@@ -390,6 +431,90 @@ def test_no_rendered_text_is_below_18px(
     )
     assert not offenders, f"{width_name}: text below {MINIMUM_BODY_PX}px:\n  " + "\n  ".join(
         offenders
+    )
+    page.context.close()
+
+
+@pytest.mark.parametrize("width_name,viewport", [("phone", PHONE), ("desktop", DESKTOP)])
+def test_no_text_renders_smaller_than_the_body_baseline(
+    browser: Browser, live_url: str, token: str, width_name: str, viewport: ViewportSize
+) -> None:
+    """A font size in px is not a legibility measurement. x-height is.
+
+    The hero date is 20px, which clears an 18px floor and reads as the larger number —
+    but it is Cormorant Garamond, light, italic. Its x-height measures 8px against 9px
+    for the 18px Karla body text, so the most important line on a save-the-date renders
+    SMALLER than the paragraphs around it. A nominal-px check cannot see that.
+
+    Baseline: the x-height of 18px Karla, the project's stated body-text floor.
+    """
+    page = _page(browser, viewport)
+    page.goto(f"{live_url}/invites/{token}", wait_until="networkidle")
+    page.wait_for_timeout(800)  # let the webfonts load, or every measurement is Georgia
+
+    offenders = page.evaluate(
+        """() => {
+            const c = document.createElement('canvas').getContext('2d');
+            const cache = new Map();
+            // Measure the metric the text actually uses: x-height where there are
+            // lowercase letters to sit on it, cap-height for all-caps runs like roman
+            // numerals, where x-height describes nothing on screen. Using x-height for
+            // everything creates pressure to reclassify all-caps text as an "eyebrow"
+            // purely to escape a measurement that never applied to it.
+            const metric = (font, allCaps) => {
+                const key = font + '|' + allCaps;
+                if (!cache.has(key)) {
+                    c.font = font;
+                    cache.set(key, c.measureText(allCaps ? 'H' : 'x').actualBoundingBoxAscent);
+                }
+                return cache.get(key);
+            };
+            const fontOf = (cs) =>
+                `${cs.fontStyle} ${cs.fontWeight} ${cs.fontSize} ${cs.fontFamily}`;
+            const hasLower = (s) => /[a-z]/.test(s);
+
+            const bad = [];
+            for (const el of document.querySelectorAll('body *')) {
+                const own = Array.from(el.childNodes)
+                    .filter(n => n.nodeType === Node.TEXT_NODE)
+                    .map(n => n.textContent.trim()).join('');
+                if (!own) continue;
+                const cs = getComputedStyle(el);
+                if (cs.display === 'none' || cs.visibility === 'hidden') continue;
+
+                const isEyebrow = /eyebrow/.test(el.className || '');
+                const px = parseFloat(cs.fontSize);
+                const allCaps = !hasLower(own) ||
+                                cs.textTransform === 'uppercase';
+                const mine = metric(fontOf(cs), allCaps);
+                const baseline = metric('normal 400 18px Karla, sans-serif', allCaps);
+
+                if (isEyebrow) {
+                    // The exemption exists for short tracked uppercase labels that are
+                    // scanned, not read. It is not a way to make ordinary text small,
+                    // so it still carries a floor and must actually look like a label.
+                    const tracked = parseFloat(cs.letterSpacing) >= 1;
+                    const upper = cs.textTransform === 'uppercase' ||
+                                  own === own.toUpperCase();
+                    if (!tracked || !upper) bad.push(
+                        `${el.className} is exempted as an eyebrow but is not a tracked ` +
+                        `uppercase label :: "${own.slice(0, 30)}"`);
+                    else if (px < 13) bad.push(
+                        `${el.className} eyebrow is ${px}px (floor is 13px) :: ` +
+                        `"${own.slice(0, 30)}"`);
+                    continue;
+                }
+                if (mine < baseline) bad.push(
+                    `${el.tagName.toLowerCase()}.${el.className || '(none)'} ` +
+                    `${cs.fontSize} ${cs.fontStyle} ${cs.fontWeight} — x-height ` +
+                    `${mine.toFixed(1)}px vs ${baseline.toFixed(1)}px baseline :: ` +
+                    `"${own.slice(0, 30)}"`);
+            }
+            return bad;
+        }"""
+    )
+    assert not offenders, (
+        f"{width_name}: text rendering smaller than 18px Karla:\n  " + "\n  ".join(offenders)
     )
     page.context.close()
 

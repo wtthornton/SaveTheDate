@@ -119,7 +119,7 @@
 
   .eyebrow {
     display: inline-block;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 700;
     letter-spacing: 0.2em;
     text-transform: uppercase;
@@ -143,6 +143,7 @@
     font-size: 15px;
     font-style: normal;
     letter-spacing: 0.22em;
+    text-transform: uppercase;
     color: var(--color-blush);
   }
 
@@ -193,6 +194,8 @@
     font-style: italic;
   }
 
+  /* A roman numeral marking a beat is scanned, not read — a legitimate eyebrow,
+     and "I"/"II"/"III" are already uppercase Latin letters. */
   .beat-roman {
     font-family: var(--font-display);
     font-style: italic;
@@ -249,7 +252,7 @@
     position: relative;
     font-family: var(--font-display);
     font-style: italic;
-    font-size: 22px;
+    font-size: 26px;
     line-height: 1.5;
     color: #FFFFFF;
   }
@@ -283,7 +286,10 @@
 
   .hero {
     position: relative;
-    height: 520px;
+    /* Fixed 520px is 78% of an iPhone SE viewport, which hides the fact that the
+       page continues. Capping against vh keeps a slice of content visible on short
+       screens and changes nothing on a large phone. */
+    height: min(520px, 62vh);
     overflow: hidden;
   }
 
@@ -351,7 +357,7 @@
 
   .eyebrow-hero-tag {
     display: block;
-    font-size: 10px;
+    font-size: 14px;
     font-weight: 700;
     letter-spacing: 0.36em;
     text-transform: uppercase;
@@ -398,7 +404,7 @@
     position: relative;
     font-family: var(--font-display);
     font-style: italic;
-    font-size: 20px;
+    font-size: 27px;
     line-height: 1.4;
     color: #FFFFFF;
     text-align: center;
@@ -407,7 +413,7 @@
   .eyebrow-hero-location {
     display: block;
     padding-top: 9px;
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 700;
     letter-spacing: 0.2em;
     text-transform: uppercase;
@@ -473,7 +479,7 @@
 
   @media (min-width: 1024px) {
     .hero {
-      height: 760px;
+      height: min(760px, 78vh);
     }
 
     .hero-photo {
@@ -516,16 +522,16 @@
     }
 
     .hero-date {
-      font-size: 27px;
+      font-size: 32px;
     }
 
     .eyebrow-hero-tag {
-      font-size: 12px;
+      font-size: 14px;
       letter-spacing: 0.44em;
     }
 
     .eyebrow-hero-location {
-      font-size: 13px;
+      font-size: 14px;
       letter-spacing: 0.26em;
       padding-top: 12px;
     }
@@ -569,9 +575,10 @@
   }
 
   .photo-slot-eyebrow {
-    font-size: 12px;
+    font-size: 14px;
     font-weight: 700;
     letter-spacing: 0.12em;
+    text-transform: uppercase;
     color: #7A6A57;
   }
 
@@ -1139,5 +1146,190 @@
   .print-copy {
     font-size: 13pt;
     line-height: 1.5;
+  }
+
+  /* -- Wedding page, desktop only (Desktop.dc.html, "Web 2 — The Wedding") -------
+   * Six alternating full-bleed bands. Mobile is untouched: every new element here
+   * is either `hidden lg:flex`/`hidden lg:block` (desktop-only) or a mobile
+   * element gains `lg:hidden` in the template, never both at once.
+   */
+
+  .hero-short {
+    height: min(720px, 74vh);
+  }
+
+  .wedding-hero-names {
+    font-size: 100px;
+  }
+
+  .wedding-hero-and {
+    font-size: 50px;
+    font-style: italic;
+  }
+
+  .hero-married-tag {
+    font-family: var(--font-display);
+    font-size: 30px;
+    font-style: italic;
+    color: #FFFFFF;
+  }
+
+  .hero-meta-row {
+    display: flex;
+    align-items: center;
+    gap: 22px;
+    padding-top: 10px;
+  }
+
+  .hero-meta-item {
+    font-size: 19px;
+    font-weight: 700;
+    letter-spacing: 0.16em;
+    color: #FFFFFF;
+  }
+
+  .hero-meta-dot {
+    width: 5px;
+    height: 5px;
+    border-radius: 50%;
+    background-color: var(--color-blush);
+  }
+
+  /* -- Ceremony band: dark, full bleed, driven by the ceremony segment ---------- */
+
+  .ceremony-band {
+    background-color: var(--color-ink);
+  }
+
+  .eyebrow-ceremony-tag {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--color-blush);
+  }
+
+  .ceremony-heading {
+    font-family: var(--font-display);
+    font-size: 58px;
+    font-weight: 300;
+    line-height: 1.08;
+    color: #FFFFFF;
+  }
+
+  .ceremony-copy {
+    font-size: 19px;
+    line-height: 1.65;
+    color: #E8E2D6;
+  }
+
+  .ceremony-rule {
+    width: 40px;
+    height: 1px;
+    background-color: var(--color-blush);
+  }
+
+  .ceremony-meta-line {
+    font-size: 18px;
+    line-height: 1.6;
+    color: #B9C3C9;
+  }
+
+  /* -- "The days either side" / "something to do" card grids -------------------- */
+
+  .eyebrow-card-when {
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    color: var(--color-accent);
+  }
+
+  /* -- Travel band: light on mobile (matches the rest of the page), full-bleed
+   * dark at desktop. Recolouring is scoped to `.travel-band` so nothing else on
+   * the page is affected. */
+
+  .travel-callout {
+    border: 1px solid var(--color-rule);
+    border-radius: 4px;
+    padding: 24px 28px;
+  }
+
+  .travel-callout-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 44px;
+    padding: 0 22px;
+    flex-shrink: 0;
+    border: 1px solid var(--color-accent);
+    border-radius: 2px;
+    color: var(--color-accent);
+    font-size: 18px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-decoration: none;
+  }
+
+  .travel-card-heading {
+    font-family: var(--font-display);
+    font-size: 27px;
+    color: var(--color-ink);
+  }
+
+  .travel-link {
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    font-size: 18px;
+    font-weight: 700;
+    color: var(--color-accent);
+  }
+
+  .travel-recommended {
+    border: 2px dashed var(--color-accent);
+    border-radius: 4px;
+    padding: 16px;
+    margin: -16px;
+  }
+
+  @media (min-width: 1024px) {
+    .travel-band {
+      background-color: var(--color-ink);
+    }
+
+    .travel-band h2 {
+      color: #FFFFFF;
+    }
+
+    .travel-band .eyebrow {
+      color: var(--color-blush);
+    }
+
+    .travel-band .body-copy,
+    .travel-band .muted-copy {
+      color: #E8E2D6;
+    }
+
+    .travel-callout {
+      border-color: #3B4A55;
+    }
+
+    .travel-callout-btn,
+    .travel-link {
+      color: var(--color-blush);
+    }
+
+    .travel-callout-btn {
+      border-color: var(--color-blush);
+    }
+
+    .travel-card-heading {
+      color: #FFFFFF;
+    }
+
+    .travel-recommended {
+      border-color: var(--color-blush);
+    }
   }
 }
