@@ -19,6 +19,7 @@ than trusted to review.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from typing import Any
 
 import pytest
 from fastapi.testclient import TestClient
@@ -52,6 +53,17 @@ def save_the_date_hosts(monkeypatch: pytest.MonkeyPatch) -> Iterator[str]:
 
 def _host(name: str) -> dict[str, str]:
     return {**BROWSER, "Host": name}
+
+
+def _fetch(client: TestClient, page: str) -> Any:
+    """One of the two public pages, addressed the way the internet addresses it.
+
+    Both live at `/`; the hostname is the whole of the difference. Parametrizing over
+    hostnames rather than over paths is not a detail — there IS no second path any
+    more, and a test that invented one would be testing something the site does not do.
+    """
+    hostname = SAVE_THE_DATE_HOST if page == "card" else WEDDING_HOST
+    return client.get("/", headers=_host(hostname))
 
 
 # -- The welcome at the root, TAP-7775 -------------------------------------------
@@ -117,29 +129,35 @@ def test_a_missing_api_route_is_still_json(anonymous_client: TestClient) -> None
 # -- What neither page may ever contain ------------------------------------------
 
 
-@pytest.mark.parametrize("path", ["/", "/save-the-date"])
+@pytest.mark.parametrize("page", ["welcome", "card"])
 def test_no_public_page_offers_a_way_to_look_an_invitation_up(
-    anonymous_client: TestClient, path: str
+    anonymous_client: TestClient, save_the_date_hosts: str, page: str
 ) -> None:
     """A name box here is a guest-list oracle: anyone could test names to learn who
     was invited. TAP-7725 rejected the pattern on friction grounds; it is also a
     disclosure. No form, no control, no lookup — ever."""
-    document = Document(anonymous_client.get(path, headers=BROWSER).text)
+    document = Document(_fetch(anonymous_client, page).text)
 
     assert document.find_all("form") == []
     assert document.form_controls() == []
     assert document.faked_controls() == []
 
 
-@pytest.mark.parametrize("path", ["/", "/save-the-date"])
-def test_no_public_page_shows_the_private_address(anonymous_client: TestClient, path: str) -> None:
+@pytest.mark.parametrize("page", ["welcome", "card"])
+def test_no_public_page_shows_the_private_address(
+    anonymous_client: TestClient, save_the_date_hosts: str, page: str
+) -> None:
     """183 Stargrass Ln is a private home, not a venue with a parking lot."""
-    assert PRIVATE_ADDRESS not in anonymous_client.get(path, headers=BROWSER).text
+    assert PRIVATE_ADDRESS not in _fetch(anonymous_client, page).text
 
 
-@pytest.mark.parametrize("path", ["/", "/save-the-date"])
+@pytest.mark.parametrize("page", ["welcome", "card"])
 def test_no_public_page_shows_a_guest_or_the_schedule(
-    anonymous_client: TestClient, client: TestClient, db_session: Session, path: str
+    anonymous_client: TestClient,
+    client: TestClient,
+    db_session: Session,
+    save_the_date_hosts: str,
+    page: str,
 ) -> None:
     """Seeded first, so this fails if the page ever learns to read a guest row.
 
@@ -150,17 +168,19 @@ def test_no_public_page_shows_a_guest_or_the_schedule(
     guest = add_guest(client, event["id"], name="Marguerite Vandersloot")
     add_segments(db_session, event["id"])
 
-    body = anonymous_client.get(path, headers=BROWSER).text
+    body = _fetch(anonymous_client, page).text
 
     assert guest["name"] not in body
     assert guest["invite_token"] not in body
     assert "Welcome party on the beach" not in body
 
 
-@pytest.mark.parametrize("path", ["/", "/save-the-date"])
-def test_no_public_page_invites_a_crawler(anonymous_client: TestClient, path: str) -> None:
+@pytest.mark.parametrize("page", ["welcome", "card"])
+def test_no_public_page_invites_a_crawler(
+    anonymous_client: TestClient, save_the_date_hosts: str, page: str
+) -> None:
     """Public means "needs no token", not "wants to be searchable"."""
-    response = anonymous_client.get(path, headers=BROWSER)
+    response = _fetch(anonymous_client, page)
     robots = Document(response.text).find("meta", name="robots")
 
     assert response.headers["X-Robots-Tag"] == "noindex, nofollow, noarchive"
@@ -171,18 +191,26 @@ def test_no_public_page_invites_a_crawler(anonymous_client: TestClient, path: st
 # -- The card, and which hostname gets it, TAP-7781 ------------------------------
 
 
-def test_the_card_is_served_at_its_own_path_on_every_hostname(
-    anonymous_client: TestClient,
+def test_the_card_has_no_path_of_its_own_on_the_wedding_hostname(
+    anonymous_client: TestClient, save_the_date_hosts: str
 ) -> None:
-    """What the visual tests and local review hit, with no Host header games."""
-    response = anonymous_client.get("/save-the-date", headers=BROWSER)
+    """There is no `/save-the-date` anywhere, and least of all on the wedding site.
 
-    assert response.status_code == 200
-    assert "Save the date" in Document(response.text).text
+    An earlier version served the card at that path on every hostname, so that it
+    could be reviewed without a DNS entry. That made it reachable at
+    `dev-wedding.tapphouse.co/save-the-date`, Bill rejected it on sight, and he was
+    right: a page reachable under two names is one that gets linked to by the wrong
+    one. Asserted on BOTH hostnames so the path cannot creep back on either.
+    """
+    for hostname in (WEDDING_HOST, save_the_date_hosts):
+        response = anonymous_client.get("/save-the-date", headers=_host(hostname))
+        assert response.status_code == 404, hostname
 
 
-def test_the_card_carries_the_four_things_it_is_for(anonymous_client: TestClient) -> None:
-    text = Document(anonymous_client.get("/save-the-date", headers=BROWSER).text).text
+def test_the_card_carries_the_four_things_it_is_for(
+    anonymous_client: TestClient, save_the_date_hosts: str
+) -> None:
+    text = Document(_fetch(anonymous_client, "card").text).text
 
     assert "Lisa" in text
     assert "Bill" in text
@@ -190,13 +218,29 @@ def test_the_card_carries_the_four_things_it_is_for(anonymous_client: TestClient
     assert "Port Aransas" in text
 
 
-def test_the_card_points_onward_to_the_wedding_site(anonymous_client: TestClient) -> None:
-    document = Document(anonymous_client.get("/save-the-date", headers=BROWSER).text)
+def test_the_card_points_onward_to_the_wedding_site(
+    anonymous_client: TestClient, save_the_date_hosts: str
+) -> None:
+    document = Document(_fetch(anonymous_client, "card").text)
     onward = [
         anchor for anchor in document.find_all("a") if WEDDING_HOST in anchor.attrs.get("href", "")
     ]
 
     assert onward, "the card should link to the wedding site"
+
+
+def test_the_welcome_names_the_island_not_just_the_state(
+    anonymous_client: TestClient,
+) -> None:
+    """Bill overruled TAP-7775's country/state rule on 2026-09-17.
+
+    The welcome and the card are equally public and equally noindex, so naming the
+    town on one while hiding it on the other was incoherent. The private address is
+    what stays off both, and that is asserted separately.
+    """
+    text = Document(anonymous_client.get("/", headers=BROWSER).text).text
+
+    assert "Port Aransas" in text
 
 
 def test_the_root_of_a_save_the_date_host_serves_the_card(
@@ -286,9 +330,9 @@ def test_a_cc_by_photograph_brings_its_credit_with_it() -> None:
     assert "Mike Dickison" not in line, "credited a photographer whose work is not shown"
 
 
-@pytest.mark.parametrize("path", ["/", "/save-the-date"])
+@pytest.mark.parametrize("page", ["welcome", "card"])
 def test_every_cc_by_photograph_on_a_public_page_is_credited_on_it(
-    anonymous_client: TestClient, path: str
+    anonymous_client: TestClient, save_the_date_hosts: str, page: str
 ) -> None:
     """The rule img/CREDITS.md states, checked against what the page actually renders.
 
@@ -298,11 +342,11 @@ def test_every_cc_by_photograph_on_a_public_page_is_credited_on_it(
     """
     from app.templating import CC_BY_PHOTOGRAPHS
 
-    body = anonymous_client.get(path, headers=BROWSER).text
+    body = _fetch(anonymous_client, page).text
     missing = [
         f"{filename} by {photographer}"
         for filename, photographer, _ in CC_BY_PHOTOGRAPHS
         if filename in body and photographer not in body
     ]
 
-    assert missing == [], f"{path} shows a CC BY photograph without its credit: {missing}"
+    assert missing == [], f"the {page} shows a CC BY photograph without its credit: {missing}"

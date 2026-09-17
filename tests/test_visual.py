@@ -58,7 +58,16 @@ def _free_port() -> int:
 def live_url(_migrated_schema: None, _test_database_url: str) -> Iterator[str]:
     """A real uvicorn, because a browser cannot talk to an in-process TestClient."""
     port = _free_port()
-    env = {**os.environ, "DATABASE_URL": _test_database_url, "REVIEW_INSTANCE": "false"}
+    # The card and the welcome are told apart by hostname, not by path, so the browser
+    # has to be able to reach this one server under two names. Chromium resolves every
+    # `*.localhost` name to loopback, which gives a second hostname with no DNS, no
+    # hosts file and no second process.
+    env = {
+        **os.environ,
+        "DATABASE_URL": _test_database_url,
+        "REVIEW_INSTANCE": "false",
+        "SAVE_THE_DATE_HOSTS": "savethedate.localhost",
+    }
     process = subprocess.Popen(
         [
             str(PROJECT_ROOT / ".venv" / "bin" / "uvicorn"),
@@ -652,7 +661,15 @@ def test_the_dashboard_does_not_scroll_sideways(
 
 # Neither page takes a token, so neither uses the `token` fixture. That is the whole
 # point of them and it is worth seeing in the signatures below.
-PUBLIC_PAGES = [("public-welcome", "/"), ("save-the-date", "/save-the-date")]
+PUBLIC_PAGES = ["public-welcome", "save-the-date"]
+
+
+def _public_url(live_url: str, page_name: str) -> str:
+    """Both pages are `/`. Which one you get is decided by the hostname you asked."""
+    if page_name == "save-the-date":
+        return live_url.replace("127.0.0.1", "savethedate.localhost")
+    return live_url
+
 
 # Every animation on the card that ends, having ended. Asking the browser which
 # animations are still running beats naming the elements: the first version of this
@@ -673,18 +690,17 @@ def _settled(page: Page) -> None:
 
 
 @pytest.mark.parametrize("width_name,viewport", [("phone", PHONE), ("desktop", DESKTOP)])
-@pytest.mark.parametrize("page_name,path", PUBLIC_PAGES)
+@pytest.mark.parametrize("page_name", PUBLIC_PAGES)
 def test_capture_the_public_pages(
     browser: Browser,
     live_url: str,
     width_name: str,
     viewport: ViewportSize,
     page_name: str,
-    path: str,
 ) -> None:
     """Screenshots of the two tokenless pages. The files are the deliverable."""
     page = _page(browser, viewport)
-    page.goto(f"{live_url}{path}", wait_until="networkidle")
+    page.goto(_public_url(live_url, page_name), wait_until="networkidle")
     _settled(page)
     shot = _shoot(page, f"{page_name}-{width_name}")
 
@@ -697,14 +713,13 @@ def test_capture_the_public_pages(
 
 
 @pytest.mark.parametrize("width_name,viewport", [("phone", PHONE), ("desktop", DESKTOP)])
-@pytest.mark.parametrize("page_name,path", PUBLIC_PAGES)
+@pytest.mark.parametrize("page_name", PUBLIC_PAGES)
 def test_no_text_on_a_public_page_is_below_18px(
     browser: Browser,
     live_url: str,
     width_name: str,
     viewport: ViewportSize,
     page_name: str,
-    path: str,
 ) -> None:
     """The same floor as everywhere else, and with no `eyebrow` escape hatch.
 
@@ -712,7 +727,7 @@ def test_no_text_on_a_public_page_is_below_18px(
     these two pages carry no such class, so every word on them is measured.
     """
     page = _page(browser, viewport)
-    page.goto(f"{live_url}{path}", wait_until="networkidle")
+    page.goto(_public_url(live_url, page_name), wait_until="networkidle")
     _settled(page)
 
     offenders = page.evaluate(
@@ -739,17 +754,16 @@ def test_no_text_on_a_public_page_is_below_18px(
 
 
 @pytest.mark.parametrize("width_name,viewport", [("phone", PHONE), ("desktop", DESKTOP)])
-@pytest.mark.parametrize("page_name,path", PUBLIC_PAGES)
+@pytest.mark.parametrize("page_name", PUBLIC_PAGES)
 def test_every_target_on_a_public_page_is_44px(
     browser: Browser,
     live_url: str,
     width_name: str,
     viewport: ViewportSize,
     page_name: str,
-    path: str,
 ) -> None:
     page = _page(browser, viewport)
-    page.goto(f"{live_url}{path}", wait_until="networkidle")
+    page.goto(_public_url(live_url, page_name), wait_until="networkidle")
     _settled(page)
 
     small = page.evaluate(
@@ -779,7 +793,7 @@ def test_the_whole_card_is_visible_without_scrolling_on_a_phone(
 ) -> None:
     """A save-the-date is one glance. A date below the fold is a date nobody read."""
     page = _page(browser, PHONE)
-    page.goto(f"{live_url}/save-the-date", wait_until="networkidle")
+    page.goto(_public_url(live_url, "save-the-date"), wait_until="networkidle")
     _settled(page)
 
     card = _box(page, ".std-card")
@@ -800,7 +814,7 @@ def test_the_card_needs_no_javascript(browser: Browser, live_url: str) -> None:
     """
     context = browser.new_context(viewport=PHONE, device_scale_factor=2, java_script_enabled=False)
     page = context.new_page()
-    page.goto(f"{live_url}/save-the-date", wait_until="load")
+    page.goto(_public_url(live_url, "save-the-date"), wait_until="load")
     _shoot(page, "save-the-date-no-javascript")
 
     body = page.content()
@@ -822,7 +836,7 @@ def test_reduced_motion_gets_the_finished_card_and_no_movement(
     """
     context = browser.new_context(viewport=PHONE, device_scale_factor=2, reduced_motion="reduce")
     page = context.new_page()
-    page.goto(f"{live_url}/save-the-date", wait_until="networkidle")
+    page.goto(_public_url(live_url, "save-the-date"), wait_until="networkidle")
     _shoot(page, "save-the-date-reduced-motion")
 
     running = page.evaluate(
@@ -830,14 +844,19 @@ def test_reduced_motion_gets_the_finished_card_and_no_movement(
     )
     assert running == [], f"animations still running under reduced motion: {running}"
 
+    # Whether each piece renders a box, not what its own `display` says. An element
+    # inside a `display: none` parent still reports its own `display`, so asking that
+    # question of the flap gives the wrong answer while the envelope around it is
+    # correctly hidden. `getClientRects()` answers the question actually being asked:
+    # is any of this painted?
     hidden = page.evaluate(
-        """() => ['.std-flap', '.std-pocket', '.std-motes']
+        """() => ['.std-back', '.std-flap', '.std-front', '.std-seal', '.std-motes']
                .filter(s => {
                    const el = document.querySelector(s);
-                   return el && getComputedStyle(el).display !== 'none';
+                   return el && el.getClientRects().length > 0;
                })"""
     )
-    assert hidden == [], f"envelope pieces still shown under reduced motion: {hidden}"
+    assert hidden == [], f"envelope pieces still rendered under reduced motion: {hidden}"
 
     card = page.evaluate("() => getComputedStyle(document.querySelector('.std-card')).opacity")
     assert card == "1", "the card is not fully visible under reduced motion"
@@ -855,7 +874,7 @@ def test_the_envelope_gets_out_of_the_way_of_the_card(browser: Browser, live_url
     what is actually on top.
     """
     page = _page(browser, PHONE)
-    page.goto(f"{live_url}/save-the-date", wait_until="networkidle")
+    page.goto(_public_url(live_url, "save-the-date"), wait_until="networkidle")
     _settled(page)
 
     covered = page.evaluate(
@@ -898,4 +917,29 @@ def test_the_envelope_gets_out_of_the_way_of_the_card(browser: Browser, live_url
     # scripting — passes on a page a reader would call blank.
     opacity = page.evaluate("() => getComputedStyle(document.querySelector('.std-card')).opacity")
     assert opacity == "1", f"the card finished the reveal at opacity {opacity}"
+    page.context.close()
+
+
+def test_capture_the_envelope_opening(browser: Browser, live_url: str) -> None:
+    """Frames through the reveal, so the animation itself can be looked at.
+
+    Every other test here measures the end state, which is the state the animation
+    exists to get to and says nothing about how it gets there. A flap that opens
+    through the card, a liner that never faces the reader, a seal that survives its
+    own breaking — all of that is invisible to an assertion about the finished page
+    and obvious in five stills.
+    """
+    page = _page(browser, PHONE)
+    page.goto(_public_url(live_url, "save-the-date"), wait_until="networkidle")
+
+    # Wall-clock offsets into the sequence: sealed, seal breaking, flap lifting,
+    # card rising, envelope leaving.
+    last = 0
+    for index, moment_ms in enumerate((150, 900, 1500, 2300, 3600)):
+        page.wait_for_timeout(moment_ms - last)
+        last = moment_ms
+        shot = _shoot(page, f"save-the-date-opening-{index}-{moment_ms}ms")
+        assert shot.stat().st_size > 5000, f"{shot.name} looks blank"
+
+    _settled(page)
     page.context.close()

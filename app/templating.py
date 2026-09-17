@@ -8,6 +8,7 @@ Saturday.
 
 from __future__ import annotations
 
+import hashlib
 from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
@@ -15,6 +16,37 @@ from zoneinfo import ZoneInfo
 from fastapi.templating import Jinja2Templates
 
 TEMPLATE_DIR = Path(__file__).resolve().parent / "templates"
+STATIC_DIR = Path(__file__).resolve().parent / "static"
+
+# Keyed by what the file looked like when it was hashed, so a changed file is hashed
+# again and an unchanged one is not.
+_FINGERPRINTS: dict[tuple[str, int, int], str] = {}
+
+
+def static_url(relative: str) -> str:
+    """`/static/app.css?v=<content hash>` — a new URL whenever the bytes change.
+
+    Cloudflare returns `/static/*` with `max-age=14400` and caches it at the edge, so
+    a stylesheet published under a fixed URL keeps being served for four hours after
+    it changes. That is not theoretical: a rebuild mid-session left a reviewer looking
+    at a page with none of its new rules — no card, no animation — and the server was
+    serving the correct file the whole time. Nothing about the page said so, which is
+    what made it expensive to work out.
+
+    Fingerprinting fixes it at the cause. A caching header would not: the point is not
+    to cache less, it is that changed bytes should live at a different address. The
+    HTML itself is uncached (`cf-cache-status: DYNAMIC`), so the new URL is seen at
+    once.
+    """
+    path = STATIC_DIR / relative
+    stat = path.stat()
+    key = (relative, stat.st_mtime_ns, stat.st_size)
+    fingerprint = _FINGERPRINTS.get(key)
+    if fingerprint is None:
+        fingerprint = hashlib.sha256(path.read_bytes()).hexdigest()[:10]
+        _FINGERPRINTS[key] = fingerprint
+    return f"/static/{relative}?v={fingerprint}"
+
 
 ORDINAL_WORDS = {
     1: "first",
@@ -265,6 +297,7 @@ def photo_credit_for(*files: str) -> str:
 
 
 templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
+templates.env.globals["static_url"] = static_url
 templates.env.globals["photo_credit_line"] = photo_credit_line
 templates.env.globals["photo_credit_for"] = photo_credit_for
 templates.env.globals["segment_image"] = segment_image

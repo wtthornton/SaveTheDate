@@ -82,10 +82,33 @@
         <a class="std-link" href="{{ wedding_site_url }}">Visit the wedding site</a>
       </article>
 
-      <div class="std-pocket" aria-hidden="true">
-        <span class="std-seal">L&nbsp;&amp;&nbsp;B</span>
+      {# The envelope, over the card. Closed at first: a front panel with the names
+         and a stamp on it, a flap sealed with wax. The flap lifts to show its liner,
+         the card is drawn up out of the pocket, and the whole envelope then slides
+         away. Modelled on Greenvelope's animated envelope, which Bill pointed at.
+
+         Every piece is decorative and hidden from assistive technology: a screen
+         reader gets the card, which says all of this in words and is in the markup
+         above, before any of it. #}
+      <div class="std-envelope" aria-hidden="true">
+
+        <div class="std-back"></div>
+
+        {# The flap has two faces. The outer one is paper; the inner one is the
+           liner, rotated half a turn so it faces away until the flap lifts past
+           vertical and turns it toward the reader. #}
+        <div class="std-flap">
+          <div class="std-flap-face std-flap-out"></div>
+          <div class="std-flap-face std-flap-in"></div>
+        </div>
+
+        <div class="std-front">
+          <p class="std-addressee">Lisa &amp; Bill</p>
+          <div class="std-stamp"></div>
+        </div>
+
+        <div class="std-seal">L&nbsp;&amp;&nbsp;B</div>
       </div>
-      <div class="std-flap" aria-hidden="true"></div>
 
     </div>
   </div>

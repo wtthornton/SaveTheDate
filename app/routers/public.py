@@ -4,11 +4,22 @@ Every other guest-facing route in this app hangs off `guests.invite_token`. Thes
 do not, and that is the whole of what makes them delicate: whatever is written here is
 written to the open internet.
 
-* `/` — the welcome (TAP-7775). For somebody who typed the domain, or was handed it by
-  a relative without the link. Telling them their invitation could not be found reads
-  as their mistake when they have not made one.
-* `/save-the-date` — the card (TAP-7781). The public save-the-date, sent broadly long
-  before the guest list is final.
+**Both of them live at `/`**, and the hostname decides which one you get: the card on a
+hostname listed in `SAVE_THE_DATE_HOSTS`, the welcome on every other.
+
+* The welcome (TAP-7775). For somebody who typed the wedding domain, or was handed it
+  by a relative without the link. Telling them their invitation could not be found
+  reads as their mistake when they have not made one.
+* The card (TAP-7781). The public save-the-date, sent broadly long before the guest
+  list is final.
+
+There is deliberately **no `/save-the-date` path**. An earlier version served the card
+at one, so that it could be reviewed without a DNS entry, which meant the card was also
+reachable on the wedding hostname — `dev-wedding.tapphouse.co/save-the-date`. Bill
+rejected that on sight, and he was right: a page belongs on the hostname it is for, and
+one reachable from two names is one that gets linked to by the wrong one. Local review
+uses `savethedate.localhost`, which every browser resolves to loopback, so nothing is
+harder to look at.
 
 **Neither page reads a guest row, and neither takes input.** No lookup form, ever: a
 name box on an anonymous page is a guest-list oracle, and anyone could walk it to learn
@@ -85,20 +96,9 @@ def front_door(request: Request) -> Response:
     answers 404 — the two pages are not merged.
     """
     if serves_the_card(request):
-        return save_the_date(request)
+        return templates.TemplateResponse(
+            request=request, name="save_the_date.html", context=_context()
+        )
     return templates.TemplateResponse(
         request=request, name="public_welcome.html", context=_context()
-    )
-
-
-@router.get("/save-the-date", response_class=HTMLResponse, include_in_schema=False)
-def save_the_date(request: Request) -> Response:
-    """The card, on every hostname.
-
-    Reachable by path as well as by Host header so that the visual tests and anybody
-    reviewing locally can open it without a DNS entry — a page that could only be seen
-    through production DNS would be a page nobody checked before it shipped.
-    """
-    return templates.TemplateResponse(
-        request=request, name="save_the_date.html", context=_context()
     )

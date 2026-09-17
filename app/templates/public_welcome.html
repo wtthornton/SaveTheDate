@@ -39,7 +39,11 @@
       {# The plain American date, not the spelled-out formal one the invitation uses.
          This is the page somebody reads to put a date in a calendar. #}
       <p class="hero-date">{{ wedding_day.strftime('%A') }}, {{ wedding_day | plain_date }}</p>
-      <p class="hero-place">Texas</p>
+      {# The island, not just the state. TAP-7775 originally said country/state level
+         and nothing finer; Bill overruled that on 2026-09-17, because this and the
+         save-the-date are equally public and naming the town on one while hiding it
+         on the other is incoherent. The private address is what stays off both. #}
+      <p class="hero-place">{{ wedding_place }}</p>
     </div>
   </section>
 {% endblock %}

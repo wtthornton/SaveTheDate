@@ -110,11 +110,15 @@ a named tunnel from the home lab.
 | `dev-savethedate.tapphouse.co` | The save-the-date card on the review instance | Not yet routed |
 | `home.tapphouse.co` | Home Assistant (Nabu Casa) | Pre-existing, untouched |
 
-Two public faces, one codebase, one app per stack. `/save-the-date` serves the card on
-every hostname; `/` serves it only on a hostname listed in `SAVE_THE_DATE_HOSTS`, and
-serves the wedding welcome otherwise. The list is explicit rather than a substring test
-— this project is itself called savethedate, and a guest-facing hostname quietly serving
-the wrong page is the failure that list exists to prevent.
+Two public faces, one codebase, one app per stack. **Both live at `/`**, and the
+hostname decides which one you get: the card on a hostname listed in
+`SAVE_THE_DATE_HOSTS`, the wedding welcome on every other. The list is explicit rather
+than a substring test — this project is itself called savethedate, and a guest-facing
+hostname quietly serving the wrong page is the failure that list exists to prevent.
+
+There is deliberately **no `/save-the-date` path**. The card is reviewed locally at
+`savethedate.localhost`, which every browser resolves to loopback, so it needs no DNS
+entry and is still reachable under one name only.
 
 `wedding.tapphouse.co` deliberately returns 503 rather than pointing at the development
 instance. A guest-facing hostname quietly serving the development database is how
@@ -385,9 +389,11 @@ and are deliberately not stubbed out:
 - **No production stack yet.** `wedding.tapphouse.co` and `savethedate.tapphouse.co` are
   both reserved and both return 503. They need a Compose project and a database of their
   own, separate from development. TAP-7733.
-- **`dev-savethedate.tapphouse.co` is not routed yet.** The card is built and tested, and
-  reachable at `/save-the-date` on any hostname; the DNS route and the tunnel ingress
-  rule for its own dev hostname are still to come.
+- **`dev-savethedate.tapphouse.co` is not routed yet.** The card is built and tested,
+  and reviewable at `savethedate.localhost`; the DNS route and the tunnel ingress rule
+  for its own dev hostname are still to come. Until then there is no published URL for
+  it, which is deliberate — it belongs on its own hostname, not as a path on the
+  wedding site.
 - **No error reporting**, and `/health` says the process is up rather than that the
   service works. TAP-7734.
 - **Every photograph is a placeholder**, and the hero is a stock photograph of another
