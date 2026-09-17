@@ -5,8 +5,8 @@ recorded fact rather than an assumption. A silently bounced invite looks exactly
 guest who ignored it, and that is the failure that actually costs a seat at the table.
 
 **No queue, no worker, no Celery.** Under a hundred invitations, FastAPI's
-`BackgroundTasks` sends the lot comfortably, and keeping this to one service is the main
-thing holding the hosting bill down (TAP-7733).
+`BackgroundTasks` sends the lot comfortably, and keeping this to one service keeps the
+whole deployment to one `docker compose up` (TAP-7733).
 
 **The transport is a Protocol with three implementations.** `RecordingTransport` is what
 the tests use, so no test ever opens a socket. `ConsoleTransport` is the default and

@@ -22,13 +22,14 @@ Where things stand as of 2026-09-17:
   up→down→up against the test database.
 - The review instance is live and has been looked at on a real phone.
 - **Four issues remain, and none of them is blocked on code:**
-  - **TAP-7733** hosting. Needs your Render login and starts a ~$21–28/mo bill. Its real
-    deliverable is a *tested restore*, not a provisioned database.
+  - **TAP-7733** hosting — **on the home lab**, decided 2026-09-17. Needs a wedding
+    domain registered and delegated to Cloudflare first (see plan §7.1), then a Compose
+    stack behind a named tunnel. Its real deliverable is a *tested restore*.
   - **TAP-7734** observability. Needs a Sentry DSN or equivalent.
   - **TAP-7762** photography. Every image is an openly-licensed placeholder and the hero
     is still someone else's wedding. Somebody has to take pictures.
-  - **TAP-7740** DNS → Cloudflare. **Read the comment on it before starting — it is
-    probably unnecessary, and it is the riskiest thing in the backlog.**
+  - ~~**TAP-7740** DNS → Cloudflare.~~ **Closed 2026-09-17.** The guest site gets its
+    own wedding domain on Cloudflare; `nltlabs.ai` is never touched. Plan §7.1.
 
 Useful things that are true now and were not before:
 - Sign in to the dashboard at `/host/login`. **There is no registered host yet.** Set
@@ -82,5 +83,7 @@ Linear: project SaveTheDate, team TappsCodingAgents (TAP), issues TAP-7725–776
 Read IMPLEMENTATION_PLAN.md §10, LESSONS_LEARNED.md §6, and .claude/CLAUDE.md. Phases
 0–3 are done, 11 of 15 issues closed, 199 tests, gate green. What is left — hosting,
 observability, photography, and a DNS move that is probably unnecessary — all needs your
-accounts or your camera rather than more code. Same non-negotiables as the plan. Don't
-use the Workflow tool. Read the comment on TAP-7740 before touching that zone.
+accounts or your camera rather than more code. Everything is self-hosted on the home lab —
+there is no managed platform in this project. Same non-negotiables as the plan. Don't
+use the Workflow tool. Never migrate the `nltlabs.ai` zone for this project; it carries
+live company mail and §7.1 explains the alternative.

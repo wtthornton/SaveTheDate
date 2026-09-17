@@ -58,7 +58,8 @@ go out ~6–8 weeks ahead; save-the-dates 6–12 months ahead. RSVP deadline 15 
 | Linear | Project **SaveTheDate**, team TappsCodingAgents (TAP) |
 | Backlog | TAP-7725 … TAP-7763, 15 issues, 4 milestones. **11 done as of 2026-09-17**; TAP-7733, 7734, 7740 and 7762 remain |
 | Postgres | host port **5434** (5432/5433 are taken by other local projects) |
-| Hostnames | `invite.nltlabs.ai` (live), `invite-review.nltlabs.ai` (review) |
+| Hosting | **The home lab.** One Compose stack behind a named Cloudflare Tunnel. See §8.1. |
+| Hostnames | A dedicated wedding domain, **not yet registered** — see §7.1. Review runs on a Quick Tunnel. |
 | Claude Code | **2.1.258** installed. Feature notes below were checked against 2.1.271+ docs, so verify anything exotic before relying on it. |
 
 ---
@@ -82,7 +83,7 @@ is safe *only* because the review instance runs on invented guests.
 | ~~**TAP-7739** Schema redesign~~ | **DONE 2026-09-16**, merged. Per-person `attendees`, `segments`, `attendance`, `rsvp_opens_at`, `events.timezone`; meal choice dropped; `rsvps` thinned. |
 | ~~**TAP-7728** Guest invite page~~ | **DONE 2026-09-16**, merged. Jinja + htmx 2.x + Tailwind, five routes, 18px floor enforced by a test rather than by review. |
 | ~~**TAP-7729** RSVP window~~ | **DONE 2026-09-17.** The window is judged in the event's zone; a bare date is read as a whole local day and a naive datetime is refused outright. The clock is a FastAPI dependency, so boundaries are asserted to the second with no frozen-time library. |
-| **TAP-7740** DNS → Cloudflare | **Probably unnecessary — see the comment on the issue.** Quick Tunnel needed no DNS, and a Render custom domain is a CNAME that works from GoDaddy. Recommended for closure; the decision is Bill's. |
+| ~~**TAP-7740** DNS → Cloudflare~~ | **Closed 2026-09-17, not needed.** The guest site gets its own wedding domain on Cloudflare instead, so `nltlabs.ai` is never touched. See §7.1. |
 | ~~**TAP-7738** Review instance~~ | **DONE 2026-09-16.** Quick Tunnel off the dev box, so TAP-7740 was never on the path. |
 | ~~**TAP-7763** Stale design canvas~~ | **DONE 2026-09-17.** Retitled "original direction" with a banner listing every divergence from the built site. |
 | **TAP-7762** Photography | Open, and **not a coding task**. Every image is an openly-licensed placeholder and the hero is still someone else's wedding. |
@@ -100,7 +101,7 @@ TAP-7730's scope was corrected before it was built: it asked for "counts per mea
 option", which TAP-7739 had already removed from the schema. See §10.
 
 ### Phase 4 — Launch readiness (M4)
-`TAP-7733` managed hosting + tested restore → `TAP-7734` observability.
+`TAP-7733` home-lab deployment + tested restore → `TAP-7734` observability.
 
 **Deadline-driven checkpoints**
 
@@ -413,21 +414,27 @@ A change is not done until all of these hold. No exceptions, no suppressions.
 | Risk | Mitigation |
 | --- | --- |
 | Real guest data on the unauthenticated review box | Fake data until TAP-7725. Stated on TAP-7738. |
-| **DNS move breaks live company EMAIL, not just the website** | The bigger risk by far, and not what TAP-7740 was written against. See §7.1. Quick Tunnel needs no DNS change and sidesteps this entirely. |
+| **DNS move breaks live company EMAIL, not just the website** | Avoided entirely: the guest site gets its own domain, and `nltlabs.ai` is never migrated. See §7.1. |
 | htmx 4 idioms in 2.x templates, failing silently | Pin in CLAUDE.md and in the std-templates agent. Assert the version in the base template. |
 | Invite tokens already mailed, then the schema changes | Never re-key `guests`. The whole schema design hangs off this. |
-| A dev-box outage during the RSVP window | Phase 4 moves to managed hosting before real invitations go out. |
+| **A home-lab outage during the RSVP window** | Now the project's largest operational risk, and it is ours rather than a vendor's: power, internet and unattended restart. TAP-7733 owns it. Worst case the RSVP form is unreachable for hours while guests are trying to reply. |
 | Token pool exhausted by fan-outs | §4. Workflows are the exception, not the tool. |
-| Losing the guest list | Managed Postgres with a **tested** restore — TAP-7733's highest-value line. |
+| Losing the guest list | Automated Postgres backups **off the machine**, with a restore that has actually been performed. TAP-7733's highest-value line, and more important self-hosted than it would have been managed. |
 
-### 7.1 TAP-7740 is riskier than it was written to be
+### 7.1 The guest site gets its own domain, and `nltlabs.ai` is never touched
 
-TAP-7740 reads as "moving DNS might break the company website". The `nltlabs.ai` zone
-was checked live on 2026-09-16 and carries considerably more than a website: a full
+**Decided 2026-09-17, and it closes TAP-7740.**
+
+A named Cloudflare Tunnel — the thing that gives the home lab a permanent public
+hostname — requires its zone to be on Cloudflare nameservers. Cloudflare's partial
+(CNAME) setup would let a zone stay at GoDaddy while proxying selected hostnames, but
+that is **Business-plan only**, around $200/month, which is absurd for this.
+
+So `invite.nltlabs.ai` would mean migrating the `nltlabs.ai` zone. That zone was checked
+live on 2026-09-16 and 2026-09-17 and carries considerably more than a website: a full
 Microsoft 365 mail deployment behind a filtering provider, the client-autoconfiguration
-and Teams records that go with it, and more Render-backed hostnames than any single
-document lists. `nltlabs.com` is a separate zone on different nameservers with its own
-mail.
+and Teams records that go with it, and at least six hostnames serving real traffic.
+`nltlabs.com` is a separate zone on different nameservers with its own mail.
 
 **Mail is the part that bites.** A broken website is obvious within seconds. Misrouted
 mail can be invisible for hours, is not recoverable, and the zone's DMARC policy is
@@ -436,13 +443,19 @@ nobody gets a warning.
 
 > **The record-level inventory lives on TAP-7740 in Linear, not here.** This repo is
 > public, and NLT Labs' mail configuration does not belong in a wedding site's history.
-> Whoever picks that issue up will find the full table, and should re-run it live anyway
-> rather than trusting a months-old snapshot.
 
-**Therefore:** do not attach TAP-7740 to this project's critical path. Take the Quick
-Tunnel route for TAP-7738 — it needs no DNS change at all. If the zone does move later,
-it is its own project with a full record export, a mail-flow test and a rollback window,
-not a step in a wedding site's build.
+**The answer is a separate wedding domain.** Register one — roughly $12 a year — and
+point *that* at Cloudflare. A brand-new zone has no mail, no existing records and no
+traffic, so delegating it risks nothing whatsoever, and the named tunnel then works
+exactly as intended. It also reads better to a guest than a consulting company's
+subdomain.
+
+**Still to do:** the domain is not registered yet, and nothing can serve a permanent
+hostname until it is. That is the first step of TAP-7733, not a detail.
+
+If `nltlabs.ai` should move to Cloudflare for its own reasons, that is a separate piece
+of work deserving a full record export, a mail-flow test and a rollback window — not a
+step in a wedding site's build.
 
 ---
 
@@ -475,113 +488,82 @@ Carry these into the next session:
 
 ---
 
-## 8.1 Deployment knowledge from the other projects on this box
+## 8.1 The home lab — what TAP-7733 has to build
 
-Researched 2026-09-16 against `~/code/NLTWeb` and the other `render.yaml` files. Useful
-for TAP-7733, and it removes some guesswork from the "Railway or Render" question.
+**Decided 2026-09-17: everything runs on the home lab.** No managed platform. This
+section replaces the Render research that used to sit here; that research is still
+correct about NLTWeb's estate, it is simply no longer this project's path.
 
-- **There is already a Render workspace**, with `RENDER_API_KEY` as the documented
-  credential (see `NLTWeb/.env.example`; the real value is in that repo's untracked
-  `.env` and in Render's dashboard — **never copy it into this public repo**).
-- **House style:** `type: web`, `region: oregon`, `plan: starter` (paid — the README's
-  objection is to Render's *free* tier, not to Render), with a `healthCheckPath`.
-  `/health` already exists here and suits that.
-- **Render does not install Python dependencies implicitly.** NLTWeb learned this in
-  production: a new `import` broke the live site while GitHub Actions stayed green,
-  because CI runs `uv sync` and Render did not. **The build command must install
-  dependencies itself** — `uv sync --frozen && …`. This is the single most valuable
-  thing to carry into TAP-7733.
-- **No project on this box uses Render managed Postgres yet** — no `databases:` block
-  exists anywhere. SaveTheDate would be the first, so budget time for it, and remember
-  that TAP-7733's real deliverable is a **tested restore**, not a provisioned database.
-- **`render.yaml` is documentation, not a control surface** in this account — there are
-  no Blueprints, every service is dashboard-managed. NLTWeb keeps
-  `scripts/check-render-drift.mjs` to stop the file lying. Worth copying that habit
-  rather than assuming a committed YAML is what is running.
-- ~~**`cloudflared` is not installed on this box.**~~ Installed 2026-09-16 at
-  `~/.local/bin/cloudflared`; TAP-7738 is done.
+### The shape of it
 
-### 8.2 Re-checked against NLTWeb and live DNS, 2026-09-17
+One Docker Compose stack: FastAPI behind a reverse proxy, Postgres alongside it,
+published through a **named Cloudflare Tunnel**. Outbound-only, so no ports are
+forwarded, no static IP is required, and the home address never appears in public DNS.
+TLS terminates at Cloudflare's edge.
 
-Read before starting TAP-7733. Everything here was verified against the running estate
-rather than taken from a document.
+The software cost is **zero** — every component is open source with no commercial
+restriction at this size. What the lab costs is electricity, hardware, offsite backup
+storage, and attention.
 
-**How Render is tied to GitHub.** Per-service **Git auto-deploy**: each Render service
-is connected to a repo and a branch, and a push to that branch deploys it. That is the
-primary and sufficient path — no workflow required. NLTWeb's
-`.github/workflows/deploy.yml` is a *backup* that force-triggers deploys through the
-Render API when particular paths change, falling back to a single deploy hook if
-`RENDER_API_KEY` is unset. SaveTheDate needs nothing equivalent to begin with.
+### Order of work
 
-**`invite.nltlabs.ai` does not need TAP-7740, and this is now settled.** The zone is on
-GoDaddy — `ns71`/`ns72.domaincontrol.com`, checked live — and **six** hostnames on it
-already serve from Render over plain CNAMEs with valid TLS:
+1. **Register the wedding domain and delegate it to Cloudflare.** Nothing can serve a
+   permanent hostname until this exists. See §7.1 for why it is a new domain and not
+   `invite.nltlabs.ai`.
+2. **A named tunnel**, replacing the Quick Tunnel for the production hostname. The
+   review instance keeps its Quick Tunnel — disposable is the right property there.
+3. **Compose stack** with `restart: unless-stopped`, so the whole thing returns by
+   itself after a power cut without anyone logging in.
+4. **Migrations as a release step**, not on app boot. Two app instances racing
+   `alembic upgrade` on start is a bad way to find out about locking.
+5. **Automated backups off this machine**, and a **restore that has actually been
+   performed**. See below — this is the deliverable.
+6. **Set `TRUSTED_CLIENT_IP_HEADER=CF-Connecting-IP`.** Behind the tunnel every request
+   arrives from the tunnel's local end, so without this the whole world shares one
+   rate-limit bucket and the first few guests throttle everyone else.
+7. **Set `SESSION_COOKIE_SECURE`** (or a `https://` `PUBLIC_BASE_URL`, which it follows).
 
-| Hostname | CNAME target |
-| --- | --- |
-| `profile.nltlabs.ai` | `nlt-profile.onrender.com` |
-| `merch.nltlabs.ai` | `nlt-merch.onrender.com` |
-| `briefs.nltlabs.ai` | `nlt-briefs.onrender.com` |
-| `nltlabs-draft.nltlabs.ai` | `nltlabs-draft.onrender.com` |
-| `portfolio.nltlabs.ai` | `portfolio-zh0x.onrender.com` |
-| `partners.nltlabs.ai` | `nlt-partner-desk.onrender.com` |
+### The backup is not the deliverable; the restore is
 
-`invite.nltlabs.ai` resolves to nothing today, so it is free. One CNAME at GoDaddy plus
-Custom Domains in Render is the whole job. Moving the zone to Cloudflare buys nothing
-this project needs and risks live company email — see §7.1.
+Losing the guest list is the one failure here with no recovery path, and the date cannot
+move. Self-hosting makes this ours rather than a vendor's, which is the real cost of the
+decision — not dollars.
 
-**The template to copy is NLTlabsPE, not NLTWeb.** Every NLTWeb service is
-`env: static`; SaveTheDate is a dynamic Python service with a database. `NLTlabsPE`'s
-`render.yaml` is the house style for a real runtime:
+- `pg_dump` on a timer is fine at this size. The database is a few megabytes.
+- **Off the machine.** A backup on the same disk as the database is not a backup. A few
+  GB of dumps on object storage is pennies a month.
+- **Restore into a scratch database and count the guests.** A backup nobody has restored
+  is a hypothesis. TAP-7733 is not done until one has been restored and verified.
+- Keep enough history to survive a mistake discovered late — a bad migration noticed a
+  week later is the realistic case, not a disk dying.
 
-```yaml
-- type: web
-  runtime: node          # → python for this project
-  region: oregon
-  plan: starter
-  rootDir: apps/portfolio
-  buildCommand: npm install && npm run build
-  startCommand: node dist/server/entry.mjs
-  healthCheckPath: /api/health
-  domains: [partners.nltlabs.ai]
-  buildFilter:
-    paths: [apps/partner-desk/**]
-  envVars:
-    - key: NODE_ENV
-      value: production
-    - key: STRIPE_SECRET_KEY
-      sync: false        # declared, value set in the dashboard
-```
+### What self-hosting puts on the critical path
 
-Points worth lifting: `sync: false` declares a secret without putting a value in a
-public repo; every service carries `X-Content-Type-Options`, `X-Frame-Options` and
-`Referrer-Policy`, and private ones add `X-Robots-Tag: noindex, nofollow` — which this
-project already sets in middleware; and a comment block names each secret the dashboard
-must hold.
+These were somebody else's problem under a managed host and are now ours. They belong in
+TAP-7733 rather than being discovered during the RSVP window:
 
-**Still true, and still the biggest trap:** Render does not install Python dependencies.
-The build command must, hence `uv sync --frozen && …`.
+- **Power.** A UPS, and unattended restart after it runs out.
+- **Internet.** The RSVP window is months long and the household will be in Texas for
+  part of it. What happens if the line drops while nobody is home?
+- **Unattended recovery.** Nobody should need to SSH in for the site to come back.
+- **Somebody else knowing how.** If the one person who understands the stack is at their
+  own wedding, the runbook has to be followable by someone else.
 
-**Still true:** no `databases:` block exists in any of the six `render.yaml` files on
-this box. SaveTheDate would be the first managed Postgres on the account, and
-TAP-7733's real deliverable is a **tested restore**.
+### The one thing that cannot come home
 
-**Still true:** `render.yaml` is documentation, not a control surface — no Blueprints in
-the account as of 2026-09-11, every service dashboard-managed. NLTWeb's
-`scripts/check-render-drift.mjs` compares the file to the live API and exits `2` when it
-*could not look*, which is the right call: a drift check that reports success when it
-failed to run is worse than none. Worth copying that habit and that exit code.
+**Outbound email.** Transactional mail cannot be self-hosted reliably — residential
+address space is blocklisted, and SPF, DKIM and DMARC will not rescue deliverability
+from it. `app/mail.py` keeps the provider behind a Protocol for exactly this reason. A
+hundred invitations sits inside a free tier, and the default transport prints to the
+console, so nothing is sent until it is deliberately configured.
 
-**Two more things learned from NLTWeb's own scars**, both in its `docs/DEPLOY.md`:
+### Carried over from the Render research, because it is still true
 
-- A static publish is **additive** — deleting a file from the build output does not
-  unpublish it; only a cache-clearing redeploy does. Not applicable to a dynamic
-  service, but it is why that repo's `dist/` had 68 stale files serving 200s.
-- Its draft→prod gate is "enforced by habit, not branch protection", and `draft` was
-  found 86 commits behind `main` with nothing unique on it. If this project ever grows a
-  review branch, the lesson is that a gate nothing enforces is a gate nobody uses.
-
----
+- **The built `app/static/app.css` stays committed.** It means no deploy needs the
+  110MB Tailwind binary present. `tests/test_stylesheet.py` fails if it goes stale.
+- **`cloudflared` is installed** at `~/.local/bin/cloudflared`.
+- **Never put a credential in this repo.** It is public. Record where a secret lives,
+  never its value.
 
 ## 9. The second session of 2026-09-16
 
@@ -728,18 +710,24 @@ rendered text.
 1. **TAP-7730 contradicted the schema.** It asked for "counts per meal option"; TAP-7739
    had cut meal options and the invariants say "dietary tags only, headcounts per day".
    Corrected in Linear before building, not worked around in code.
-2. **TAP-7740 is probably unnecessary.** Named Tunnel hostnames were the only thing that
-   needed the zone on Cloudflare, and a Render custom domain is a CNAME that resolves
-   from GoDaddy. Recommended for closure in a comment on the issue; not closed, because
-   descoping is Bill's call.
+2. **TAP-7740 is unnecessary** — though for a different reason than this session gave.
+   The argument recorded here was that a managed-host custom domain is a CNAME that
+   resolves from GoDaddy. That reasoning died the same day, when the decision was made
+   to host everything on the home lab: a *named* tunnel does need its zone on
+   Cloudflare, and the partial/CNAME setup that would avoid it is Business-plan only.
+   The conclusion survived the reasoning by luck. **Closed 2026-09-17** because the
+   guest site gets its own wedding domain instead — see §7.1. Worth remembering that a
+   recommendation resting on an assumption should say so, or it outlives the
+   assumption.
 3. **Plan §8 item 3 was stale.** Golf and charter prices are not shown as `$[ CONFIRM ]`;
    they were removed. Corrected below.
 
 **What is left, and why it stops here**
 
-`TAP-7733` (hosting) needs a Render login and starts a real bill. `TAP-7734`
-(observability) wants a Sentry DSN. `TAP-7762` (photography) needs somebody to take
-photographs. None of the three is blocked on code.
+`TAP-7733` (home-lab hosting) needs a wedding domain registered and the lab itself
+standing. `TAP-7734` (observability) wants a Sentry DSN or a self-hosted equivalent.
+`TAP-7762` (photography) needs somebody to take photographs. None of the three is
+blocked on code.
 
 **Standing facts for the next session**
 

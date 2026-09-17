@@ -337,8 +337,12 @@ Read the definition of done against what CI actually runs, not against what it i
 
 ## 4. Deployment and this machine
 
-Researched 2026-09-16 across `~/code`, chiefly `NLTWeb`. Full detail in plan §7.1 and
-§8.1.
+Researched 2026-09-16 and re-checked 2026-09-17 across `~/code`, chiefly `NLTWeb`.
+
+> **This project now self-hosts on the home lab** (decided 2026-09-17), so the
+> managed-platform specifics below are kept as transferable lessons rather than as
+> instructions. Plan §8.1 is the current deployment plan; §7.1 covers why the guest site
+> gets its own domain.
 
 ### Never put a credential in this repo
 
@@ -365,23 +369,34 @@ declare eleven across the nltlabs zones. Any zone work needs a **live record exp
 its inventory, not a doc — and certificate transparency logs will surface hostnames that
 no internal document mentions at all.
 
-### Render does not install your dependencies
+### A build step you do not control will not install your dependencies
 
-NLTWeb learned this in production: a new `import` broke the live site while GitHub
-Actions stayed green, because CI runs `uv sync` and Render did not. **The build command
-must install dependencies itself** (`uv sync --frozen && …`). Carry this into TAP-7733.
+NLTWeb learned this in production: a new `import` broke its live site while GitHub
+Actions stayed green, because CI ran `uv sync` and the host did not. Nothing in
+`pyproject.toml` reaches a build environment unless the build command puts it there.
 
-The corollary for this repo's front end: the Tailwind v4 standalone binary lives at
-`~/.local/bin/tailwindcss`, **outside the repo** (it is 110MB and this repo is public),
-and the built `app/static/app.css` is **committed**. That is deliberate — it means a
-deploy never has to run the build, so the NLTWeb failure cannot repeat here. The cost
-is remembering to rebuild and commit after editing the source; the gate catches it,
-because the 18px test reads the built file rather than the source.
+**SaveTheDate is not exposed to that**, because it ships to a home lab it controls
+end to end — but the same shape recurs wherever two environments are assumed to install
+the same things and only one actually does.
 
-Related, from the same repo: `render.yaml` is **documentation, not a control surface** in
-this account — there are no Blueprints and every service is dashboard-managed, so editing
-the file changes nothing about a live deploy. NLTWeb keeps a drift checker to stop the
-file lying. Do not assume committed infrastructure YAML is what is running.
+The version of it that *does* apply here: the Tailwind v4 standalone binary lives at
+`~/.local/bin/tailwindcss`, **outside the repo** (110MB, and this repo is public), and
+the built `app/static/app.css` is **committed**. That is deliberate — it means no deploy
+needs the binary present at all. The cost is remembering to rebuild and commit after
+editing the source, and §6's stylesheet lesson is what happens when that is forgotten.
+
+### Committed infrastructure YAML is not necessarily what is running
+
+Also from NLTWeb, and worth keeping even though this project no longer deploys there:
+its `render.yaml` is **documentation, not a control surface** — no Blueprints exist in
+that account, every service is dashboard-managed, and editing the file changes nothing
+about a live deploy. It had already drifted from live before anyone checked.
+
+The habit worth copying is its drift checker, which compares the file against the live
+API and **exits non-zero when it could not look**, rather than reporting success. A
+check that passes when it failed to run is worse than no check. That principle applies
+to the home lab's Compose file just as well: assume the committed file and the running
+system have diverged until something proves otherwise.
 
 ---
 
@@ -501,6 +516,28 @@ both. `ResendTransport` stays inert without an API key, and a test asserts that
 
 The same shape applies to `HOST_REGISTRATION_TOKEN` and `EMAIL_WEBHOOK_SECRET`: unset
 means closed, so forgetting to configure either fails safe rather than wide open.
+
+### A recommendation that rests on an assumption has to name the assumption
+
+Twice in one day I argued that TAP-7740 — migrating the `nltlabs.ai` zone to Cloudflare
+— was unnecessary. The second time I backed it with live evidence: six hostnames on that
+zone already served from a managed platform over plain CNAMEs from GoDaddy, so the
+wedding site could have a hostname without moving anything.
+
+Hours later the decision changed to self-hosting everything, and the argument
+evaporated. A *named* Cloudflare Tunnel does require its zone on Cloudflare, and the
+partial/CNAME setup that would avoid that is Business-plan only. Every fact I had
+gathered was true and correctly verified; the conclusion still stopped holding, because
+it silently depended on "we are deploying to a managed platform" — a premise I never
+wrote down, because at the time it did not feel like a premise.
+
+The conclusion survived by luck: a separate wedding domain closes TAP-7740 anyway, for
+an unrelated reason. That is not a defence.
+
+**Write the load-bearing assumption into the recommendation itself**, so that when it
+changes the recommendation visibly expires instead of quietly going stale. "X is
+unnecessary" ages badly; "X is unnecessary *while we deploy to Y*" fails loudly the
+moment Y changes.
 
 ### Say what you cannot verify, rather than guessing at it
 

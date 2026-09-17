@@ -100,9 +100,10 @@ def reset_limiter() -> None:
 def client_address(client_host: str | None, headers: dict[str, str] | None = None) -> str:
     """The address to count against.
 
-    Behind the Cloudflare tunnel and behind Render, `request.client.host` is the proxy,
+    Behind the Cloudflare tunnel, `request.client.host` is the local end of the tunnel,
     so every guest in the world shares one bucket and the first few would throttle the
-    rest. `trusted_client_ip_header` names a header to believe instead.
+    rest. `trusted_client_ip_header` names a header to believe instead —
+    `CF-Connecting-IP` for a Cloudflare tunnel.
 
     It is unset by default and must only ever be set to a header the proxy in front of
     this app *overwrites* on every request — CF-Connecting-IP behind Cloudflare. A

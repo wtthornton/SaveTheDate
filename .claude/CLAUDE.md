@@ -24,8 +24,9 @@ FastAPI + PostgreSQL. Server-rendered Jinja2 + htmx 2.x + Tailwind. No Node tool
 - Seed fake review data: `.venv/bin/python -m scripts.seed_review_data`
 - CSS: `~/.local/bin/tailwindcss -i app/static/src/app.css -o app/static/app.css`
   Tailwind v4 standalone binary, no Node, no `package.json`. The built
-  `app/static/app.css` is **committed** so a deploy never has to run the build —
-  Render does not run yours. Rebuild and commit it whenever the source changes.
+  `app/static/app.css` is **committed** so a deploy never has to run the build, and
+  the 110MB binary never has to exist on the server. Rebuild and commit it whenever
+  the source changes — `tests/test_stylesheet.py` fails if you forget.
 
 ## Invariants — do not break these
 - `guests.invite_token` is in people's inboxes once sent. NEVER re-key or re-issue a

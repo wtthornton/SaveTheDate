@@ -10,9 +10,9 @@ Hosts read the responses back off the guest list.
 limiting, a host dashboard with per-day headcounts, CSV import and export, and email
 delivery with per-guest delivery state. 199 tests against a real Postgres.
 
-What is left is not code: a durable host, error reporting, and real photographs. Until
-this has a durable home, keep invented guests only — losing the guest list has no
-recovery path.
+What is left is not code: a durable home-lab deployment, error reporting, and real
+photographs. Until it has a durable home with a tested restore, keep invented guests
+only — losing the guest list has no recovery path.
 
 ## Stack
 
@@ -37,9 +37,11 @@ chmod +x ~/.local/bin/tailwindcss
 ~/.local/bin/tailwindcss -i app/static/src/app.css -o app/static/app.css
 ```
 
-The built `app/static/app.css` is **committed on purpose.** Render does not run your
-build step — a new `import` once broke a sibling project in production while CI stayed
-green — so nothing about a deploy is allowed to depend on the binary being present.
+The built `app/static/app.css` is **committed on purpose**, so a deploy never has to run
+the build and the 110MB standalone binary never has to exist on the server. The cost of
+that choice is that the committed file can fall behind the templates in silence — it did
+once, and an image shipped with no height cap — so `tests/test_stylesheet.py` fails if a
+class a template names has no rule.
 
 htmx is vendored at `app/static/vendor/htmx-2.0.10.min.js` rather than loaded from a
 CDN, so the version is whatever is in the repo and a test asserts it.
@@ -70,44 +72,66 @@ Sized for a single wedding: under 100 invitations, perhaps 180 seats, a burst of
 Nothing here is a performance problem. The consequence is that the engineering budget
 goes to **availability and not losing the guest list** — a wedding has an immovable
 date, and losing 100 people's responses has no recovery path. Postgres is kept for
-managed backups, not for throughput.
+durability and for backups that can be restored, not for throughput.
 
 Deliberately ruled out at this size: Redis, a task queue or worker process, pagination,
-and streaming CSV import. Staying at one service is also the main lever on hosting cost.
+and streaming CSV import. Staying at one service also keeps the whole deployment to a
+single `docker compose up`, which is what makes self-hosting it reasonable.
 
-## Hosting
+## Hosting — the home lab
 
-**Now:** self-hosted on the dev box and published with
-[Cloudflare Tunnel](https://developers.cloudflare.com/cloudflare-one/access-controls/applications/http-apps/self-hosted-public-app/)
-— outbound-only, so no open ports, no static IP, and TLS at the edge. This is for design
-review on real phones, with **invented guest data only** — not because the endpoints are
-open (they are not, since TAP-7725/7726/7727) but because a throwaway tunnel off a dev
-box is not somewhere a real guest list should live.
+**Everything runs on the home lab.** One Docker Compose stack — FastAPI behind a
+reverse proxy, with Postgres alongside it — published to the internet through a
+**named Cloudflare Tunnel**. Outbound-only, so no ports are forwarded, no static IP is
+needed, the home IP never appears in public DNS, and TLS terminates at Cloudflare's
+edge.
 
-**Later:** a managed host (Railway or Render, paid tier). Render's *free* tier is
-disqualified for this project on two counts: free Postgres is deleted 30 days after
-creation, and free web services cold-start for 30–60 seconds — fatal for a link a guest
-opens exactly once.
+No managed platform, no per-month compute bill. The software is entirely open source;
+what the lab actually costs is electricity, hardware and offsite backup storage.
+
+### The one thing that is not self-hosted
+
+**Outbound email.** Transactional mail cannot be self-hosted reliably — residential
+address space sits on blocklists, and SPF, DKIM and DMARC do not rescue deliverability
+from one. `app/mail.py` therefore keeps a provider behind a small port. A hundred
+invitations sits inside a free tier, and the default transport prints to the console, so
+nothing is sent until that is deliberately configured.
 
 ### Hostnames
 
 | Use | Hostname |
 | --- | --- |
-| Guest-facing | `invite.nltlabs.ai` |
-| Review instance | `invite-review.nltlabs.ai` |
+| Guest-facing | the wedding domain — **still to be registered**, see below |
+| Review instance | a Cloudflare Quick Tunnel, random and disposable |
 
-`invite` because the site lives through two phases months apart: `rsvp` is wrong while
-it is still a save-the-date, and `savethedate` is wrong once the invitation and RSVP go
-out. An *invitation* is the whole artifact and both are phases of it.
+**The guest site gets its own domain, not a subdomain of `nltlabs.ai`.** A named
+Cloudflare Tunnel needs its zone on Cloudflare nameservers — Cloudflare's partial
+(CNAME) setup, which would let the zone stay at GoDaddy, is Business-plan only. Moving
+`nltlabs.ai` is therefore the only way to get `invite.nltlabs.ai`, and that zone carries
+a live Microsoft 365 deployment behind a `quarantine` DMARC policy, where a mistake is
+silent and unrecoverable.
 
-Keep prefixes to a single label. Cloudflare's free Universal SSL wildcard covers
-`*.nltlabs.ai` but not `a.b.nltlabs.ai`, so use hyphens rather than a second dot.
+A separate wedding domain costs about $12 a year, has no mail and no existing records,
+so pointing it at Cloudflare risks nothing at all — and it reads better to a guest than
+a consulting company's subdomain. `nltlabs.ai` is never touched.
 
-`nltlabs.ai` is on GoDaddy nameservers. That blocks a *named Cloudflare Tunnel*, which
-is why TAP-7740 exists — but it does **not** block these hostnames in production: a
-Render custom domain is an ordinary CNAME that resolves from any provider. The review
-instance meanwhile runs on a Quick Tunnel and needs no DNS at all. See the comment on
-TAP-7740 before moving that zone; it carries live company email.
+The review instance stays on a Quick Tunnel: the URL is random, changes whenever the
+tunnel restarts, and needs no DNS. `scripts/review-instance.sh reload` keeps the URL and
+the invite tokens; `up` mints a new URL.
+
+### What the home lab has to provide
+
+Losing the guest list is the one failure here with no recovery path, and a wedding date
+cannot move. Self-hosting means these are yours to get right rather than somebody
+else's:
+
+- **Automated Postgres backups, off this machine**, and a **restore that has actually
+  been performed**. The restore is the deliverable, not the backup.
+- **Power and network continuity** through the RSVP window — a UPS, and a plan for what
+  happens if the house loses internet while you are in Texas.
+- **Unattended restart**: the stack comes back on its own after a power cut.
+
+Tracked as TAP-7733.
 
 ## Quick start
 
@@ -313,8 +337,11 @@ These are tracked as epics in the
 and are deliberately not stubbed out:
 
 - **Not deployed anywhere durable.** It runs on a dev box against a docker-compose
-  Postgres, plus a throwaway Cloudflare Quick Tunnel for review. Managed hosting with a
-  **tested restore** is TAP-7733, and it is the only gap that could cost the guest list.
+  Postgres, plus a throwaway Cloudflare Quick Tunnel for review. A proper home-lab
+  deployment with **automated backups and a tested restore** is TAP-7733, and it is the
+  only gap that could cost the guest list.
+- **No wedding domain registered yet.** The guest site needs its own name on Cloudflare
+  nameservers before a named tunnel can serve it. See [Hosting](#hosting--the-home-lab).
 - **No error reporting**, and `/health` says the process is up rather than that the
   service works. TAP-7734.
 - **Every photograph is a placeholder**, and the hero is a stock photograph of another
