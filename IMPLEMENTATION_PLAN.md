@@ -11,8 +11,11 @@ disciplined without burning the token pool.
 
 ## 1. Where this stands
 
-> **Updated 2026-09-17.** Phases 0-3 are done: 11 of 15 issues closed, 199 tests.
-> See §10 for what changed and `LESSONS_LEARNED.md` for the things that cost time.
+> **Updated 2026-09-17.** Phases 0-3 are done: **13 of 17 issues closed** (one
+> canceled), **254 tests**. Two issues remain open — TAP-7733's production stack and
+> backups, and TAP-7734's observability — plus TAP-7762, which needs a camera rather
+> than a keyboard. See §13 for the most recent session, §10 and §11 for the two before
+> it, and `LESSONS_LEARNED.md` for the things that cost time.
 
 **Shipped.** A FastAPI + PostgreSQL API with events, invitations, token-based invite
 links and RSVPs. Alembic migrations apply and roll back. CI runs ruff, `mypy --strict`
@@ -789,7 +792,8 @@ a convenience.
 | --- | --- |
 | `dev-wedding.tapphouse.co` | The review instance on :50681 — **live** |
 | `wedding.tapphouse.co` | Production — **503 on purpose** |
-| `savethedate.tapphouse.co` | Reserved — 503, contents undecided |
+| `savethedate.tapphouse.co` | Production — the save-the-date card. **503 until the production stack exists** |
+| `dev-savethedate.tapphouse.co` | The card on the review instance on :50681 — **live** |
 
 `wedding` returns 503 rather than pointing at the development instance. A guest-facing
 hostname quietly serving the development database is how invented guests start looking
@@ -815,7 +819,13 @@ address space is blocklisted and SPF/DKIM/DMARC will not rescue it.
 
 - The production Compose stack behind `wedding.tapphouse.co`, with its own database.
 - Backups off the machine, and a restore actually performed.
-- What `savethedate.tapphouse.co` is for.
+- ~~What `savethedate.tapphouse.co` is for.~~ **Decided 2026-09-17 with Bill, and built:**
+  a public, tokenless animated save-the-date card — an envelope that opens itself over a
+  drifting Gulf horizon, carrying the couple, the date, Port Aransas and a link onward to
+  the wedding site. TAP-7781. Four hostnames, two stacks: `wedding`/`savethedate` in
+  production, `dev-wedding`/`dev-savethedate` in development, and dev and production keep
+  separate databases. What remains is routing `dev-savethedate` and building the
+  production stack — both in TAP-7733.
 - `tapphouse.co` expires **2027-08-01**, about six months before the wedding. `renewAuto`
   is on; if the card on file lapses, the guest site's domain goes with it, in the middle
   of the RSVP window.
@@ -882,4 +892,78 @@ building for a customer who does not exist is how a four-page site acquires a CM
   — its own Compose project, its own database, its own templates — not a content model.
   The tunnel already supports more hostnames; `savethedate.tapphouse.co` is routed and
   could be exactly that.
+
+---
+
+## 13. The public front door, 2026-09-17
+
+**TAP-7775 and TAP-7781.** The two pages anyone can reach without a token, and the
+hostname arrangement that serves them.
+
+### What was decided, with Bill, during the session
+
+`savethedate.tapphouse.co` had been routed and serving 503 with its contents undecided
+since the hosting session (§11). It now serves a **public, tokenless animated
+save-the-date**: a closed envelope that opens itself into a card over a drifting Gulf
+horizon. `wedding.tapphouse.co` gets the minimal welcome of TAP-7775 — a subset of the
+invitation, with "more to come".
+
+Four hostnames, two stacks. Dev and production keep separate databases:
+
+| | dev stack | production stack |
+| --- | --- | --- |
+| Wedding | `dev-wedding.tapphouse.co` — live | `wedding.tapphouse.co` — 503 |
+| Save-the-date | `dev-savethedate.tapphouse.co` — live | `savethedate.tapphouse.co` — 503 |
+
+**Both pages live at `/`, and the hostname decides which one you get** —
+`SAVE_THE_DATE_HOSTS` is an explicit list, not a substring test, because this project is
+itself called savethedate and `dev-wedding` would be one careless `in` away from serving
+the wrong page on a guest-facing name.
+
+There is deliberately **no `/save-the-date` path**. An earlier build had one so the card
+could be reviewed without a DNS entry, which also made it reachable on the wedding
+hostname; Bill rejected that on sight. A page reachable under two names is one that gets
+linked to by the wrong one. Local review uses `savethedate.localhost`, which every
+browser resolves to loopback.
+
+**TAP-7775's country/state rule was overruled.** The welcome names Port Aransas, not
+just Texas. The two pages are equally public and equally `noindex`, so naming the island
+on one while hiding it on the other was incoherent. The private address — 183 Stargrass
+Ln — stays off both, which is what the rule was actually protecting.
+
+### The animation is pure CSS, and that is load-bearing
+
+No script anywhere on the page. An envelope that needed JavaScript to open would be a
+blank rectangle to anyone whose script failed, blocked, or had not arrived yet — on the
+one page whose entire job is to say a date out loud. `prefers-reduced-motion: reduce`
+removes the drift and the reveal together and leaves the card already open.
+
+The card is ordinary centered content in the normal flow; the envelope is five sibling
+layers over it that animate away. Only the card's *start* is transformed — it ends at
+`transform: none`, so the finished page measures as though nothing had ever moved.
+Ending a reveal on a transform is how a card lands half off a short screen.
+
+### The stylesheet could not reach a returning browser
+
+Cloudflare returns `/static/*` with `max-age=14400` and caches it at its edge, and the
+URL never changed when the file did. Static references now go through `static_url()`,
+which appends a content hash. See `LESSONS_LEARNED.md` §7 — this is the item most likely
+to bite again, because it presents as "the design is broken" rather than as a cache.
+
+### Two corrections to what §11 and the handoff prompt said
+
+- **`home.tapphouse.co` does not go through this tunnel.** It is a CNAME straight to
+  Nabu Casa. Restarting cloudflared cannot affect Home Assistant, and both documents had
+  been carrying a caution aimed at the wrong risk.
+- **`SIGHUP` does not reload cloudflared in place.** It exits; `Restart=always` returns
+  it with a new PID in about three seconds. The unit has no `ExecReload`. An ingress
+  change costs a few seconds of the review instance and nothing else.
+
+### Still open after this session
+
+- The production Compose stack behind `wedding` and `savethedate`, with its own
+  database. TAP-7733, and unchanged by this work.
+- Backups off the machine with a restore actually performed — still the deliverable.
+- The card's background photographs are CC0 placeholders of the Gulf, not of Port
+  Aransas specifically. TAP-7762.
 

@@ -101,3 +101,55 @@ def test_the_ferry_photograph_is_capped_on_a_phone() -> None:
     assert re.search(r"\.h-\\\[160px\\\]\s*\{\s*height:\s*160px", css), (
         "h-[160px] is used by a template but has no rule in the built stylesheet"
     )
+
+
+# -- The stylesheet has to reach the browser, not just exist ----------------
+
+
+def test_the_stylesheet_url_carries_a_content_fingerprint() -> None:
+    """Cloudflare hands `/static/*` back with `max-age=14400` and caches it at the edge.
+
+    Under a fixed URL that means a rebuilt stylesheet keeps being served for four
+    hours. It happened: a reviewer spent a while looking at a page with none of its
+    new rules — no card, no animation — while the server served the correct file the
+    whole time and nothing about the page said so.
+
+    A changed file has to live at a changed address. This asserts the address moves.
+    """
+    from app.templating import static_url
+
+    first = static_url("app.css")
+    assert first.startswith("/static/app.css?v="), first
+    assert len(first.split("?v=")[1]) >= 8, "the fingerprint is too short to be a hash"
+
+    # Same bytes, same address: a redeploy of identical content must not bust caches.
+    assert static_url("app.css") == first
+
+
+def test_a_rebuilt_stylesheet_gets_a_new_url(tmp_path: Path) -> None:
+    """The property that actually matters, exercised by changing a file's bytes."""
+    from app import templating
+
+    scratch = tmp_path / "probe.css"
+    scratch.write_text("a{}")
+    original_dir = templating.STATIC_DIR
+    templating.STATIC_DIR = tmp_path
+    try:
+        before = templating.static_url("probe.css")
+        scratch.write_text("a{color:red}")
+        after = templating.static_url("probe.css")
+    finally:
+        templating.STATIC_DIR = original_dir
+
+    assert before != after, "the URL did not change when the file did"
+
+
+def test_every_page_asks_for_the_fingerprinted_stylesheet() -> None:
+    """A template that hard-codes `/static/app.css` opts itself back into the bug."""
+    offenders = [
+        template.name
+        for template in sorted(TEMPLATE_DIR.glob("*.html"))
+        if 'href="/static/app.css"' in template.read_text()
+    ]
+
+    assert offenders == [], f"templates bypassing static_url(): {offenders}"

@@ -17,18 +17,20 @@ always-on invariants.
 
 ## Where things stand, 2026-09-17
 
-**12 of 16 Linear issues are Done.** Phases 0–3 are complete: schema, guest pages, the
-review instance, the RSVP window, host auth, ownership scoping, rate limiting, the host
-dashboard, CSV import, email delivery.
+**13 of 17 Linear issues are Done**, one is canceled. Phases 0–3 are complete: schema,
+guest pages, the review instance, the RSVP window, host auth, ownership scoping, rate
+limiting, the host dashboard, CSV import, email delivery, and the two public pages.
 
-**206 tests.** Gate green: ruff, ruff format, `mypy --strict` over 48 files, migrations
+**254 tests.** Gate green: ruff, ruff format, `mypy --strict` over 50 files, migrations
 up→down→up against the test database. Zero `noqa`, zero `type: ignore`, zero skipped
 tests, zero swallowed exceptions in the repository. Keep it that way.
 
 **Git is clean**: one branch (`main`), one worktree, in sync with origin, no stashes.
 
-**It is live.** `https://dev-wedding.tapphouse.co/invites/<token>` serves the guest pages
-from this box through a named Cloudflare Tunnel.
+**Two things are live**, both from this box through the named Cloudflare Tunnel:
+`https://dev-wedding.tapphouse.co` — the wedding site, with `/invites/<token>` for
+guests and a welcome at its root — and `https://dev-savethedate.tapphouse.co`, the
+public save-the-date card. They are **one process**, told apart by the Host header.
 
 ## What this project actually is — read §12 before designing anything
 
@@ -54,32 +56,38 @@ second deployment, not a content model.
 | Hostname | Serves |
 | --- | --- |
 | `dev-wedding.tapphouse.co` | The review instance on :50681 — live |
+| `dev-savethedate.tapphouse.co` | The save-the-date card, same instance — live |
 | `wedding.tapphouse.co` | Production — **503 on purpose** |
-| `savethedate.tapphouse.co` | Reserved — 503, contents undecided |
+| `savethedate.tapphouse.co` | Production save-the-date — **503 until the stack exists** |
 | `home.tapphouse.co` | Home Assistant. **Not ours. Do not touch.** |
+
+The two dev hostnames reach **one** process and are told apart by the Host header
+(`SAVE_THE_DATE_HOSTS`). There is no `/save-the-date` path on either.
+
+**`home.tapphouse.co` does not go through the tunnel** — it is a CNAME straight to Nabu
+Casa. Leave it alone because it is not ours, not because cloudflared can break it: an
+ingress change costs a few seconds of `dev-wedding` and nothing else. Note that **SIGHUP
+does not reload cloudflared in place** — it exits, and `Restart=always` brings it back
+with a new PID in about three seconds. There is no `ExecReload` on the unit.
 
 **Do not point `wedding.tapphouse.co` at the development instance to make it look
 finished.** A guest-facing hostname quietly serving the development database is how
 invented guests start looking real and how a genuine RSVP lands somewhere disposable.
 
-## What is left — four issues, and what each needs
+## What is left — three issues, and what each needs
 
-- **TAP-7733** home lab hosting — *In Progress.* Domain and tunnel are done. What
-  remains: the **production Compose stack** behind `wedding.tapphouse.co` with its own
-  database, migrations as a release step, and **backups off the machine with a restore
-  actually performed**. The restore is the deliverable, not the backup.
-- **TAP-7775** the root of the guest site should welcome, not error — *new, designed,
-  ready to build.* Decided with Bill; the issue carries the full brief and the two
-  things it must never become.
+- **TAP-7733** home lab hosting — *In Progress, and the next piece of work.* Domain,
+  tunnel and all four hostnames are done. What remains: the **production Compose stack**
+  behind `wedding.tapphouse.co` and `savethedate.tapphouse.co` with its own database,
+  migrations as a release step, and **backups off the machine with a restore actually
+  performed**. The restore is the deliverable, not the backup.
 - **TAP-7734** observability — needs a Sentry DSN or a self-hosted collector.
 - **TAP-7762** photography — needs somebody to take photographs. Not a coding task. The
-  hero is still a stock photograph of another couple.
+  invitation hero is still a stock photograph of another couple, and the save-the-date's
+  background is a CC0 Gulf beach rather than Port Aransas.
 
 ## Open questions only Bill can answer
 
-- **What is `savethedate.tapphouse.co` for?** Routed and reserved, serving 503. Given
-  §12, a plausible reading is a *second deployment* — its own event row, its own guest
-  list — rather than another page of this one. Ask; do not assume.
 - **Is the card on file for `tapphouse.co` current?** It expires **2027-08-01**, roughly
   six months before the wedding and inside the RSVP window. `renewAuto` is on, but a
   lapsed card takes the guest site's domain with it.
@@ -97,6 +105,9 @@ invented guests start looking real and how a genuine RSVP lands somewhere dispos
 - **Rebuild `app/static/app.css` after any template or CSS change, and commit it.**
   `tests/test_stylesheet.py` fails if you forget — it exists because a missing class
   shipped a broken image to a phone.
+- **Reference static files with `static_url()`, never a bare `/static/...` path.**
+  Cloudflare caches them for four hours, so a fixed URL serves a stale stylesheet long
+  after a rebuild — and it presents as "the design is broken", not as a cache.
 - No `# noqa`, no `# type: ignore`, no skipped tests, no swallowed exceptions. If the
   right fix is out of scope, stop and say so.
 - American English. Postgres is on host port **5434**.
@@ -129,8 +140,8 @@ Linear: project SaveTheDate, team TappsCodingAgents (TAP), issues TAP-7725–777
 ## If you want a shorter version
 
 Read IMPLEMENTATION_PLAN.md §12 and §8.1, LESSONS_LEARNED.md §6, and .claude/CLAUDE.md.
-Phases 0–3 are done, 12 of 16 issues closed, 206 tests, gate green, git clean, and the
-site is live at `dev-wedding.tapphouse.co`. Next is TAP-7733's production stack and
-backups, then TAP-7775's welcome page. Everything self-hosts on the home lab — there is
-no managed platform in this project. Ask Bill what `savethedate.tapphouse.co` is for
-before building anything behind it.
+Phases 0–3 are done, 13 of 17 issues closed, 254 tests, gate green, git clean, and both
+public faces are live — `dev-wedding.tapphouse.co` and `dev-savethedate.tapphouse.co`,
+one process, told apart by the Host header. Next is TAP-7733's production stack and its
+tested restore. Everything self-hosts on the home lab — there is no managed platform in
+this project.

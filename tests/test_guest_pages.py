@@ -585,7 +585,13 @@ def test_guest_copy_is_american_english(client: TestClient, db_session: Session)
 # one character, used to get FastAPI's raw `{"detail":"Not Found"}`. The site has had a
 # written, designed 404 the whole time — it was only reachable via a token that parsed
 # but matched nothing. Found by Bill opening the root of the new hostname.
-GUEST_FACING_MISSES = ("/", "/some-random-path", "/invites", "/invitation", "/rsvp")
+#
+# `/` is deliberately NOT in this list any more. TAP-7775 gave the root a welcome page
+# of its own: somebody who typed the domain never submitted a token, so telling them an
+# invitation could not be found reads as their mistake when they have not made one.
+# Everything below is still a genuine miss and still gets the written 404 — the two
+# pages are separate, which `tests/test_public_pages.py` asserts from both directions.
+GUEST_FACING_MISSES = ("/some-random-path", "/invites", "/invitation", "/rsvp")
 
 # Paths whose callers are programs or hosts, not guests. These keep a machine-readable
 # 404: a caterer's script and a signed-in host are both worse off with wedding prose.
@@ -601,12 +607,21 @@ NON_GUEST_MISSES = (
 BROWSER = {"Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"}
 
 
-def test_a_stranger_at_the_root_gets_the_written_404(client: TestClient) -> None:
+def test_a_stranger_at_the_root_is_welcomed_rather_than_told_nothing_was_found(
+    client: TestClient,
+) -> None:
+    """Superseded by TAP-7775, and kept rather than deleted so the change is legible.
+
+    This asserted a 404 at `/` until the root got a page of its own. The behaviour it
+    was really protecting — that a stranger meets prose rather than `{"detail":...}` —
+    is still asserted, and still here.
+    """
     response = client.get("/", headers=BROWSER)
 
-    assert response.status_code == 404
+    assert response.status_code == 200
     assert response.headers["content-type"].startswith("text/html")
-    assert "We could not find that invitation" in response.text
+    assert "We could not find that invitation" not in response.text
+    assert '{"detail"' not in response.text
 
 
 def test_every_guest_facing_miss_gets_the_written_404(client: TestClient) -> None:
@@ -619,8 +634,11 @@ def test_every_guest_facing_miss_gets_the_written_404(client: TestClient) -> Non
 
 
 def test_the_404_page_is_still_noindex(client: TestClient) -> None:
-    """It is reachable without a token, so it must not be the way the site gets indexed."""
-    response = client.get("/", headers=BROWSER)
+    """It is reachable without a token, so it must not be the way the site gets indexed.
+
+    Against a real miss rather than `/`, which has been a 200 welcome since TAP-7775.
+    """
+    response = client.get("/some-random-path", headers=BROWSER)
 
     assert response.headers["x-robots-tag"] == "noindex, nofollow, noarchive"
     assert "noindex" in response.text

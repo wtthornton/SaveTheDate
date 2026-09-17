@@ -8,7 +8,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Karla:wght@400;500;700&display=swap" rel="stylesheet">
-  <link rel="stylesheet" href="/static/app.css">
+  <link rel="stylesheet" href="{{ static_url('app.css') }}">
   {% block extra_head %}{% endblock %}
 </head>
 <body class="bg-ground text-ink">
@@ -50,7 +50,7 @@
     <p class="photo-credit">{{ photo_credit_line() }}</p>
   {% endblock %}
 
-  <script src="/static/vendor/htmx-2.0.10.min.js" defer></script>
+  <script src="{{ static_url('vendor/htmx-2.0.10.min.js') }}" defer></script>
   {% block extra_scripts %}{% endblock %}
 </body>
 </html>

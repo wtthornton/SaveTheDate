@@ -6,9 +6,13 @@ Hosts create an event, add their guest list, and hand each guest a private invit
 link. Guests open the link, see the event, and RSVP — no account, no password.
 Hosts read the responses back off the guest list.
 
+It also serves **two pages that need no token**: a public save-the-date card, and a
+welcome at the root of the wedding site for anyone who arrives without their link.
+
 **Status:** working. Guest pages, host authentication, per-host scoping, rate
-limiting, a host dashboard with per-day headcounts, CSV import and export, and email
-delivery with per-guest delivery state. 199 tests against a real Postgres.
+limiting, a host dashboard with per-day headcounts, CSV import and export, email
+delivery with per-guest delivery state, and the two public pages. 254 tests against a
+real Postgres.
 
 What is left is not code: a durable home-lab deployment, error reporting, and real
 photographs. Until it has a durable home with a tested restore, keep invented guests
@@ -45,6 +49,15 @@ class a template names has no rule.
 
 htmx is vendored at `app/static/vendor/htmx-2.0.10.min.js` rather than loaded from a
 CDN, so the version is whatever is in the repo and a test asserts it.
+
+**Reference static files through `static_url()`, never by a bare path.** Cloudflare
+returns `/static/*` with `max-age=14400` and caches it at its edge, so under a fixed URL
+a rebuilt stylesheet keeps being served to returning browsers for four hours. That is
+not hypothetical: a reviewer spent a while looking at a page with none of its new rules
+— no card, no animation — while the server served the correct file throughout, and
+nothing on the page could have said so. `static_url()` appends a content hash, so
+changed bytes live at a changed address; the HTML itself is uncached, so the new address
+is seen immediately. A test fails on any template that hard-codes `/static/app.css`.
 
 Why, in short:
 
@@ -104,27 +117,67 @@ a named tunnel from the home lab.
 
 | Hostname | Serves | State |
 | --- | --- | --- |
-| `wedding.tapphouse.co` | Production | Reserved — 503 until the production stack exists |
+| `wedding.tapphouse.co` | Production — the wedding site | Reserved — 503 until the production stack exists |
 | `dev-wedding.tapphouse.co` | The review instance | **Live** |
-| `savethedate.tapphouse.co` | Undecided | Reserved — 503 |
+| `savethedate.tapphouse.co` | Production — the save-the-date card | Reserved — 503 until the production stack exists |
+| `dev-savethedate.tapphouse.co` | The save-the-date card on the review instance | **Live** |
 | `home.tapphouse.co` | Home Assistant (Nabu Casa) | Pre-existing, untouched |
+
+Two public faces, one codebase, one app per stack. **Both live at `/`**, and the
+hostname decides which one you get: the card on a hostname listed in
+`SAVE_THE_DATE_HOSTS`, the wedding welcome on every other. The list is explicit rather
+than a substring test — this project is itself called savethedate, and a guest-facing
+hostname quietly serving the wrong page is the failure that list exists to prevent.
+
+There is deliberately **no `/save-the-date` path**. The card is reviewed locally at
+`savethedate.localhost`, which every browser resolves to loopback, so it needs no DNS
+entry and is still reachable under one name only.
 
 `wedding.tapphouse.co` deliberately returns 503 rather than pointing at the development
 instance. A guest-facing hostname quietly serving the development database is how
 invented guests start looking real, and how a genuine RSVP lands somewhere disposable.
 
-### What the root of the guest site shows — decided 2026-09-17
+### The two pages that need no token — built 2026-09-17
 
-A **welcome page**, not an error. It names the couple and the date, says the invitation
-is a personal link, and tells a guest how to get theirs resent. It does **not** show the
-schedule, the address, or anything else behind a token, and it is `noindex` like every
-other page.
+Everything else this app serves a guest hangs off `guests.invite_token`. These two do
+not, which makes them the only pages where "what does this say to a stranger?" is a
+question with consequences.
 
-Two things it must never become:
+**The welcome**, at the root of the wedding hostname. It names the couple, the date and
+Port Aransas, says the invitation is a personal link sent by email, and tells a guest
+how to get theirs resent. It answers **200**, not 404: it is a real page at a real
+address, and the "nothing here without a token" signal is carried by what it says, which
+a person can read, rather than by a status code, which they cannot. It does **not** show
+the schedule, the address, or anything else behind a token.
+
+**The save-the-date card**, at the root of the save-the-date hostname. A closed envelope
+— paper body, the names and a stamp on the front, a wax seal — whose seal breaks, whose
+flap lifts to show its liner, and out of which the card is drawn, over a drifting Gulf
+horizon. It carries the couple, the date, Port Aransas, and a link onward to the wedding
+site.
+
+The animation is **pure CSS**. Nothing to run, so there is no state in which a reader
+gets a blank rectangle because a script failed or had not arrived — on the one page
+whose whole job is to say a date out loud. `prefers-reduced-motion: reduce` removes the
+drift and the reveal together and leaves the card already open; that is a vestibular
+accessibility requirement, not a preference, and the guest list skews old.
+
+Neither page reads a guest row, and neither takes input. The couple, the date and the
+place are hard-coded rather than read from `events`: these pages belong to no event row,
+choosing one without a token or a signed-in host would mean inventing a "primary event"
+— a content model on the exact axis plan §12 says not to build one — and hard-coding
+means they render on an empty production database, which is the state it will be in on
+its first day.
+
+Both are `noindex` like every other page. Public here means "needs no token", not "wants
+to be searchable": a couple's names and a wedding date are not something to hand a
+crawler.
+
+Two things neither may ever become:
 
 - **A "find your invitation" lookup form.** Zola and Minted both do this and TAP-7725
   rejects the pattern on friction grounds — but it is also a guest-list oracle, letting
-  anyone test names to learn who was invited.
+  anyone test names to learn who was invited. Asserted by a test, on both pages.
 - **A guest login.** The link is the credential. This is the invariant the whole schema
   hangs off.
 
@@ -375,10 +428,13 @@ and are deliberately not stubbed out:
   Postgres, plus a throwaway Cloudflare Quick Tunnel for review. A proper home-lab
   deployment with **automated backups and a tested restore** is TAP-7733, and it is the
   only gap that could cost the guest list.
-- **No production stack yet.** `wedding.tapphouse.co` is reserved and returns 503. It
-  needs its own Compose project and its own database, separate from development.
-- **`savethedate.tapphouse.co` is undecided.** The hostname is routed and reserved; what
-  runs there has not been settled.
+- **No production stack yet.** `wedding.tapphouse.co` and `savethedate.tapphouse.co` are
+  both reserved and both return 503. They need a Compose project and a database of their
+  own, separate from development. TAP-7733.
+- **The save-the-date card has no production home yet.** It is live for review at
+  `dev-savethedate.tapphouse.co`, which reaches the same review instance as
+  `dev-wedding` and is told apart by the Host header. `savethedate.tapphouse.co` stays
+  at 503 until the production stack exists.
 - **No error reporting**, and `/health` says the process is up rather than that the
   service works. TAP-7734.
 - **Every photograph is a placeholder**, and the hero is a stock photograph of another
