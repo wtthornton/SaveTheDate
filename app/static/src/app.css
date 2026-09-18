@@ -84,11 +84,16 @@
     right: 0;
     z-index: 60;
     margin: 0;
-    padding: 12px 20px;
+    /* Deliberately short. On a 390px phone this was three lines of 18px text and the
+       best part of an eighth of the viewport, on pages whose whole job is to be looked
+       at. The copy carries the same two facts in half the words — it is a draft, and
+       the names are invented — and the type stays at 18px, because the floor does not
+       bend for a banner any more than it bends for anything else. */
+    padding: 8px 16px;
     background: var(--color-ink);
     color: var(--color-ground);
     font-size: 18px;
-    line-height: 1.45;
+    line-height: 1.35;
     text-align: center;
     text-wrap: pretty;
     border-bottom: 3px solid var(--color-accent);
