@@ -19,6 +19,7 @@ than trusted to review.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 import pytest
@@ -350,3 +351,32 @@ def test_every_cc_by_photograph_on_a_public_page_is_credited_on_it(
     ]
 
     assert missing == [], f"the {page} shows a CC BY photograph without its credit: {missing}"
+
+
+def test_production_never_opens_the_guest_site_at_the_root(
+    anonymous_client: TestClient, client: TestClient, db_session: Session
+) -> None:
+    """The review instance's shortcut must not exist here, and guests must not matter.
+
+    A review instance redirects `/` to a guest's invitation so the four token-gated
+    pages can be reviewed without pasting a token. That is gated on `REVIEW_INSTANCE`,
+    which is `False` by default and `"false"` in `docker-compose.prod.yml`.
+
+    This asserts the guard against the state that would actually be dangerous: a
+    database **with guests in it**. Proving the root welcomes on an empty database
+    proves nothing, because there would be nothing to redirect to either way — which
+    is exactly how a guard like this gets to be wrong for months. If it ever leaked,
+    the root of a public wedding hostname would hand a stranger a working invite token
+    belonging to a real guest.
+    """
+    event = create_event(
+        client,
+        rsvp_opens_at=datetime.now(UTC) - timedelta(days=1),
+        rsvp_deadline=datetime.now(UTC) + timedelta(days=30),
+    )
+    add_guest(client, event["id"], "Dana Whitfield")
+
+    response = anonymous_client.get("/", headers=_host(WEDDING_HOST), follow_redirects=False)
+
+    assert response.status_code == 200, "production redirected the root at a guest"
+    assert "personal link" in Document(response.text).text.casefold()

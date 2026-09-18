@@ -351,6 +351,23 @@ row is never re-keyed.
 Every one of these is anonymous and carries `noindex, nofollow`. There is no guest
 login and there must never be one: the link *is* the credential.
 
+### The review instance opens the guest site at its root
+
+`https://dev-wedding.tapphouse.co/` redirects to one guest's invitation, so the four
+token-gated pages can be reviewed without first finding a 43-character token in a
+gitignored file. It picks the largest party, so the RSVP page being looked at is the one
+with the most in it, and resolves per request, so re-seeding cannot strand anyone.
+
+**This cannot happen in production.** It is gated on `REVIEW_INSTANCE`, which is `False`
+by default and `"false"` in `docker-compose.prod.yml`;
+`test_production_stack.py` fails if that drifts, and
+`test_production_never_opens_the_guest_site_at_the_root` asserts the root still welcomes
+**with guests in the database** — the state where a leak would actually matter.
+
+It is not a lookup. There is no name box and no way to ask for a particular guest: it is
+one fixed row chosen by the query, not by the caller. An anonymous page must never
+answer questions about who was invited, and a constant answers no question.
+
 ### Seeding a review instance
 
 ```bash

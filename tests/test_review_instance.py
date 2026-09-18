@@ -140,3 +140,106 @@ def test_an_unknown_seed_phase_is_refused() -> None:
 
     with pytest.raises(ValueError, match="unknown"):
         rsvp_window("whenever")
+
+
+# -- The wedding root opens the guest site, on a review instance only ----------
+
+
+def test_a_review_instance_opens_the_guest_site_at_the_wedding_root(
+    anonymous_client: TestClient,
+    client: TestClient,
+    db_session: Session,
+    _as_review_instance: None,
+) -> None:
+    """Because the four pages worth reviewing hang off a 43-character token.
+
+    `dev-wedding.tapphouse.co/` served the same minimal welcome as production, so the
+    richer site looked absent unless you had a link saved — and a link saved against
+    the old quick-tunnel URL stops resolving, which reads as the site being gone.
+    """
+    token = _guest(client, db_session)
+
+    # `follow_redirects=False`, or TestClient chases the 302 and the response that
+    # comes back is the guest page, with no Location header to assert on.
+    response = anonymous_client.get(
+        "/", headers={"Host": "dev-wedding.tapphouse.co"}, follow_redirects=False
+    )
+
+    assert response.status_code == 302
+    assert response.headers["location"] == f"/invites/{token}"
+
+
+def test_the_shortcut_is_temporary_so_reseeding_cannot_strand_a_reviewer(
+    anonymous_client: TestClient,
+    client: TestClient,
+    db_session: Session,
+    _as_review_instance: None,
+) -> None:
+    """301 would be cached by the browser and outlive the token it points at.
+
+    Reseeding the review data re-keys every token, and a permanent redirect held in a
+    browser's cache would keep sending its owner to a dead invitation with nothing on
+    the page to say why. This project has already lost an evening to a stale cache
+    presenting as "the design is broken".
+    """
+    _guest(client, db_session)
+
+    response = anonymous_client.get(
+        "/", headers={"Host": "dev-wedding.tapphouse.co"}, follow_redirects=False
+    )
+
+    assert response.status_code == 302, "a permanent redirect would outlive the token"
+
+
+def test_the_shortcut_opens_the_largest_party(
+    anonymous_client: TestClient,
+    client: TestClient,
+    db_session: Session,
+    _as_review_instance: None,
+) -> None:
+    """The RSVP page is the densest of the four, so review the one with most in it."""
+    event = create_event(
+        client,
+        rsvp_opens_at=datetime.now(UTC) - timedelta(days=1),
+        rsvp_deadline=datetime.now(UTC) + timedelta(days=30),
+    )
+    add_segments(db_session, event["id"])
+    add_guest(client, event["id"], "Marcus Ellery", party_size=1)
+    family = add_guest(client, event["id"], "The Calloway family", party_size=5)
+
+    response = anonymous_client.get(
+        "/", headers={"Host": "dev-wedding.tapphouse.co"}, follow_redirects=False
+    )
+
+    assert response.headers["location"] == f"/invites/{family['invite_token']}"
+
+
+def test_an_empty_review_instance_still_welcomes(
+    anonymous_client: TestClient, _as_review_instance: None
+) -> None:
+    """A review database with nothing in it is an ordinary state, not an error.
+
+    It is also the state a fresh one is in, so a 500 here would greet whoever built it.
+    """
+    response = anonymous_client.get("/", headers={"Host": "dev-wedding.tapphouse.co"})
+
+    assert response.status_code == 200
+    assert "personal link" in Document(response.text).text.casefold()
+
+
+def test_a_review_instance_still_serves_the_card_on_the_card_hostname(
+    anonymous_client: TestClient,
+    client: TestClient,
+    db_session: Session,
+    monkeypatch: pytest.MonkeyPatch,
+    _as_review_instance: None,
+) -> None:
+    """The card is the thing being reviewed on its own hostname. It is not a detour."""
+    monkeypatch.setenv("SAVE_THE_DATE_HOSTS", "dev-savethedate.tapphouse.co")
+    get_settings.cache_clear()
+    _guest(client, db_session)
+
+    response = anonymous_client.get("/", headers={"Host": "dev-savethedate.tapphouse.co"})
+
+    assert response.status_code == 200
+    assert "Save the date" in Document(response.text).text
