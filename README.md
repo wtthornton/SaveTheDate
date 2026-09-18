@@ -134,6 +134,13 @@ There is deliberately **no `/save-the-date` path**. The card is reviewed locally
 `savethedate.localhost`, which every browser resolves to loopback, so it needs no DNS
 entry and is still reachable under one name only.
 
+The card's one button, **"Visit the wedding site", follows `PUBLIC_BASE_URL`** — the
+same variable that builds invite links, because it is the same thing: this deployment's
+own wedding site. Production sets it in `docker-compose.prod.yml`, the review instance
+in `scripts/review-instance.sh`, so dev links to dev and production links to production
+with no value to keep in step across a promotion. It was a hard-coded literal until
+2026-09-18, which sent everyone reviewing the dev card into production.
+
 The two production hostnames reach the `savethedate-prod` Compose stack on
 `127.0.0.1:8100`, which has **its own database**, separate from development. While that
 stack is down they return 502 rather than falling through to the review instance — a

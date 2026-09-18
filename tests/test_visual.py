@@ -67,6 +67,10 @@ def live_url(_migrated_schema: None, _test_database_url: str) -> Iterator[str]:
         "DATABASE_URL": _test_database_url,
         "REVIEW_INSTANCE": "false",
         "SAVE_THE_DATE_HOSTS": "savethedate.localhost",
+        # The card's link out follows PUBLIC_BASE_URL, so pointing it at this server's
+        # own wedding hostname is what makes "Visit the wedding site" actually go
+        # somewhere when a screenshot run is being clicked through by hand.
+        "PUBLIC_BASE_URL": f"http://wedding.localhost:{port}",
     }
     process = subprocess.Popen(
         [

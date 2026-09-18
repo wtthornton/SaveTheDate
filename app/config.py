@@ -78,6 +78,23 @@ class Settings(BaseSettings):
         return self.public_base_url.startswith("https://")
 
     @property
+    def wedding_site_url(self) -> str:
+        """Where the save-the-date card sends somebody who wants more than a date.
+
+        Derived from `public_base_url` rather than configured separately, because they
+        are the same thing: the root of the wedding site on this deployment. One
+        variable per environment is what keeps a dev card linking to dev and a
+        production card linking to production. Hard-coding it meant
+        `dev-savethedate.tapphouse.co` sent reviewers to the real
+        `wedding.tapphouse.co` — reviewing the card silently left the review instance,
+        and while production was down it looked like the card was broken.
+
+        Absolute, and with a trailing slash: the card is served on its OWN hostname, so
+        a relative link would keep the reader on the save-the-date host.
+        """
+        return self.public_base_url.rstrip("/") + "/"
+
+    @property
     def registration_is_open(self) -> bool:
         return bool(self.host_registration_token)
 

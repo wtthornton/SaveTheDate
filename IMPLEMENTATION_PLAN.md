@@ -1303,3 +1303,56 @@ from the filenames the template actually names. TAP-7762 still owns replacing it
   **before** it, at both widths. Checking only the open state passes just as happily on
   a flattened 3D context, where `backface-visibility` does nothing and the liner simply
   covers the paper throughout — which is exactly the bug that cost the previous rebuild.
+
+---
+
+## 16. The card's one button pointed at the wrong environment, 2026-09-18
+
+Bill, looking at `dev-savethedate.tapphouse.co`: *"the button 'Visit the wedding site'
+should go to `dev-wedding.tapphouse.co`."*
+
+`WEDDING_SITE_URL` was a module-level literal in `app/routers/public.py`, so every
+deployment served the same string — `https://wedding.tapphouse.co/`. The card has
+exactly one call to action, and on the review instance it walked the reviewer out of
+the review instance and into production. While production was down that read as the
+button being broken rather than as the link being right and the destination absent.
+
+### The fix is a derivation, not a second setting
+
+`Settings.wedding_site_url` is now `public_base_url` with a trailing slash. Nothing new
+to configure: `PUBLIC_BASE_URL` is already, by definition, this deployment's own wedding
+site — it is what builds every invite link, and §14 already set it in production for the
+session cookie's `Secure` flag. Production was therefore correct the moment the literal
+was deleted.
+
+The review instance had never set it at all, so it would have fallen back to
+`http://localhost:8000` — nothing at all from the phone the tunnel exists to reach.
+`scripts/review-instance.sh` now sets `PUBLIC_BASE_URL=https://dev-wedding.tapphouse.co`
+in **both** `up` and `reload`.
+
+**A second setting would have been the wrong fix.** Two variables that must agree are
+two variables that can disagree, and the way that disagreement presents — one button, on
+one page, pointing one environment sideways — is exactly what nobody checks after a
+promotion. One variable per environment cannot drift from itself.
+
+### Both sides are asserted, because this is a promotion hazard
+
+| Assertion | Where |
+| --- | --- |
+| The card's onward link follows `PUBLIC_BASE_URL` | `tests/test_public_pages.py` |
+| With dev configured, no link on the card resolves to the production host | `tests/test_public_pages.py` |
+| Production's `PUBLIC_BASE_URL` is the wedding host, and is **not** in `SAVE_THE_DATE_HOSTS` | `tests/test_production_stack.py` |
+| The review script sets a `dev-wedding` base URL | `tests/test_review_instance.py` |
+| `up` and `reload` launch with identical environments | `tests/test_review_instance.py` |
+
+The last one is new coverage for a trap §13 already recorded once: a variable set in
+`up` and not in `reload` is invisible until somebody reloads, and then the instance
+changes behavior with no command having said so.
+
+The dev/production comparison is made on **parsed hostnames, never substrings**.
+`wedding.tapphouse.co` is a suffix of `dev-wedding.tapphouse.co`, so a naive `in` test
+reports the correct dev link as a production leak — the mirror image of the reason
+`SAVE_THE_DATE_HOSTS` is an explicit list.
+
+285 tests, gate green. Live on `dev-savethedate.tapphouse.co`, verified through the
+tunnel rather than in the test client alone.

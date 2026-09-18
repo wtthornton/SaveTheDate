@@ -21,6 +21,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
 from typing import Any
+from urllib.parse import urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -219,15 +220,54 @@ def test_the_card_carries_the_four_things_it_is_for(
     assert "Port Aransas" in text
 
 
-def test_the_card_points_onward_to_the_wedding_site(
-    anonymous_client: TestClient, save_the_date_hosts: str
-) -> None:
-    document = Document(_fetch(anonymous_client, "card").text)
-    onward = [
-        anchor for anchor in document.find_all("a") if WEDDING_HOST in anchor.attrs.get("href", "")
+def _onward_links(client: TestClient) -> list[str]:
+    """Every absolute href on the card that leaves the save-the-date hostname."""
+    document = Document(_fetch(client, "card").text)
+    return [
+        href
+        for anchor in document.find_all("a")
+        if (href := anchor.attrs.get("href", "")).startswith(("http://", "https://"))
     ]
 
-    assert onward, "the card should link to the wedding site"
+
+def test_the_card_points_onward_to_the_wedding_site(
+    anonymous_client: TestClient, save_the_date_hosts: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from app.config import get_settings
+
+    monkeypatch.setenv("PUBLIC_BASE_URL", f"https://{WEDDING_HOST}")
+    get_settings.cache_clear()
+
+    assert f"https://{WEDDING_HOST}/" in _onward_links(anonymous_client)
+
+    get_settings.cache_clear()
+
+
+def test_the_card_points_at_its_own_deployments_wedding_site(
+    anonymous_client: TestClient, save_the_date_hosts: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """A dev card links to dev, a production card links to production.
+
+    The URL was hard-coded to `wedding.tapphouse.co` once, so the card on
+    `dev-savethedate.tapphouse.co` sent every reviewer straight out of the review
+    instance and into production — which, while production was down, read as the
+    button being broken. It now follows `PUBLIC_BASE_URL`, the one variable each
+    deployment already sets to its own wedding site, so promoting dev to production
+    cannot carry a dev link with it or leave a production link on dev.
+    """
+    from app.config import get_settings
+
+    monkeypatch.setenv("PUBLIC_BASE_URL", "https://dev-wedding.tapphouse.co")
+    get_settings.cache_clear()
+
+    links = _onward_links(anonymous_client)
+
+    assert "https://dev-wedding.tapphouse.co/" in links
+    # On hostnames, never on substrings: production's name is a suffix of the review
+    # instance's, so `in` would call the correct dev link a production leak.
+    assert not [href for href in links if urlparse(href).hostname == WEDDING_HOST], links
+
+    get_settings.cache_clear()
 
 
 def test_the_welcome_names_the_island_not_just_the_state(
