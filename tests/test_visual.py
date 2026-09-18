@@ -903,104 +903,184 @@ def test_no_paragraph_on_the_public_welcome_runs_too_long_a_line(
 
 
 @pytest.mark.parametrize("width_name,viewport", [("phone", PHONE), ("desktop", DESKTOP)])
-def test_the_card_never_hangs_out_of_the_envelope_while_it_rises(
+def test_the_closed_envelope_actually_covers_the_card(
     browser: Browser, live_url: str, width_name: str, viewport: ViewportSize
 ) -> None:
-    """Mid-reveal, no part of the card is painted below the envelope's bottom edge.
+    """Before the wax gives, none of the card is painted. A reveal must conceal first.
 
-    `std-rise-out` starts the card at `translateY(46%)`, which puts nearly half its
-    height below the envelope — and `.std-front` stops exactly at that edge, so for
-    the whole rise the card's lower half was visible hanging out underneath the
-    paper: the date, the place and the link, sitting on the beach below the envelope.
-    It slid *past* the envelope instead of coming out of it.
+    This is the assertion the old flap-and-pocket envelope never had, and it is the
+    one that would have caught its worst bug: `.std-front` faded to `opacity: 0` over
+    a card standing behind it, so the date, the place and the button were legible
+    straight through the paper for a second of every visit. Paper is not translucent.
 
-    Every existing assertion measured the END state, where the transform is `none`
-    and nothing overhangs, so all of them stayed green. It was found by scrubbing to
-    the middle and looking.
+    Hit-testing rather than measuring. An element covered by an opaque sibling still
+    reports its full `getBoundingClientRect`, so geometry cannot tell whether the
+    card is actually visible; asking what is on top answers the question being asked.
 
-    Hit-testing rather than measuring: a clipped element still reports its full
-    `getBoundingClientRect`, so geometry cannot tell whether the overhang is
-    actually painted. `elementFromPoint` respects the clip, which is the question.
+    The envelope is `pointer-events: none`, and hit-testing skips such elements
+    entirely — `elementsFromPoint` honours it just as `elementFromPoint` does, which
+    is what made the first version of this test report a bare card on a page where
+    the envelope was sealed and perfectly opaque. So the probe turns hit-testing back
+    on for the overlay, asks its question, and puts it back. That is not loosening
+    the assertion: `pointer-events` has nothing to do with paint order, which is the
+    property here, and whether the finished page eats taps is already asserted by
+    `test_the_opened_card_is_not_obstructed`.
     """
     page = _page(browser, viewport)
     page.goto(_public_url(live_url, "save-the-date"), wait_until="networkidle")
 
-    # 1800ms is 100ms into the 1200ms rise, so the card is still almost fully
-    # displaced; 2400 is halfway up. Both are moments a person would actually see.
-    for moment_ms in (1800, 2100, 2400):
+    # 0ms is sealed and 700ms is mid-strain; the doors do not start until 1120ms.
+    for moment_ms in (0, 400, 700, 1000):
         page.evaluate(SCRUB_TO, moment_ms)
-        leaked = page.evaluate(
+        showing = page.evaluate(
             """() => {
-                 const envelope = document.querySelector('.std-back').getBoundingClientRect();
-                 const card = document.querySelector('.std-card');
-                 const hits = [];
-                 for (const frac of [0.15, 0.35, 0.5, 0.65, 0.85]) {
-                   const x = envelope.left + envelope.width * frac;
-                   for (const below of [6, 40, 120]) {
-                     const el = document.elementFromPoint(x, envelope.bottom + below);
-                     if (el && (el === card || card.contains(el))) {
-                       hits.push(`${Math.round(x)},${Math.round(envelope.bottom + below)}`);
+                 const overlay = document.querySelectorAll('.std-envelope, .std-back');
+                 const saved = [...overlay].map(el => el.style.pointerEvents);
+                 overlay.forEach(el => { el.style.pointerEvents = 'auto'; });
+                 try {
+                   const card = document.querySelector('.std-card');
+                   const box = card.getBoundingClientRect();
+                   const bare = [];
+                   for (const fx of [0.2, 0.5, 0.8]) {
+                     for (const fy of [0.2, 0.5, 0.8]) {
+                       const x = box.left + box.width * fx;
+                       const y = box.top + box.height * fy;
+                       const top = document.elementFromPoint(x, y);
+                       if (top && (top === card || card.contains(top))) {
+                         bare.push(`${Math.round(x)},${Math.round(y)}`);
+                       }
                      }
                    }
+                   return bare;
+                 } finally {
+                   overlay.forEach((el, i) => { el.style.pointerEvents = saved[i]; });
                  }
-                 return hits;
                }"""
         )
-        assert not leaked, (
-            f"{width_name}: at {moment_ms}ms the card is painted below the envelope "
-            f"at {leaked} — it is sliding past the envelope, not out of it"
+        assert not showing, (
+            f"{width_name}: at {moment_ms}ms the card is already visible through the "
+            f"sealed envelope at {showing} — the envelope is not opaque"
         )
     page.context.close()
 
 
-def test_the_flaps_own_animation_never_carries_opacity(browser: Browser, live_url: str) -> None:
-    """Because `opacity` on that element silently flattens its 3D, and hides the liner.
+def test_nothing_that_holds_a_3d_context_carries_opacity(browser: Browser, live_url: str) -> None:
+    """Because `opacity` on such an element silently flattens it, and hides the liner.
 
-    The flap has two faces: cream paper outside, a teal striped liner inside, with
+    Each door has two faces: paper outside, teal liner inside, with
     `backface-visibility: hidden` on both so the liner turns toward the reader as the
-    flap passes vertical. That liner is the detail the envelope was rebuilt for, after
-    Bill pointed at Greenvelope — "the detail that makes an envelope look chosen
-    rather than generated".
+    door passes vertical. That liner is the detail the envelope was rebuilt for,
+    after Bill pointed at Greenvelope — the thing that makes an envelope look chosen
+    rather than generated.
 
-    It was never once visible. `opacity` is a grouping property, so an element that
-    carries one is forced to `transform-style: flat` regardless of its own rule; the
-    flap's open animation faded it, which flattened its 3D context, which disabled
-    `backface-visibility` on both faces, so the cream outer face simply never hid.
+    On the flap this replaced, it was never once visible. `opacity` is a grouping
+    property, so an element that carries one is forced to `transform-style: flat`
+    regardless of its own rule; the flap's open animation faded it, which flattened
+    its 3D context, which disabled `backface-visibility` on both faces, so the cream
+    outer face simply never hid.
 
     Nothing could see this. `getComputedStyle` reports `preserve-3d` the whole time,
     because the computed value is not the used value, and every screenshot showed a
-    plausible cream flap. The fade now lives on the faces, which are leaves and group
-    nothing.
+    plausible cream flap. The shading now lives on `.std-shade` and `.std-edge`
+    children, which are leaves and group nothing.
 
-    Asserted against the animation the browser is actually running, rather than
-    against the stylesheet text, so it holds however the rule is written.
+    Asserted against the animations the browser is actually running, and against
+    every element that claims a 3D context rather than one named class, so it holds
+    however the envelope is next rebuilt.
     """
     page = _page(browser, DESKTOP)
     page.goto(_public_url(live_url, "save-the-date"), wait_until="networkidle")
 
     offenders = page.evaluate(
         """() => document.getAnimations()
-             .filter(a => a.effect && a.effect.target
-                       && a.effect.target.classList.contains('std-flap'))
-             .flatMap(a => a.effect.getKeyframes())
-             .filter(k => k.opacity !== undefined)
-             .map(k => `offset ${k.offset}: opacity ${k.opacity}`)"""
+             .filter(a => a.effect && a.effect.target instanceof Element
+                       && getComputedStyle(a.effect.target).transformStyle === 'preserve-3d')
+             .flatMap(a => a.effect.getKeyframes().map(k => ({ k, t: a.effect.target })))
+             .filter(({ k }) => k.opacity !== undefined)
+             .map(({ k, t }) => `${t.className} offset ${k.offset}: opacity ${k.opacity}`)"""
     )
     assert not offenders, (
-        "the flap's own animation fades it, which forces transform-style: flat and "
-        f"hides the liner for the whole reveal — {offenders}"
+        "an element holding a 3D context is animated with opacity, which forces "
+        f"transform-style: flat and hides the liner for the whole reveal — {offenders}"
     )
 
-    # And the faces must still be the things that fade, or the flap never leaves.
-    faces_fade = page.evaluate(
+    # And the shading must still be animated somewhere, or the paper reads as printed
+    # on glass: a face that turns away from the light and does not darken is not a
+    # surface, it is a picture of one.
+    shading = page.evaluate(
         """() => document.getAnimations()
-             .filter(a => a.effect && a.effect.target
-                       && a.effect.target.classList.contains('std-flap-face'))
+             .filter(a => a.effect && a.effect.target instanceof Element
+                       && a.effect.target.classList.contains('std-shade'))
              .flatMap(a => a.effect.getKeyframes())
-             .some(k => k.opacity === '0' || k.opacity === 0)"""
+             .some(k => k.opacity !== undefined)"""
     )
-    assert faces_fade, "nothing fades the flap out; it will sit over the card forever"
+    assert shading, "nothing shades the doors as they turn; the paper will read as flat"
     page.context.close()
+
+
+@pytest.mark.parametrize("width_name,viewport", [("phone", PHONE), ("desktop", DESKTOP)])
+def test_the_liner_faces_the_reader_once_the_doors_are_open(
+    browser: Browser, live_url: str, width_name: str, viewport: ViewportSize
+) -> None:
+    """The teal liner is the whole reason for the rebuild, so it is asserted, not hoped.
+
+    `backface-visibility` is the mechanism and it fails silently in both directions:
+    flatten the 3D context and the paper face never hides, get the face order wrong
+    and the liner never shows. Neither produces an error, and both produce a
+    screenshot that looks like *an* envelope.
+
+    So BOTH sides of vertical are asserted. Checking only the open state would pass
+    just as happily on a flattened 3D context, where `backface-visibility` does
+    nothing and the liner — painted second — simply covers the paper the whole time.
+    The half-open frame is what tells the two apart.
+
+    Sampled by hit-testing, because the question is which face is painted, not which
+    one the stylesheet says should be. As above, the overlay's `pointer-events: none`
+    is lifted for the probe and put back: hit-testing skips such elements, and paint
+    order is what is being asked.
+    """
+    page = _page(browser, viewport)
+    page.goto(_public_url(live_url, "save-the-date"), wait_until="networkidle")
+
+    # 1700ms is about 71 degrees — still short of vertical, so still paper.
+    page.evaluate(SCRUB_TO, 1700)
+    before = page.evaluate(_WHICH_FACE)
+    assert before == ["paper", "paper"], (
+        f"{width_name}: half open, the doors already show {before} — the liner is "
+        "painting over the paper, which means the 3D context is flat and "
+        "`backface-visibility` is doing nothing at all"
+    )
+
+    page.evaluate(SCRUB_TO, 2400)
+    faces = page.evaluate(_WHICH_FACE)
+    assert faces == ["liner", "liner"], (
+        f"{width_name}: past vertical the doors still show {faces} — the liner never "
+        "turns toward the reader, which is the one detail the envelope was rebuilt for"
+    )
+    page.context.close()
+
+
+_WHICH_FACE = """() => {
+             const env = document.querySelector('.std-envelope');
+             const saved = env.style.pointerEvents;
+             env.style.pointerEvents = 'auto';
+             try {
+               return ['.std-door-l', '.std-door-r'].map(sel => {
+                 const door = document.querySelector(sel);
+                 const box = door.getBoundingClientRect();
+                 const stack = document.elementsFromPoint(
+                   box.left + box.width / 2, box.top + box.height / 2);
+                 const face = stack.find(e => e.classList
+                     && (e.classList.contains('std-liner')
+                         || e.classList.contains('std-paper')));
+                 return face
+                   ? (face.classList.contains('std-liner') ? 'liner' : 'paper')
+                   : 'none';
+               });
+             } finally {
+               env.style.pointerEvents = saved;
+             }
+           }"""
 
 
 def test_the_card_needs_no_javascript(browser: Browser, live_url: str) -> None:
@@ -1047,7 +1127,8 @@ def test_reduced_motion_gets_the_finished_card_and_no_movement(
     # correctly hidden. `getClientRects()` answers the question actually being asked:
     # is any of this painted?
     hidden = page.evaluate(
-        """() => ['.std-back', '.std-flap', '.std-front', '.std-seal', '.std-motes']
+        """() => ['.std-back', '.std-envelope', '.std-door-l', '.std-door-r',
+                  '.std-wax-l', '.std-wax-r', '.std-motes']
                .filter(s => {
                    const el = document.querySelector(s);
                    return el && el.getClientRects().length > 0;
@@ -1121,22 +1202,23 @@ def test_capture_the_envelope_opening(browser: Browser, live_url: str) -> None:
     """Frames through the reveal, so the animation itself can be looked at.
 
     Every other test here measures the end state, which is the state the animation
-    exists to get to and says nothing about how it gets there. A flap that opens
-    through the card, a liner that never faces the reader, a seal that survives its
-    own breaking — all of that is invisible to an assertion about the finished page
-    and obvious in five stills.
+    exists to get to and says nothing about how it gets there. Doors that open
+    through the card, a liner that never faces the reader, a crack in an envelope
+    nobody has opened yet — all of that is invisible to an assertion about the
+    finished page and obvious in six stills.
+
+    Scrubbed, not waited for: each screenshot costs a few hundred milliseconds, so
+    on the wall clock the error accumulates and the last "frame" is nowhere near the
+    time it claims. `SCRUB_TO` asks the browser to be at a time instead of hoping.
     """
     page = _page(browser, PHONE)
     page.goto(_public_url(live_url, "save-the-date"), wait_until="networkidle")
 
-    # Wall-clock offsets into the sequence: sealed, seal breaking, flap lifting,
-    # card rising, envelope leaving.
-    last = 0
-    for index, moment_ms in enumerate((150, 900, 1500, 2300, 3600)):
-        page.wait_for_timeout(moment_ms - last)
-        last = moment_ms
+    # Sealed; the wax taking the strain; broken and crumbs falling; the doors a third
+    # open; past vertical with the liner showing; the shell gone.
+    for index, moment_ms in enumerate((300, 950, 1250, 1700, 2400, 4200)):
+        page.evaluate(SCRUB_TO, moment_ms)
         shot = _shoot(page, f"save-the-date-opening-{index}-{moment_ms}ms")
         assert shot.stat().st_size > 5000, f"{shot.name} looks blank"
 
-    _settled(page)
     page.context.close()

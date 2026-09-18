@@ -2,17 +2,23 @@
 
 {# TAP-7781. The public save-the-date at savethedate.tapphouse.co.
 
-   An envelope that opens itself into a card, over a drifting Gulf horizon.
+   A sealed envelope whose face opens like two doors, over a drifting Gulf horizon.
 
    THE ANIMATION IS PURE CSS, and that is the point rather than an economy. An
    envelope that needed JavaScript to open would be a blank rectangle to anyone whose
    script failed, blocked or simply had not arrived yet — on the one page whose entire
    job is to say a date out loud. With no script involved there is no such state: the
-   markup below IS the opened card, and every envelope piece is a decorative overlay
-   that animates out of the way. Turn off JavaScript and the page is unchanged.
+   markup below IS the opened card, at its finished size, and every envelope piece is
+   a decorative overlay that animates out of the way. Turn off JavaScript and the page
+   is unchanged.
+
+   THE MATERIALS ARE GENERATED, not photographed, because a photograph of an envelope
+   cannot fold and these doors turn in three dimensions. `<defs>` below holds three
+   SVG filters that do it: paper fibre, cloudy mottle, and wax. See the `std-*` rules
+   in app/static/src/app.css for how each is built and why.
 
    `prefers-reduced-motion: reduce` removes the drift and the reveal together, leaving
-   the card already open — see the `std-*` rules in app/static/src/app.css.
+   the card already open.
 
    Nothing here reads a guest row, and nothing takes input. See app/routers/public.py
    for why the couple, the date and the place are hard-coded. #}
@@ -40,10 +46,10 @@
        direction, which is what `<picture media>` is for — `srcset` alone picks by
        width and would go on serving the wrong crop. #}
     <picture aria-hidden="true">
-      <source media="(min-width: 700px)" srcset="/static/img/gulf-sunset.jpg">
+      <source media="(min-width: 700px)" srcset="{{ static_url('img/gulf-sunset.jpg') }}">
       <img
         class="std-horizon"
-        src="/static/img/gulf-evening.jpg"
+        src="{{ static_url('img/gulf-evening.jpg') }}"
         alt=""
         aria-hidden="true">
     </picture>
@@ -54,29 +60,120 @@
       <span></span><span></span><span></span><span></span>
     </div>
 
+    {# -- The materials --------------------------------------------------
+       Zero bytes over the wire and sharp at any size, which a texture image is
+       neither. Declared once and referenced by both doors. #}
+    <svg class="std-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
+
+      {# Paper fibre. feTurbulence's alpha channel is a height map; feDiffuseLighting
+         lights it, so the noise renders as raised fibre rather than coloured static. #}
+      <filter id="std-fibre" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.82" numOctaves="4" seed="11" result="n"/>
+        <feDiffuseLighting in="n" lighting-color="#ffffff" surfaceScale="1.15">
+          <feDistantLight azimuth="128" elevation="62"/>
+        </feDiffuseLighting>
+      </filter>
+
+      {# The cloudy unevenness real paper has. A fixed warm brown, with its alpha
+         taken from the noise's luminance so it pools rather than speckles. #}
+      <filter id="std-mottle" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.011" numOctaves="4" seed="5" result="n"/>
+        <feColorMatrix in="n" type="matrix"
+          values="0 0 0 0 0.36  0 0 0 0 0.28  0 0 0 0 0.17  0.34 0.34 0.34 0 0"/>
+      </filter>
+
+      <filter id="std-fibre-fine" x="0" y="0" width="100%" height="100%">
+        <feTurbulence type="fractalNoise" baseFrequency="1.1" numOctaves="3" seed="23" result="n"/>
+        <feDiffuseLighting in="n" lighting-color="#ffffff" surfaceScale="0.8">
+          <feDistantLight azimuth="128" elevation="66"/>
+        </feDiffuseLighting>
+      </filter>
+
+      {# Wax. The move that makes this read as a pressed lozenge rather than a printed
+         disc is lighting a BLURRED COPY OF THE SHAPE'S OWN ALPHA: the blur turns the
+         flat polygon into a soft alpha ramp, which feSpecularLighting reads as a dome,
+         giving one broad highlight that rolls off into shadow. Lighting the noise
+         directly instead — the obvious thing, and the first thing tried — produces
+         thousands of little highlights and looks like curdled meat. The noise is left
+         to do only what it is good at: warping the outline so no edge is a true arc,
+         and a whisper of surface grain. #}
+      <filter id="std-wax" x="-35%" y="-35%" width="170%" height="170%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.019" numOctaves="2" seed="9" result="warp"/>
+        <feDisplacementMap in="SourceGraphic" in2="warp" scale="10"
+                           xChannelSelector="R" yChannelSelector="G" result="shape"/>
+        <feGaussianBlur in="shape" stdDeviation="3.2" result="dome"/>
+        <feSpecularLighting in="dome" surfaceScale="5" specularConstant="0.6"
+                            specularExponent="16" lighting-color="#FFE9D2" result="spec">
+          <fePointLight x="36" y="22" z="52"/>
+        </feSpecularLighting>
+        <feComposite in="spec" in2="shape" operator="in" result="specin"/>
+        <feComposite in="shape" in2="specin" operator="arithmetic"
+                     k1="0" k2="1" k3="1" k4="0" result="lit"/>
+        <feTurbulence type="fractalNoise" baseFrequency="0.95" numOctaves="2" seed="21" result="g"/>
+        <feColorMatrix in="g" type="matrix"
+          values="0 0 0 0 0.12  0 0 0 0 0.05  0 0 0 0 0.02  0.18 0.18 0.18 0 0" result="grain"/>
+        <feComposite in="grain" in2="shape" operator="in" result="grainin"/>
+        <feBlend in="lit" in2="grainin" mode="multiply"/>
+      </filter>
+
+      <radialGradient id="std-waxfill" cx="33%" cy="26%" r="80%">
+        <stop offset="0%" stop-color="#A8492A"/>
+        <stop offset="38%" stop-color="#8E3A1E"/>
+        <stop offset="74%" stop-color="#6E2914"/>
+        <stop offset="100%" stop-color="#4E1A0C"/>
+      </radialGradient>
+
+      {# Wax that split a moment ago. The interior has not oxidised, so the fracture
+         face is a shade lighter than the top and dead matte against its gloss. #}
+      <linearGradient id="std-fresh" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="#A4562F"/>
+        <stop offset="52%" stop-color="#8C4525"/>
+        <stop offset="100%" stop-color="#6E3218"/>
+      </linearGradient>
+
+      <path id="std-crack" d="M60,12 L66,24 L56,33 L65,45 L52,55 L63,67 L55,78 L64,89 L57,98 L60,102"/>
+
+      {# The two halves are cut from ONE disc by complementary clips, so their edges
+         interlock exactly the way a real break does. #}
+      <clipPath id="std-clip-l" clipPathUnits="userSpaceOnUse">
+        <path d="M60,12 L66,24 L56,33 L65,45 L52,55 L63,67 L55,78 L64,89 L57,98 L60,102 L60,130 L-14,130 L-14,-14 L60,-14 Z"/>
+      </clipPath>
+      <clipPath id="std-clip-r" clipPathUnits="userSpaceOnUse">
+        <path d="M60,12 L66,24 L56,33 L65,45 L52,55 L63,67 L55,78 L64,89 L57,98 L60,102 L60,130 L134,130 L134,-14 L60,-14 Z"/>
+      </clipPath>
+
+      {# 24 points, not 16: at the lower count the wax read as a faceted polygon
+         rather than as something poured. #}
+      <polygon id="std-blob" points="107,58 104.6,68.6 100.2,78.4 93.9,91.9 85.6,96.6 77.2,99.6 68.7,101.8 60,101 51,102.4 42,101.4 34.7,96.1 28.9,89.1 22.4,82.8 17.5,75.6 15.6,66.9 15,58 14.9,48.7 16.6,40 22.1,32.7 28.9,26.9 35.3,20.6 42.4,15.5 51.1,13.6 60,13 68.4,14.8 76.5,18.3 85.3,20.9 93.2,24.8 98.2,32.3 101.6,40.8 104.9,48.9"/>
+
+    </defs></svg>
+
     <div class="std-stage">
 
-      {# The card is ordinary centered content in the normal flow. The envelope is
-         two overlays on top of it that animate away, so the card's final position is
-         never the product of a transform and cannot end up clipped or off-screen. #}
-      {# The pocket exists only to CLIP the card. The card rises from
-         `translateY(46%)`, which puts nearly half its height below the envelope's
-         bottom edge — and the front panel stops at that edge, so there was nothing
-         covering the overhang: the date, the place and the button were all visible
-         hanging out underneath the paper while the card "rose". Clipping here makes
-         the card come OUT of the envelope instead of sliding past it.
+      {# The back of the envelope. It is a SIBLING of the card and comes before it,
+         because it has to sit behind the card while the doors sit in front, and no
+         single wrapper can be on both sides at once. #}
+      <div class="std-back" aria-hidden="true"></div>
 
-         The drop shadow lives on this wrapper rather than on the card, because
-         `overflow: hidden` clips an element's children and not its own shadow. #}
-      <div class="std-pocket">
+      {# The card is ordinary centred content at its FINISHED size. Nothing here is
+         positioned by a transform, so it cannot end up clipped or off-screen, and
+         with the envelope hidden — reduced motion, or no CSS at all — it is simply
+         the page. #}
       <article class="std-card">
+        <img
+          class="std-card-photo"
+          src="{{ static_url('img/beach-fire.jpg') }}"
+          alt=""
+          aria-hidden="true">
+        <div class="std-card-scrim" aria-hidden="true"></div>
+
         <p class="std-tag">Save the date</p>
 
         <h1 class="std-names">Lisa <span class="std-and">and</span> Bill</h1>
 
         <div class="std-ornament" aria-hidden="true">
           <span class="std-ornament-line"></span>
-          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 L10 5 L5 10 L0 5 Z" fill="#A94E2B"/></svg>
+          <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true"><path d="M5 0 L10 5 L5 10 L0 5 Z" fill="#E0906B"/></svg>
           <span class="std-ornament-line"></span>
         </div>
 
@@ -91,34 +188,90 @@
 
         <a class="std-link" href="{{ wedding_site_url }}">Visit the wedding site</a>
       </article>
-      </div>
 
-      {# The envelope, over the card. Closed at first: a front panel with the names
-         and a stamp on it, a flap sealed with wax. The flap lifts to show its liner,
-         the card is drawn up out of the pocket, and the whole envelope then slides
-         away. Modelled on Greenvelope's animated envelope, which Bill pointed at.
+      {# The envelope's face: two doors held shut by one wax seal, hinged on their
+         outer edges. Each door carries half of a single sheet of paper — the
+         gradient, the fibre, the mottle, the V of the flap and the names are all
+         authored at the full width and each door shows its half — so the join is
+         invisible until the wax gives. A seam would be a spoiler: it tells the
+         reader the envelope is going to split before it does.
 
          Every piece is decorative and hidden from assistive technology: a screen
          reader gets the card, which says all of this in words and is in the markup
          above, before any of it. #}
       <div class="std-envelope" aria-hidden="true">
 
-        <div class="std-back"></div>
-
-        {# The flap has two faces. The outer one is paper; the inner one is the
-           liner, rotated half a turn so it faces away until the flap lifts past
-           vertical and turns it toward the reader. #}
-        <div class="std-flap">
-          <div class="std-flap-face std-flap-out"></div>
-          <div class="std-flap-face std-flap-in"></div>
+        <div class="std-door std-door-l">
+          <div class="std-face std-paper">
+            <div class="std-sheet">
+              <svg class="std-grain" width="100%" height="100%" preserveAspectRatio="none"><rect width="100%" height="100%" filter="url(#std-fibre)"/></svg>
+              <svg class="std-mottle" width="100%" height="100%" preserveAspectRatio="none"><rect width="100%" height="100%" filter="url(#std-mottle)"/></svg>
+              <div class="std-vee"></div>
+              <p class="std-addressee">Lisa &amp; Bill</p>
+            </div>
+            <div class="std-edge"></div>
+            <div class="std-shade std-lit-face"></div>
+          </div>
+          <div class="std-face std-liner">
+            <svg class="std-grain" width="100%" height="100%" preserveAspectRatio="none"><rect width="100%" height="100%" filter="url(#std-fibre-fine)"/></svg>
+            <svg class="std-mottle" width="100%" height="100%" preserveAspectRatio="none"><rect width="100%" height="100%" filter="url(#std-mottle)"/></svg>
+            <div class="std-liner-weave"></div>
+            <div class="std-liner-fold"></div>
+            <div class="std-shade std-lit-liner"></div>
+          </div>
+          <svg class="std-wax std-wax-l" viewBox="0 0 120 120">
+            <g clip-path="url(#std-clip-l)">
+              {# An undisplaced disc underneath. The displacement filter shoves wax up
+                 to five units sideways and the clip applies to the filter's OUTPUT,
+                 so without this the paper showed through along the cut — a hole that
+                 read as a crack in an envelope nobody had opened yet. #}
+              <use href="#std-blob" fill="#7C3218"/>
+              <g filter="url(#std-wax)"><use href="#std-blob" fill="url(#std-waxfill)"/></g>
+              <text class="std-monogram" x="60" y="67" fill="#2E0E04" fill-opacity="0.55" transform="translate(-1,-1)">L &amp; B</text>
+              <text class="std-monogram" x="60" y="67" fill="#FFCCA4" fill-opacity="0.4" transform="translate(1.1,1.1)">L &amp; B</text>
+              <text class="std-monogram" x="60" y="67" fill="#7A3018" fill-opacity="0.72">L &amp; B</text>
+              <use class="std-fresh" href="#std-crack" fill="none" stroke="url(#std-fresh)" stroke-width="1.8" stroke-linejoin="round"/>
+              <use class="std-hairline" href="#std-crack" fill="none" stroke="#2A0E05" stroke-opacity="0.75" stroke-width="1"/>
+            </g>
+            <g class="std-crumb" style="--std-dx:-13px; --std-rot:-64deg"><polygon points="59,30 63,33 60,36 56,34" fill="#77301A"/></g>
+            <g class="std-crumb" style="--std-dx:-9px; --std-rot:38deg"><polygon points="57,62 61,64 58,68 55,65" fill="#8A3C21"/></g>
+            <g class="std-crumb" style="--std-dx:-16px; --std-rot:-22deg"><polygon points="58,88 61,90 59,93 56,91" fill="#64250F"/></g>
+          </svg>
         </div>
 
-        <div class="std-front">
-          <p class="std-addressee">Lisa &amp; Bill</p>
-          <div class="std-stamp"></div>
+        <div class="std-door std-door-r">
+          <div class="std-face std-paper">
+            <div class="std-sheet">
+              <svg class="std-grain" width="100%" height="100%" preserveAspectRatio="none"><rect width="100%" height="100%" filter="url(#std-fibre)"/></svg>
+              <svg class="std-mottle" width="100%" height="100%" preserveAspectRatio="none"><rect width="100%" height="100%" filter="url(#std-mottle)"/></svg>
+              <div class="std-vee"></div>
+              <p class="std-addressee">Lisa &amp; Bill</p>
+            </div>
+            <div class="std-edge"></div>
+            <div class="std-shade std-lit-face"></div>
+          </div>
+          <div class="std-face std-liner">
+            <svg class="std-grain" width="100%" height="100%" preserveAspectRatio="none"><rect width="100%" height="100%" filter="url(#std-fibre-fine)"/></svg>
+            <svg class="std-mottle" width="100%" height="100%" preserveAspectRatio="none"><rect width="100%" height="100%" filter="url(#std-mottle)"/></svg>
+            <div class="std-liner-weave"></div>
+            <div class="std-liner-fold"></div>
+            <div class="std-shade std-lit-liner"></div>
+          </div>
+          <svg class="std-wax std-wax-r" viewBox="0 0 120 120">
+            <g clip-path="url(#std-clip-r)">
+              <use href="#std-blob" fill="#7C3218"/>
+              <g filter="url(#std-wax)"><use href="#std-blob" fill="url(#std-waxfill)"/></g>
+              <text class="std-monogram" x="60" y="67" fill="#2E0E04" fill-opacity="0.55" transform="translate(-1,-1)">L &amp; B</text>
+              <text class="std-monogram" x="60" y="67" fill="#FFCCA4" fill-opacity="0.4" transform="translate(1.1,1.1)">L &amp; B</text>
+              <text class="std-monogram" x="60" y="67" fill="#7A3018" fill-opacity="0.72">L &amp; B</text>
+              <use class="std-fresh" href="#std-crack" fill="none" stroke="url(#std-fresh)" stroke-width="1.8" stroke-linejoin="round"/>
+              <use class="std-hairline" href="#std-crack" fill="none" stroke="#2A0E05" stroke-opacity="0.75" stroke-width="1"/>
+            </g>
+            <g class="std-crumb" style="--std-dx:12px; --std-rot:52deg"><polygon points="62,42 66,44 63,48 60,45" fill="#7E3519"/></g>
+            <g class="std-crumb" style="--std-dx:17px; --std-rot:-30deg"><polygon points="61,74 65,76 62,80 59,77" fill="#8A3C21"/></g>
+          </svg>
         </div>
 
-        <div class="std-seal">L&nbsp;&amp;&nbsp;B</div>
       </div>
 
     </div>
@@ -126,9 +279,10 @@
 
 {% endblock %}
 
-{# One CC0 photograph, which obliges nobody. `photo_credit_for` returns an empty
-   string for it and a real credit the moment a CC BY picture is put in its place. #}
+{# `photo_credit_for` returns the credit owed by exactly the photographs on this page.
+   The card's driftwood fire is CC BY 4.0, so this page now owes a line where it used
+   to owe none — which is the mechanism working, not a regression. #}
 {% block credits %}
-  {% set credit = photo_credit_for('gulf-sunset.jpg', 'gulf-evening.jpg') %}
+  {% set credit = photo_credit_for('gulf-sunset.jpg', 'gulf-evening.jpg', 'beach-fire.jpg') %}
   {% if credit %}<p class="photo-credit std-credit">{{ credit }}</p>{% endif %}
 {% endblock %}
