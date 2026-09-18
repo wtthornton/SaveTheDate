@@ -35,6 +35,28 @@ every guest page except the print view.
 its name; if one is added, add it. A credit for an image that is no longer shown is as
 wrong as a missing one.
 
+## Where each one is used
+
+Most are matched to schedule items by `segment_image()` in `app/templating.py`. Three are
+placed by hand:
+
+| File | Where |
+| --- | --- |
+| `hero-couple.jpg` | The invitation hero |
+| `gulf-sunset.jpg` / `gulf-evening.jpg` | Behind the save-the-date, desktop / phone |
+| `beach-fire.jpg` | **Full-bleed behind the save-the-date card's type** |
+
+`beach-fire.jpg` is **CC BY**, so the save-the-date now renders a credit line where it
+used to render none — it had been built from CC0 Gulf photographs only. That is
+`photo_credit_for()` working: it builds each page's credit from the filenames the
+template actually names, so dropping a CC BY picture in makes the credit appear by
+itself, and dropping a CC0 one in makes it disappear. Swap that picture and the line
+follows it without anyone remembering to.
+
+It sits under a 66-86% scrim, and the contrast floor is **4.5:1 against the darkest part
+of the picture, not its average**. A replacement that is brighter needs a heavier scrim,
+never smaller type.
+
 ## Two to replace first
 
 `hero-couple.jpg` is **someone else's wedding** and is the first thing a guest sees.

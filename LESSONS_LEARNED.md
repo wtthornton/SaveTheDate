@@ -1057,3 +1057,97 @@ watching it go red.
 **The rule worth carrying:** when a visual property "does not work" and the CSS reads
 correctly, suspect a neighbouring property that changes the rules for it, and reach for
 a static experiment rather than a closer read.
+
+
+---
+
+## 10. Photorealism, and four bugs that only a browser could report, 2026-09-17
+
+The envelope was rebuilt a second time, into two doors that swing open (plan §15). Four
+things went wrong on the way, and the pattern across them is the point: **every one was
+found by putting a picture on the screen and looking at it.** None was reported by a
+type checker, a linter, or any of the 275 assertions.
+
+### Lighting noise is not the same as lighting a surface
+
+The first wax seal ran `feSpecularLighting` over the turbulence field directly. That is
+the obvious reading of "add highlights to the noise", and it produces thousands of tiny
+independent highlights — a curdled, mottled thing that looks like meat, not wax.
+
+What makes wax read as wax is that it is a **dome**: one broad highlight rolling off into
+shadow. So the light has to fall on a dome-shaped surface, and the cheapest dome
+available is the shape's own alpha channel put through `feGaussianBlur`. The blur turns a
+flat polygon into a soft ramp, and the lighting filter reads a ramp as curvature.
+
+**The rule:** in an SVG filter chain, decide what *surface* you are lighting before you
+decide what light to use. Noise is a good height map for fibre, which is genuinely rough,
+and a terrible one for wax, which is genuinely smooth.
+
+### A filter's output is clipped, so the filter can pull the shape away from the clip
+
+The two halves of the seal are one disc, cut by two complementary clip paths, so their
+edges interlock the way a real fracture does. But the wax filter ends in
+`feDisplacementMap`, which shoves pixels up to five units sideways — and the clip is
+applied to the filter's **output**. Near the cut, the displaced wax pulled back from the
+clip boundary and the cream paper showed through.
+
+It presented as a pale zigzag crack down the middle of a **sealed** envelope, which is
+both wrong and, briefly, quite convincing — it looks like a crack, which is why it
+survived a first look. An undisplaced disc drawn underneath fixes it.
+
+**The rule:** `clip-path` on a filtered group cuts the filter's result, not its input. If
+the filter moves pixels, budget for the edge.
+
+### `transform-style: preserve-3d` makes an element sort by depth, not by `z-index`
+
+The doors vanished entirely before they opened. The shell holding them needs
+`preserve-3d` so the 3D chain reaches each door — one flattening ancestor anywhere in the
+chain is enough to kill the foreshortening — but `preserve-3d` also makes that element a
+stacking context **and** makes it sort its children by their position in space rather
+than by `z-index`. The card's `z-index: 2` then beat the entire shell, and the doors were
+simply not drawn.
+
+Coplanar children fall back to document order, which is all this ever needed: back panel,
+card, doors. Every `z-index` inside the shell was deleted.
+
+The same family of mistake, one layer down: `.std-card` was not a stacking context, so
+`::before`'s `z-index: 1` escaped into the *stage's* context and painted the card's inner
+rule on top of the sealed envelope. `isolation: isolate` contains it.
+
+**The rule:** `z-index` is only meaningful relative to a stacking context, and several
+innocuous-looking properties create one — `transform`, `opacity`, `filter`,
+`preserve-3d`, `isolation`. When something paints in the wrong order, find the nearest
+ancestor that creates a context before adjusting numbers.
+
+### The test measured the right thing at the wrong width
+
+A door hinged on its outer edge and turned past vertical projects **outward**. At 115°
+its far edge lands about 80px beyond the hinge; on a 390px phone the envelope is already
+382px wide, so both doors swung into `.std-scene`'s `overflow: hidden` and were clipped
+away. The reveal played as envelope, nothing, card — with the teal liner, the entire
+reason for the rebuild, invisible on the width most of the guest list will use.
+
+The test that should have caught it ran at 1440px only, where there is room to spare. It
+passed. The fix was a camera pull-back; the test is now parameterised over both widths,
+like almost everything else in that file already was.
+
+**The rule:** a viewport-dependent defect needs a viewport-parameterised test. When a
+suite has a `[phone, desktop]` parameterisation available and a new test does not use it,
+that is a decision, and it should be a deliberate one.
+
+### And two of the new tests were themselves wrong
+
+Both probes reported a bare card on an envelope that was sealed and perfectly opaque,
+because **`document.elementsFromPoint` skips `pointer-events: none` elements** exactly as
+`elementFromPoint` does — and the envelope is `pointer-events: none`, correctly, so it
+cannot eat taps meant for the card's link. The instrument could not see the thing it was
+pointed at.
+
+The probes now lift `pointer-events` for the measurement and put it back. That is not
+loosening the assertion: `pointer-events` has nothing to do with paint order, which is
+the property under test, and whether the finished page eats taps is asserted separately.
+
+**The rule, and it is the oldest one in this file:** a test that fails is information, but
+so is a test that fails *in a way that contradicts what you can see on the screen*. The
+screenshot said the envelope was closed. The test said the card was visible. One of them
+was measuring wrong, and it was not the screenshot.
