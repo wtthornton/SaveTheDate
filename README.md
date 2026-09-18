@@ -153,11 +153,17 @@ address, and the "nothing here without a token" signal is carried by what it say
 a person can read, rather than by a status code, which they cannot. It does **not** show
 the schedule, the address, or anything else behind a token.
 
-**The save-the-date card**, at the root of the save-the-date hostname. A closed envelope
-— paper body, the names and a stamp on the front, a wax seal — whose seal breaks, whose
-flap lifts to show its liner, and out of which the card is drawn, over a drifting Gulf
-horizon. It carries the couple, the date, Port Aransas, and a link onward to the wedding
-site.
+**The save-the-date card**, at the root of the save-the-date hostname. A sealed portrait
+envelope whose face is **two doors**, hinged on their outer edges and held shut by one
+wax seal. The wax gives, the doors swing open and turn their teal liner toward the
+reader, and the whole shell drops out of frame, leaving the card — which carries the
+couple, the date, Port Aransas, and a link onward to the wedding site, over a
+full-bleed photograph.
+
+The paper and the wax are **generated, not photographed**: three SVG filters build fibre,
+mottle and a pressed wax lozenge. A photograph could not do it, because these doors turn
+in three dimensions and a picture of an envelope cannot fold. It costs nothing over the
+wire and stays sharp at any size.
 
 The animation is **pure CSS**. Nothing to run, so there is no state in which a reader
 gets a blank rectangle because a script failed or had not arrived — on the one page

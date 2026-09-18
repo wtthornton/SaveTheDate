@@ -21,7 +21,9 @@ FastAPI + PostgreSQL. Server-rendered Jinja2 + htmx 2.x + Tailwind. No Node tool
 - Visual gate: `tests/test_visual.py` drives Chromium at 390px and 1440px and writes
   screenshots to `tests/screenshots/`. Look at them. No non-visual test noticed that
   the hero was an empty grey box, that a whole breakpoint was missing, or that every
-  save-the-date screenshot was taken with half the card still inside the envelope.
+  save-the-date screenshot was taken with half the card still inside the envelope, or
+  that the envelope's doors swung off the side of a phone so the liner was never once
+  seen at 390px.
 - Seed fake review data: `.venv/bin/python -m scripts.seed_review_data`
 - Production: `scripts/prod.sh deploy | up | down | status | logs | psql` (TAP-7733)
   A **separate** Compose project (`savethedate-prod`), its own volume, its own
@@ -66,6 +68,16 @@ FastAPI + PostgreSQL. Server-rendered Jinja2 + htmx 2.x + Tailwind. No Node tool
 - **Anything that animates to `opacity: 0` and stays in the layout needs
   `pointer-events: none`.** Invisible is not intangible: it still gets hit-tested, and
   it will quietly eat taps meant for whatever is underneath it.
+- **`z-index` only means anything inside a stacking context, and `transform`, `opacity`,
+  `filter`, `transform-style: preserve-3d` and `isolation` all create one.**
+  `preserve-3d` is the dangerous one: it ALSO sorts its children by their position in
+  space rather than by `z-index`, so a sibling's `z-index: 2` beat the envelope's whole
+  3D subtree and both doors were simply not drawn. When paint order is wrong, find the
+  nearest ancestor that creates a context before adjusting numbers.
+- **Hit-testing skips `pointer-events: none`, `elementsFromPoint` included.** A test that
+  probes a decorative overlay has to lift it for the measurement and put it back, or it
+  reports a bare card on a sealed envelope. If a test contradicts the screenshot,
+  suspect the instrument.
 - No per-plate meal choice. Dietary tags only. Headcounts are per DAY, not per plate.
 - Generated Alembic migrations need `ruff check --fix` AND `ruff format`, or CI fails.
   `ruff format` alone does NOT fix the UP007/UP035 errors Alembic generates.

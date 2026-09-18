@@ -972,6 +972,11 @@ layers over it that animate away. Only the card's *start* is transformed — it 
 `transform: none`, so the finished page measures as though nothing had ever moved.
 Ending a reveal on a transform is how a card lands half off a short screen.
 
+> **The envelope described here was replaced on 2026-09-17.** The flap-and-pocket
+> construction is gone; the face is now two doors. See §15. Everything above about
+> pure CSS, reduced motion and ending at `transform: none` still holds — those were
+> the parts worth keeping.
+
 ### The stylesheet could not reach a returning browser
 
 Cloudflare returns `/static/*` with `max-age=14400` and caches it at its edge, and the
@@ -1215,3 +1220,86 @@ at 15 December 2027, now about nine and a half weeks ahead rather than eight and
 The extra week is slack in the hosts' favor, and moving it would have put the deadline
 three days before Christmas, which is the worst week of the year to chase a
 non-responder.
+
+
+---
+
+## §15 — The envelope opens like doors now, and the paper is paper
+
+**TAP-7781, revisited 2026-09-17.** Merged as PR #1, commit `d83059e`. Live on
+`dev-savethedate.tapphouse.co` and `savethedate.tapphouse.co`. 275 tests, gate green.
+
+### What Bill asked for, and what he was shown
+
+He asked for a review of the animation on the dev instance. It had three defects, all
+visible in a browser and none caught by any assertion — see LESSONS_LEARNED §9. He then
+pointed at Greenvelope again and asked for four options to choose from.
+
+The four were built as a canvas of looping artboards rather than described in prose,
+because the difference between them is entirely a matter of motion: **The Lift** (the
+Greenvelope gesture, faithfully), **The Draw** (the card pulled sideways out of a
+landscape envelope, then turned upright), **The Bloom** (a portrait envelope whose face
+splits into two doors), and **The Arrival** (the envelope flies in and lands before it
+opens).
+
+He chose the Bloom, and asked that the envelope, its inside, and the breaking of the
+seal be **photorealistic**.
+
+### Photorealism meant generating the materials, not sourcing them
+
+A photograph of an envelope cannot fold, and these doors turn in three dimensions. So
+the materials are procedural, in three SVG filters declared once in the template:
+
+- **Paper** — `feTurbulence` lit by `feDiffuseLighting`. The noise's alpha channel is a
+  height map, so lighting it renders the noise as raised *fibre* rather than as coloured
+  static. A second pass at `baseFrequency="0.011"` adds the cloudy mottle real paper has.
+- **Wax** — `feSpecularLighting` applied to a **blurred copy of the disc's own alpha**.
+  The blur turns the flat polygon into a soft alpha ramp, which the lighting filter reads
+  as a dome: one broad highlight rolling off into shadow, which is what a pressed lozenge
+  of wax looks like. Lighting the noise directly — the obvious approach, and the first
+  one tried — produces thousands of little highlights and looks like curdled meat.
+
+Zero bytes over the wire, sharp at any size, and no texture image to cache-bust.
+
+### Four construction details that each cost a pass to find
+
+- **The two doors are halves of one sheet.** The gradient, the fibre, the mottle, the V
+  of the flap and the names are all authored at the full envelope width inside
+  `.std-sheet`, and each door shows its own half. A visible join is a spoiler: it tells
+  the reader the envelope is going to split before it does.
+- **The camera steps back while the doors open.** Not a flourish. A door hinged on its
+  outer edge and turned past vertical projects *outward* — at 115° its far edge lands
+  about 80px beyond the hinge — and on a 390px phone the envelope is already 382px wide,
+  so both doors swung straight into `.std-scene`'s `overflow: hidden` and were clipped.
+  The reveal played as envelope, nothing, card, with the liner invisible on the width
+  most of the guest list will use. `std-camera` ends at `transform: none`.
+- **`.std-card` is `isolation: isolate`.** Without it the card is not a stacking context,
+  so `::before`'s `z-index: 1` escaped into the stage's and painted the card's inner rule
+  on top of the sealed envelope — a faint rectangle floating over the paper.
+- **An undisplaced disc sits under the filtered wax.** `feDisplacementMap` moves wax up
+  to five units sideways and the clip applies to the filter's *output*, so without it the
+  paper showed through along the cut — a hole that read as a crack in an envelope nobody
+  had opened yet.
+
+### The card carries a photograph now
+
+Full-bleed, under a 66–86% scrim. The floor is **4.5:1 against the darkest part of the
+picture, not its average**, because a bright photograph under light type is how a card
+passes a nominal font-size check and is still unreadable. A brighter picture means a
+heavier scrim, never smaller type.
+
+`beach-fire.jpg` is CC BY, so this page now renders a credit line where it rendered none.
+That is `photo_credit_for()` working, not a regression — it builds each page's credit
+from the filenames the template actually names. TAP-7762 still owns replacing it.
+
+### The tests followed the design rather than being dropped
+
+- The rise-overhang test is replaced by one asserting the **sealed envelope is opaque**,
+  which is the assertion the old envelope never had and the one that would have caught
+  its worst defect.
+- The flap-opacity test is generalised to **every element holding a 3D context**, so it
+  holds however the envelope is next rebuilt.
+- A new test asserts the liner faces the reader **after** vertical *and* the paper
+  **before** it, at both widths. Checking only the open state passes just as happily on
+  a flattened 3D context, where `backface-visibility` does nothing and the liner simply
+  covers the paper throughout — which is exactly the bug that cost the previous rebuild.
