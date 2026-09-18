@@ -250,7 +250,10 @@ Two things that are easy to get wrong:
   is the first suspect. The previous image is still on disk — `docker images
   savethedate-prod` — and starting it again is a fast way back.
 - **The review instance is separate.** `scripts/review-instance.sh reload` has
-  nothing to do with production.
+  nothing to do with production. Its root also behaves differently on purpose:
+  `dev-wedding.tapphouse.co/` redirects into a guest's invitation so the token-gated
+  pages can be reviewed, which `wedding.tapphouse.co/` must never do. That difference is
+  gated on `REVIEW_INSTANCE` and asserted in both directions.
 
 ---
 
