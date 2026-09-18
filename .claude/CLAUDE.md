@@ -60,6 +60,13 @@ FastAPI + PostgreSQL. Server-rendered Jinja2 + htmx 2.x + Tailwind. No Node tool
   `savethedate.localhost`, which browsers resolve to loopback. Neither page reads a
   guest row, neither takes input, and neither may ever grow a name-lookup box — on an
   anonymous page that is a guest-list oracle.
+- **A cross-environment URL is never hard-coded. It comes from `PUBLIC_BASE_URL`.**
+  That variable is this deployment's own wedding site — invite links and the card's
+  "Visit the wedding site" button both follow it. `dev-wedding.tapphouse.co` on the
+  review instance, `wedding.tapphouse.co` in production, one variable per environment,
+  so a promotion cannot carry a dev link to prod or leave a prod link on dev. The
+  button was a literal once and sent every reviewer of `dev-savethedate` into
+  production, which — while production was down — read as the button being broken.
 - **Reference static files with `static_url('app.css')`, never `/static/app.css`.**
   Cloudflare serves `/static/*` with `max-age=14400` and caches it at its edge, so a
   fixed URL keeps handing returning browsers a stale stylesheet for four hours after a

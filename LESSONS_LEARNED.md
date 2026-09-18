@@ -1151,3 +1151,62 @@ the property under test, and whether the finished page eats taps is asserted sep
 so is a test that fails *in a way that contradicts what you can see on the screen*. The
 screenshot said the envelope was closed. The test said the card was visible. One of them
 was measuring wrong, and it was not the screenshot.
+
+---
+
+## 11. The card's button pointed at the wrong environment, 2026-09-18
+
+### A URL that differs per environment is configuration, even when it looks like content
+
+The save-the-date card's only call to action was a literal in the router:
+`WEDDING_SITE_URL = "https://wedding.tapphouse.co/"`. It sat directly beneath the
+couple's names, the date and the place, which really are hard-coded on purpose — this
+page belongs to no event row, and the module has a docstring explaining why.
+
+That company is what hid it. **The couple and the date are the same wedding on every
+deployment; the link out is not.** One of those four constants crossed an environment
+boundary and the other three did not, and nothing about the way they were written said
+so. The card on `dev-savethedate` therefore sent every reviewer into production.
+
+The tell was available and nobody looked for it: a value is per-environment exactly when
+you can name two environments that need different ones. That question takes a second and
+would have caught this at the moment the constant was written.
+
+### The fix that adds a setting is usually worse than the fix that finds one
+
+The obvious repair is a new `WEDDING_SITE_URL` environment variable, set in
+`docker-compose.prod.yml` and in `scripts/review-instance.sh`. It would have worked, and
+it would have left two variables that must agree — `PUBLIC_BASE_URL` and this one — with
+nothing keeping them in step.
+
+`PUBLIC_BASE_URL` already *is* the deployment's own wedding site: it builds every invite
+link, and production had set it correctly since the production stack was built. Deriving
+the button from it meant production was fixed by deleting the literal, with no
+production change to review, deploy, or get wrong.
+
+**Before adding a setting, check whether the value you want is a restatement of one you
+already have.** Two variables that must agree are a future bug with a date on it.
+
+### Production's hostname is a suffix of dev's, so `in` is the wrong operator
+
+The new test asserts that a dev-configured card links nowhere near production. Written
+the obvious way — `"wedding.tapphouse.co" in href` — it fails on
+`https://dev-wedding.tapphouse.co/`, because the production hostname is a **suffix** of
+the review instance's. The test would have called the correct link a leak.
+
+It compares `urlparse(href).hostname` instead. This is the same trap, inverted, that
+`SAVE_THE_DATE_HOSTS` is an explicit list to avoid: there, a substring match would have
+served the card on the wedding hostname. **This project's four hostnames are substrings
+of one another by construction, and any check that touches them belongs on parsed
+hostnames.**
+
+### Verify the deployment, not the test client
+
+The gate went green before the review instance had been reloaded, and a green gate is
+not a fixed button — the running process had imported the old module, which is a trap
+this project has already paid for once. The check that ended this was
+`curl -H 'Host: dev-savethedate.tapphouse.co'` against the live instance and then the
+same request through the tunnel, followed by confirming the destination answers 200.
+
+**"The tests pass" and "the thing Bill is looking at is fixed" are different claims**,
+and on a project with a long-lived review instance they come apart routinely.

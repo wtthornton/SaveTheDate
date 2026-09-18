@@ -254,6 +254,14 @@ Two things that are easy to get wrong:
   `dev-wedding.tapphouse.co/` redirects into a guest's invitation so the token-gated
   pages can be reviewed, which `wedding.tapphouse.co/` must never do. That difference is
   gated on `REVIEW_INSTANCE` and asserted in both directions.
+- **Each deployment links to its own wedding site.** The save-the-date card's "Visit
+  the wedding site" button follows `PUBLIC_BASE_URL` — `dev-wedding.tapphouse.co` on
+  the review instance (set in `scripts/review-instance.sh`), `wedding.tapphouse.co` in
+  production (set in `docker-compose.prod.yml`). It was hard-coded to production once,
+  so the card on `dev-savethedate` walked reviewers out of the review instance; while
+  production was down that read as the button being broken. Both sides are asserted —
+  `tests/test_review_instance.py` and `tests/test_production_stack.py` — so a promotion
+  cannot carry one environment's link into the other.
 
 ---
 

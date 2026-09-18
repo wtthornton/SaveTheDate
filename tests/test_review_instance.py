@@ -8,8 +8,10 @@ or a reviewer mistaking a draft for the real invitation.
 
 from __future__ import annotations
 
+import re
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
+from urllib.parse import urlparse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -243,3 +245,52 @@ def test_a_review_instance_still_serves_the_card_on_the_card_hostname(
 
     assert response.status_code == 200
     assert "Save the date" in Document(response.text).text
+
+
+# -- Dev links go to dev, production links go to production --------------------
+
+
+def _review_script() -> str:
+    from pathlib import Path
+
+    return (Path(__file__).resolve().parent.parent / "scripts" / "review-instance.sh").read_text()
+
+
+def test_the_review_instance_sets_its_own_public_base_url() -> None:
+    """The card's "Visit the wedding site" link follows `PUBLIC_BASE_URL`.
+
+    It was hard-coded to `wedding.tapphouse.co` once, so the one button on
+    `dev-savethedate.tapphouse.co` walked every reviewer out of the review instance and
+    into production. Left unset instead, it falls back to `http://localhost:8000`,
+    which is nothing at all from the phone the tunnel exists to reach.
+
+    Asserted against the committed script rather than a running process, the same way
+    `test_production_stack.py` asserts the other side of this pair.
+    """
+    urls = re.findall(r"PUBLIC_BASE_URL=(\S+)", _review_script())
+
+    assert urls, "review-instance.sh sets no PUBLIC_BASE_URL"
+    for url in urls:
+        assert urlparse(url).hostname == "dev-wedding.tapphouse.co", url
+
+
+def test_up_and_reload_agree_about_the_environment() -> None:
+    """`reload` restarts the app in place, so it has to restart it as `up` started it.
+
+    A variable set in one and not the other is invisible until somebody reloads, and
+    then the instance quietly changes behavior with no command having said so.
+    """
+    script = _review_script()
+    settings = re.findall(
+        r"(REVIEW_INSTANCE|SAVE_THE_DATE_HOSTS|PUBLIC_BASE_URL)=(\S+)",
+        script,
+    )
+    launches = script.count('nohup "${ROOT}/.venv/bin/uvicorn"')
+
+    assert launches == 2, f"expected `up` and `reload`, found {launches} launches"
+    by_name: dict[str, set[str]] = {}
+    for name, value in settings:
+        by_name.setdefault(name, set()).add(value)
+    for name, values in by_name.items():
+        assert len(values) == 1, f"{name} differs between up and reload: {values}"
+        assert len(re.findall(rf"{name}=", script)) == launches, f"{name} is set on only one"

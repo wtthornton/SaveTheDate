@@ -17,6 +17,7 @@ from __future__ import annotations
 
 from pathlib import Path
 from typing import Any, cast
+from urllib.parse import urlparse
 
 import yaml
 
@@ -63,6 +64,25 @@ def test_production_does_not_wear_the_draft_banner() -> None:
 def test_public_base_url_is_https_so_the_session_cookie_is_secure() -> None:
     """`Settings.cookie_secure` follows this when SESSION_COOKIE_SECURE is unset."""
     assert _app_env()["PUBLIC_BASE_URL"] == "https://wedding.tapphouse.co"
+
+
+def test_the_card_sends_production_readers_to_the_production_wedding_site() -> None:
+    """`Settings.wedding_site_url` follows PUBLIC_BASE_URL, so this is that link too.
+
+    The value was hard-coded in `app/routers/public.py` once, which made the card on
+    the review instance link to production. Deriving it from the one variable each
+    deployment already sets to its own site is what keeps dev pointing at dev after a
+    promotion — but it also means this line now decides where a real guest lands, not
+    just where a session cookie's Secure flag comes from.
+
+    The destination must be the wedding hostname and must NOT be a card hostname, or
+    the only button on the card is a link back to the card.
+    """
+    destination = _app_env()["PUBLIC_BASE_URL"]
+    hosts = [host.strip() for host in _app_env()["SAVE_THE_DATE_HOSTS"].split(",")]
+
+    assert urlparse(destination).hostname == "wedding.tapphouse.co"
+    assert urlparse(destination).hostname not in hosts
 
 
 def test_email_stays_on_the_console_transport() -> None:

@@ -58,18 +58,18 @@ WEDDING_DAY = date(2028, 2, 20)
 # page that does not require a token.
 WEDDING_PLACE = "Port Aransas, Texas"
 
-# Where the card sends somebody who wants more than a date. Absolute, because the card
-# is served on its own hostname and a relative link would keep them there.
-WEDDING_SITE_URL = "https://wedding.tapphouse.co/"
-
 
 def _context() -> dict[str, Any]:
+    settings = get_settings()
     return {
-        "review_instance": get_settings().review_instance,
+        "review_instance": settings.review_instance,
         "couple": COUPLE,
         "wedding_day": WEDDING_DAY,
         "wedding_place": WEDDING_PLACE,
-        "wedding_site_url": WEDDING_SITE_URL,
+        # Per deployment, from PUBLIC_BASE_URL — see `Settings.wedding_site_url`. The
+        # couple and the date are the same wedding everywhere; the link out of the card
+        # is not, and hard-coding it sent the dev card to the production site.
+        "wedding_site_url": settings.wedding_site_url,
     }
 
 

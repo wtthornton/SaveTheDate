@@ -66,7 +66,12 @@ s = socket.socket(); s.bind(('127.0.0.1', 0)); print(s.getsockname()[1]); s.clos
   # while dev-wedding.tapphouse.co keeps serving the wedding welcome (TAP-7781). Both
   # hostnames reach this one process through the named tunnel; the app tells them
   # apart by the Host header, so there is no second port and no second instance.
+  # PUBLIC_BASE_URL is this deployment's own wedding site, and it is what the card's
+  # "Visit the wedding site" link follows. Left unset it defaults to localhost, and
+  # hard-coded it used to send reviewers to production — either way the dev card
+  # stopped being reviewable at the click that matters most.
   REVIEW_INSTANCE=true SAVE_THE_DATE_HOSTS=dev-savethedate.tapphouse.co \
+    PUBLIC_BASE_URL=https://dev-wedding.tapphouse.co \
     nohup "${ROOT}/.venv/bin/uvicorn" app.main:app \
     --host 127.0.0.1 --port "$port" --log-level warning \
     >"$RUN/app.log" 2>&1 &
@@ -139,7 +144,9 @@ reload() {
 
   kill "$(cat "$RUN/app.pid")" 2>/dev/null || true
   sleep 1
+  # Same environment as `up`, or a reload would quietly change what the card links to.
   REVIEW_INSTANCE=true SAVE_THE_DATE_HOSTS=dev-savethedate.tapphouse.co \
+    PUBLIC_BASE_URL=https://dev-wedding.tapphouse.co \
     nohup "${ROOT}/.venv/bin/uvicorn" app.main:app \
     --host 127.0.0.1 --port "$port" --log-level warning \
     >"$RUN/app.log" 2>&1 &
