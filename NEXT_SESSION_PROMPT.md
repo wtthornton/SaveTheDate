@@ -9,6 +9,20 @@ it is), §15 (the envelope as it now stands). Then `LESSONS_LEARNED.md` §8, §7
 actually working. Then `docs/RUNBOOK.md`, which is
 the operational truth. Then `.claude/CLAUDE.md` for the always-on invariants.
 
+## 2026-09-18 — the card's button now follows the deployment
+
+TAP-7853, PR #5. The save-the-date card's "Visit the wedding site" button was a
+hard-coded `https://wedding.tapphouse.co/`, so the card on `dev-savethedate` sent every
+reviewer into production. It now derives from `PUBLIC_BASE_URL`, which each deployment
+already sets to its own wedding site, and both sides are asserted so a promotion cannot
+carry one environment's link into the other. Plan §16, LESSONS_LEARNED §11.
+
+**The generalisation is now an invariant in `.claude/CLAUDE.md`:** a URL that crosses an
+environment boundary is configuration, never a literal — even when it sits among genuine
+constants like the couple and the date, which is exactly where this one hid.
+
+285 tests, gate green.
+
 ## Where things stand, 2026-09-17
 
 The save-the-date envelope was rebuilt a second time on 2026-09-17 — it is now two
@@ -22,7 +36,8 @@ is most of the way: schema, guest pages, the review instance, the RSVP window, h
 auth, ownership scoping, rate limiting, the host dashboard, CSV import, email delivery,
 the two public pages, **and now the production stack**.
 
-275 tests. Gate green: ruff, ruff format, mypy --strict over 51 files, migrations
+275 tests at the time of writing; 285 as of 2026-09-18. Gate green: ruff, ruff format,
+mypy --strict over 51 files, migrations
 up→down→up against the test database. Zero `noqa`, zero `type: ignore`, zero skipped
 tests, zero swallowed exceptions. Keep it that way.
 
