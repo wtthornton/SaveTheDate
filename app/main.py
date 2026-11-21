@@ -19,6 +19,7 @@ from app.observability import (
     REQUEST_ID_HEADER,
     bind_request_id,
     configure_logging,
+    current_request_id,
     redact,
     request_id_from,
 )
@@ -165,6 +166,26 @@ app.include_router(webhooks.router)
 # wedding prose, and a host looking at somebody else's event should not be told their
 # *invitation* could not be found.
 MACHINE_READABLE_PREFIXES = ("/api/", "/events", "/auth/", "/webhooks/", "/host")
+
+
+@app.exception_handler(Exception)
+async def unhandled_error(request: Request, exc: Exception) -> Response:
+    """The 500 a crash produces, carrying the request id like every other response.
+
+    Starlette runs this from its outermost error middleware, after `log_request` has
+    logged the traceback and re-raised; Starlette re-raises again once this response is
+    sent, so nothing here hides the failure. Without it the one response a host most
+    needs to match to a log line was the one that came back without an id. TAP-7734.
+    """
+    request_id = current_request_id()
+    headers = {"X-Robots-Tag": NOINDEX}
+    if request_id is not None:
+        headers[REQUEST_ID_HEADER] = request_id
+    return PlainTextResponse(
+        "Internal Server Error",
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        headers=headers,
+    )
 
 
 @app.exception_handler(StarletteHTTPException)

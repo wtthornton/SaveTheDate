@@ -99,6 +99,34 @@ def test_a_request_id_that_could_corrupt_a_log_line_is_replaced(
     assert len(response.headers["X-Request-ID"]) == 32
 
 
+def test_a_crash_still_returns_its_request_id(
+    anonymous_client: TestClient, formatted_log: io.StringIO
+) -> None:
+    """The 500 is the response a host most needs to match to its log line."""
+    from app.db import get_db
+    from app.main import app
+
+    def broken() -> Session:
+        raise RuntimeError("simulated crash")
+
+    app.dependency_overrides[get_db] = broken
+    try:
+        with TestClient(app, raise_server_exceptions=False) as crashing:
+            response = crashing.get("/health", headers={"X-Request-ID": "crash-1"})
+    finally:
+        del app.dependency_overrides[get_db]
+
+    assert response.status_code == 500
+    assert response.headers["X-Request-ID"] == "crash-1"
+    failures = [
+        json.loads(line)
+        for line in formatted_log.getvalue().splitlines()
+        if '"request failed"' in line
+    ]
+    assert failures and failures[0]["request_id"] == "crash-1"
+    assert "simulated crash" in failures[0]["exception"]
+
+
 # -- No invite token in the logs ---------------------------------------------
 
 
@@ -142,7 +170,7 @@ def test_no_invite_token_reaches_the_log(
     formatted_log: io.StringIO,
     one_request_allowed: None,
 ) -> None:
-    """Every route by which a token could reach a log line, through the real formatter.
+    """Every route by which a token reaches a log line today, through the real formatter.
 
     The guest pages put it in the URL. The throttle sees it in a 429. The console mail
     transport — production's until mail is configured — prints the invitation, link

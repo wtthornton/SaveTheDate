@@ -12,12 +12,18 @@ forty lines, and a logging framework is one more thing to keep current.
 deep in a router does not have to be handed it. The same id goes back to the caller as
 `X-Request-ID`, which is what lets a host's "it broke at 9:14" become one `grep`.
 
-**Invite tokens never reach the output.** `/invites/{token}` is a bearer credential,
-and it sits in the URL of every guest request. Before this module, uvicorn's own access
-log wrote each one to stdout in full. The redaction is in the FORMATTER, the last step
-before bytes leave the process, rather than at each call site: a call site that forgets
-cannot leak, and neither can a third-party library's error message or a traceback that
-happens to quote a URL.
+**Invite tokens in URLs never reach the output.** `/invites/{token}` is a bearer
+credential, and it sits in the URL of every guest request. Before this module, uvicorn's
+own access log wrote each one to stdout in full. The redaction is in the FORMATTER, the
+last step before bytes leave the process, rather than at each call site: a call site
+that forgets cannot leak a URL, and neither can a library's error message or a traceback
+that happens to quote one.
+
+What it does NOT do is recognise a bare token. Nothing can tell 43 URL-safe characters
+from any other string, so a token logged on its own, outside a URL, would pass through.
+The places that could do that are closed at their source instead: the engine sets
+`hide_parameters` so a failed statement cannot quote a bound token, and nothing logs a
+guest row. A new log call that includes `guest.invite_token` directly would leak it.
 """
 
 from __future__ import annotations
