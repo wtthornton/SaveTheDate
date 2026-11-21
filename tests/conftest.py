@@ -98,6 +98,19 @@ def _clean_rate_limiter() -> None:
     reset_limiter()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_database_health(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every test with /health believing the database is up. TAP-12504.
+
+    /health remembers its last probe in process memory, so a test that probes a down
+    database would otherwise leave the next one's first failure logged at WARNING, not
+    ERROR — the same leak `_clean_rate_limiter` closes for the throttle.
+    """
+    from app import main
+
+    monkeypatch.setattr(main, "database_health", main.HealthTransitions())
+
+
 @pytest.fixture
 def db_session(engine: Engine) -> Iterator[Session]:
     """A session alongside the app's own, for setting up rows the API cannot create yet."""

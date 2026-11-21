@@ -483,7 +483,6 @@ def test_an_outage_of_any_length_sends_one_event_and_logs_every_probe(
     database_down: TestClient,
     collector: RecordingTransport,
     formatted_log: io.StringIO,
-    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     """TAP-12504. Docker probes /health every 15s: a day down is 5,760 failed probes.
 
@@ -494,8 +493,6 @@ def test_an_outage_of_any_length_sends_one_event_and_logs_every_probe(
     from app import main
     from app.db import get_db
 
-    # A fresh process believes the database is up until a probe says otherwise.
-    monkeypatch.setattr(main, "database_health", main.HealthTransitions())
     outage = main.app.dependency_overrides[get_db]
 
     probes = 20
