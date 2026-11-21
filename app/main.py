@@ -1,5 +1,6 @@
 import logging
 import math
+import threading
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -227,6 +228,40 @@ def robots() -> str:
     return "User-agent: *\nDisallow: /\n"
 
 
+class HealthTransitions:
+    """Whether the last /health probe reached the database, so a change can be told apart.
+
+    The error collector turns every record at ERROR or above into an event, and
+    anything below into, at most, a breadcrumb (`app.error_collector`). Docker probes
+    /health every 15 seconds, so an ERROR per failed probe made a day's outage 5,760
+    events. TAP-12504. The first failure after a success is logged at ERROR, which is
+    the one event an outage sends; every failure after it is logged at WARNING, which
+    the JSON log keeps, traceback and all, and the collector does not. Recovery is an
+    INFO line. The collector itself stays stateless: this is the only memory involved.
+
+    `health` is a plain `def`, so FastAPI runs it on a worker thread and two probes can
+    overlap. The lock makes the read and the write one step, so two overlapping first
+    failures cannot both see a change. Each uvicorn worker process has its own, so a
+    deployment running N workers sends up to N events per outage.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        # A process that has just started has no reason to think the database is down,
+        # so a database already down at boot is still reported once.
+        self._reachable = True
+
+    def record(self, *, reachable: bool) -> bool:
+        """Note this probe's result. True if it differs from the one before."""
+        with self._lock:
+            changed = reachable != self._reachable
+            self._reachable = reachable
+            return changed
+
+
+database_health = HealthTransitions()
+
+
 @app.get("/health", tags=["ops"])
 def health(response: Response, db: DbSession) -> dict[str, str]:
     """Ready: the process answers AND it can reach its database. TAP-7734.
@@ -239,10 +274,16 @@ def health(response: Response, db: DbSession) -> dict[str, str]:
     try:
         db.execute(text("select 1"))
     except SQLAlchemyError:
-        # Not swallowed: logged with its traceback, and answered as a failure.
-        logger.exception("health check: database unreachable")
+        # Not swallowed: logged with its traceback, and answered as a failure. Only
+        # the failure that starts an outage is an ERROR, and so a collector event.
+        if database_health.record(reachable=False):
+            logger.exception("health check: database unreachable")
+        else:
+            logger.warning("health check: database unreachable, still", exc_info=True)
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
         return {"status": "unavailable", "database": "unreachable"}
+    if database_health.record(reachable=True):
+        logger.info("health check: database reachable again")
     return {"status": "ok", "database": "ok"}
 
 
