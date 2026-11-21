@@ -18,13 +18,21 @@ import pytest
 ROOT = Path(__file__).resolve().parent.parent
 SCRIPT = ROOT / "deploy" / "setup-deploy.sh"
 
-BILL = 'bill@example.com namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBill'
-BOT = "release-bot@websitedup ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIBot"
-LOOKALIKE = 'bill@example.com.evil namespaces="git" ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIEvil'
+
+def _public_key(directory: Path, name: str) -> str:
+    key = directory / name
+    subprocess.run(
+        ["ssh-keygen", "-q", "-t", "ed25519", "-N", "", "-C", name, "-f", str(key)],
+        check=True,
+    )
+    return key.with_suffix(".pub").read_text().strip()
 
 
 class Box:
     def __init__(self, tmp: Path) -> None:
+        self.bill = f'bill@example.com namespaces="git" {_public_key(tmp, "bill")}'
+        bot = f"release-bot@websitedup {_public_key(tmp, 'bot')}"
+        lookalike = f'bill@example.com.evil namespaces="git" {_public_key(tmp, "evil")}'
         self.home = tmp / "home"
         self.home.mkdir()
         self.bin = tmp / "bin"
@@ -33,7 +41,7 @@ class Box:
         self._fake("loginctl", "echo yes")
         self._fake("systemctl", f'echo "$*" >> {self.systemctl_calls}')
         self.source = tmp / "websitedup_allowed_signers"
-        self.source.write_text(f"{LOOKALIKE}\n{BOT}\n{BILL}\n")
+        self.source.write_text(f"{lookalike}\n{bot}\n{self.bill}\n")
         self.target = self.home / ".config" / "savethedate" / "allowed_signers"
 
     def _fake(self, name: str, body: str) -> None:
@@ -74,7 +82,7 @@ def test_it_copies_only_the_named_principal_at_mode_600_and_installs(box: Box) -
     result = box.setup(str(box.source), "bill@example.com")
 
     assert result.returncode == 0, result.stderr
-    assert box.target.read_text() == f"{BILL}\n"
+    assert box.target.read_text() == f"{box.bill}\n"
     assert stat.S_IMODE(box.target.stat().st_mode) == 0o600
     assert stat.S_IMODE(box.target.parent.stat().st_mode) == 0o700
     assert (box.home / ".local/libexec/savethedate/deploy_release.py").is_file()
@@ -103,8 +111,17 @@ def test_a_principal_with_no_line_is_refused_and_nothing_is_written(box: Box) ->
     assert not box.enabled_deploy_timer()
 
 
-def test_a_line_without_a_public_key_is_refused(box: Box) -> None:
-    box.source.write_text('bill@example.com namespaces="git"\n')
+@pytest.mark.parametrize(
+    "bad_line",
+    [
+        'bill@example.com namespaces="git"',
+        'bill@example.com namespaces="git" # ssh-',
+        'bill@example.com namespaces="git" ssh-ed25519 AAAAtruncated',
+    ],
+)
+def test_a_line_without_a_valid_public_key_is_refused(box: Box, bad_line: str) -> None:
+    """Checked per line with ssh-keygen, so a junk line beside a good one still fails."""
+    box.source.write_text(f"{box.bill}\n{bad_line}\n")
 
     result = box.setup(str(box.source), "bill@example.com")
 
@@ -114,6 +131,24 @@ def test_a_line_without_a_public_key_is_refused(box: Box) -> None:
 
 def test_a_missing_signers_file_is_refused(box: Box) -> None:
     result = box.setup(str(box.home / "nope"), "bill@example.com")
+
+    assert result.returncode != 0
+    assert not box.target.exists()
+
+
+def test_another_approver_already_in_the_file_is_not_dropped_silently(box: Box) -> None:
+    box.target.parent.mkdir(parents=True)
+    box.target.write_text('ops@example.com namespaces="git" ssh-ed25519 AAAA\n')
+
+    result = box.setup(str(box.source), "bill@example.com")
+
+    assert result.returncode != 0
+    assert "ops@example.com" in result.stderr
+    assert box.target.read_text().startswith("ops@example.com")
+
+
+def test_an_empty_principal_is_refused(box: Box) -> None:
+    result = box.setup(str(box.source), "")
 
     assert result.returncode != 0
     assert not box.target.exists()
