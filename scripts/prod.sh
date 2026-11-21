@@ -2,7 +2,7 @@
 #
 # The production stack on this box. TAP-7733.
 #
-#   scripts/prod.sh deploy   build, migrate, and bring the app up (the normal path)
+#   scripts/prod.sh deploy   build, migrate, and bring the app up (the deploy unit runs it)
 #   scripts/prod.sh up       start without rebuilding
 #   scripts/prod.sh down     stop the stack, KEEPING the database volume
 #   scripts/prod.sh status   what is running, and whether the app answers
@@ -60,10 +60,21 @@ _app_port() {
 
 deploy() {
   # The release order the plan asks for: build the image, run the migration to
-  # completion, and only then start the app. `up` honours the
-  # `service_completed_successfully` dependency, so a migration that fails stops
-  # the release rather than leaving an app against a half-migrated schema.
+  # completion, and only then start the app.
+  #
+  # The migration runs on its own first, and `up` comes only after it has passed.
+  # `up` alone looks equivalent because the app waits on
+  # `service_completed_successfully`, but it is not. Compose RECREATES every
+  # container before it starts any of them, so when the migration fails the old app
+  # has already been removed and the new one is never started. That was a failed
+  # migration taking production down (TAP-12474, reproduced with Compose v5.8.0).
+  # `run --rm migrate` touches no other container, so a failure here leaves the
+  # previous app serving. Alembic runs each Postgres migration in a transaction, so
+  # the schema is unchanged too. `up` then runs migrate once more, as a no-op.
+  #
+  # `scripts/deploy_release.py` runs this from a signed tag; nobody should need to.
   dc build
+  dc run --rm migrate
   dc up -d
   _wait_healthy
 }
@@ -112,7 +123,7 @@ status() {
   echo
   echo "backups:"
   systemctl --user list-timers --all 'savethedate-*' --no-pager 2>/dev/null |
-    sed -n '1,4p' || echo "  no timers installed (deploy/install-timers.sh)"
+    sed -n '1,5p' || echo "  no timers installed (deploy/install-timers.sh)"
   local failed
   failed="$(systemctl --user --failed --no-legend 'savethedate-*' 2>/dev/null || true)"
   if [ -n "$failed" ]; then
