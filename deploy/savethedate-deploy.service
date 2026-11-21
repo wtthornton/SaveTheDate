@@ -3,7 +3,10 @@
 # One tick of `scripts/deploy_release.py`. The unit runs the INSTALLED copy at
 # ~/.local/libexec/savethedate/, never the one in the checkout. The checkout is what
 # this moves to the new tag, and the code that decides what ships must not be
-# replaced by the tag it is checking. `deploy/install-timers.sh` puts the copy there.
+# replaced by the tag it is checking. `deploy/install-timers.sh` puts the copy there,
+# and each settled deploy or rollback runs the live commit's installer again, so the
+# copy and this unit follow the live tag (TAP-12499). A failure of that reinstall
+# after a good deploy fails this unit with exit 4 and rolls nothing back.
 #
 # A signed tag is the production approval. Bill signs `v<N>` with his SSH key and
 # pushes it. A tag that is unsigned, signed by any other key, or not on origin/main is

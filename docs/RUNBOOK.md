@@ -295,7 +295,56 @@ The signature is the production approval. Within about five minutes,
    `~/.local/state/savethedate/deploy/failed-tags`, checks out the previous commit,
    makes the previous image `latest` again, starts the previous app with
    `--no-deps` so the previous code's migrate never runs, and **fails the unit**.
-   A failed tag is never retried. Tag the fix as the next number.
+   A failed tag is never retried. Tag the fix as the next number;
+6. once the app is settled, at the new tag or back at the previous commit, runs
+   that checkout's own `deploy/install-timers.sh` (TAP-12499). That replaces the
+   installed copy of `scripts/deploy_release.py` and the units with the ones from
+   the commit now serving. Once the installed copy has this step (see below), a
+   release that changes the deploy script or a unit installs itself; nobody logs
+   in to rerun the installer. The new copy verifies the *next* tag. The copy that
+   verified this one was already installed, so a tag's own code never decides
+   whether that tag ships. A `deploy_release.py` that does not compile is refused
+   and the working copy is kept (exit 4, below), so a bad tag cannot replace the
+   verifier with one that fails every tick.
+
+**Once, if the installed copy predates TAP-12499.** Only the installed copy runs the
+reinstall step. An installed copy older than TAP-12499 does not have that step, so
+the first tag that carries it would ship without installing it. If
+`~/.local/libexec/savethedate/deploy_release.py` has no `def reinstall`, rerun the
+one-time setup below once, after a tag that carries TAP-12499 is live. It is
+idempotent. Once deploys have run, leave out the `git pull`, as that section says.
+
+```bash
+grep -q 'def reinstall' ~/.local/libexec/savethedate/deploy_release.py || echo "predates TAP-12499: rerun setup once"
+```
+
+**Every release turns the backup and drill timers back on.** The reinstall runs
+`deploy/install-timers.sh`, which runs `enable --now` on
+`savethedate-backup.timer` and `savethedate-restore-drill.timer`. A timer you
+turned off by hand starts again at the next deploy or rollback. To keep one off for
+longer, stop releasing until it can come back, or change `install-timers.sh` in a
+release.
+
+**A rollback to a commit older than TAP-12499 breaks the reinstall chain.** The
+reinstall after a rollback installs that older commit's `deploy_release.py`, and
+that copy has no reinstall step. From then on no deploy installs itself, including
+the deploy of a later tag that carries TAP-12499 again, until the one-time setup
+line is run once more. The `grep` above tells you whether you are in that state.
+
+**If that reinstall fails after a good deploy**, the release stays live. Nothing is
+rolled back, because the app passed `/health`. The unit exits **4** and fails, so
+`./scripts/prod.sh status` lists it under FAILED UNITS until the next tick, and
+the journal says **REINSTALL FAILED** and that the installed deploy copy may be
+stale. The next tick finds the tag live and changes nothing, running whatever copy
+is installed. The following release reinstalls as usual. To catch up sooner, fix
+the cause (the log shows the installer's own output) and run
+`deploy/install-timers.sh` from `~/code/SaveTheDate`. If the reinstall fails after
+a rollback, the unit still exits 1 for the failed deploy, and the log says
+REINSTALL FAILED too.
+
+The unit's exit codes: 0 deployed or nothing to do; 1 the deploy failed and the
+previous app is back; 2 refused, nothing changed; 3 **ROLLBACK FAILED / PRODUCTION
+MAY BE DOWN**; 4 deployed, but the reinstall failed.
 
 **A rollback after a migration that succeeded runs the previous app on the NEW
 schema.** Nothing reverses a migration. So the previous app comes back only if the
@@ -338,9 +387,9 @@ an unchanged schema.
 
 The deploy unit runs an **installed copy** of `scripts/deploy_release.py` from
 `~/.local/libexec/savethedate/`, not the copy in the checkout. The checkout is the
-thing it moves, and the code that decides what ships must not move with it. So a
-merged change to `scripts/deploy_release.py`, or to any unit file in `deploy/`,
-reaches it13 only when the installer runs again.
+thing it moves, and the code that decides what ships must not move with it. This
+setup installs the first copy and the units. From then on every deploy and every
+rollback reinstalls them from the commit that is live (step 6 above).
 
 Bill pastes this one line on it13. Nothing is edited by hand:
 
@@ -365,9 +414,7 @@ rotating the key), leave the pull out:
 cd ~/code/SaveTheDate && deploy/setup-deploy.sh ~/.config/websitedup/allowed_signers tapp.thornton@gmail.com
 ```
 
-An unchanged signers file is left alone. To pick up a later change to
-`scripts/deploy_release.py` or the units, run `deploy/install-timers.sh` from the
-checkout at the new tag.
+An unchanged signers file is left alone.
 
 `install-timers.sh` on its own will not enable `savethedate-deploy.timer` until
 `allowed_signers` exists and is non-empty.
