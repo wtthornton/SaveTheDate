@@ -23,7 +23,7 @@ PREVIOUS_REVISION = "34c3f17d487b"
 
 
 def test_health(client: TestClient) -> None:
-    assert client.get("/health").json() == {"status": "ok"}
+    assert client.get("/health").json() == {"status": "ok", "database": "ok"}
 
 
 def test_duplicate_slug_is_rejected(client: TestClient) -> None:

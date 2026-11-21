@@ -102,6 +102,25 @@ almost always in the last twenty lines:
 ./scripts/prod.sh logs
 ```
 
+`/health` checks the database as well as the process (TAP-7734). A 503 with
+`"database": "unreachable"` means the app is up and Postgres is not: look at the `db`
+container, not the app. `/health/live` answers ok whenever the process does, so if it
+answers and `/health` does not, restarting the app will not help.
+
+Every log line is one JSON object, and each request writes one line with its
+`request_id`, `path`, `status` and `duration_ms`. The same id comes back to the
+browser as the `X-Request-ID` response header, so a host who can find it in their
+browser's network tab points you straight at the request. Invite tokens show up as
+`[token]`, on purpose. To pull out the errors, or one request:
+
+```bash
+./scripts/prod.sh compose logs --no-log-prefix app | jq -cR 'fromjson? | select(.level == "ERROR")'
+./scripts/prod.sh compose logs --no-log-prefix app | jq -cR 'fromjson? | select(.request_id == "…")'
+```
+
+An error carries its traceback in the `exception` field. Nothing collects errors off
+this box yet; the logs are the record.
+
 If the app is crash-looping right after a deploy, the migration is the first
 suspect:
 

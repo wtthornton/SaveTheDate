@@ -20,12 +20,15 @@ from __future__ import annotations
 import hashlib
 import hmac
 import json
+import logging
 import urllib.error
 import urllib.request
 from dataclasses import dataclass, field
 from typing import Protocol
 
 from app.config import get_settings
+
+logger = logging.getLogger("app.mail")
 
 
 class EmailRefused(Exception):
@@ -71,7 +74,13 @@ class ConsoleTransport:
     """
 
     def send(self, message: EmailMessage) -> str:
-        print(f"[email] to={message.to} subject={message.subject!r}\n{message.text}\n")
+        # Through the logger, not `print`, so the body passes the formatter's redaction:
+        # it holds the guest's invite link, and production runs this transport until
+        # mail is configured, so this line is in `docker compose logs`. TAP-7734.
+        logger.info(
+            "email not sent: console transport",
+            extra={"to": message.to, "subject": message.subject, "body": message.text},
+        )
         return "console"
 
 
