@@ -1356,3 +1356,101 @@ reports the correct dev link as a production leak — the mirror image of the re
 
 285 tests, gate green. Live on `dev-savethedate.tapphouse.co`, verified through the
 tunnel rather than in the test client alone.
+
+---
+
+## 17. What the paper costs, measured, 2026-11-21
+
+**TAP-7809.** §15 generated the envelope's paper and wax with SVG filters and claimed
+that was cheap because every filter is static. That was reasoning. This is the
+measurement, so that nobody reopens it from suspicion.
+
+### The answer
+
+**Not material.** The filters cost about **90 ms of raster CPU on a Ryzen 9 9955HX** in
+the first 800 ms, before the reveal begins. That is about 80% of their total; the other
+~22 ms is spread across the reveal (0.8–4 s). On this machine throttled to be 6–7×
+slower, the positive control's calibration (below) puts that at roughly **50–60 ms added
+to first contentful paint**. The ratio is well under 1:1 because raster runs on worker
+threads alongside the main thread's own work. No change was made, and no regression
+guard was added.
+
+### How it was measured
+
+Three versions of the same page, served by the real app and alternated run by run
+(A B C, B C A, …) so that background load fell on all three equally. Each run used a
+fresh browser context at 390×844.
+
+- **A**: the page as shipped.
+- **B**: filters stripped. The eight grain and mottle overlays were removed, and the wax
+  kept its blob and gradient but lost its texture chain. The result is flat paper.
+- **C**: a positive control. Every `numOctaves` was set to 10 and each overlay was
+  repeated four times. If the instrument could not see C, it could not see A either.
+
+All three arms went through the same Playwright request interception. In an early pass
+only B and C did, and that pass made the stripped page look *slower* than the real one.
+
+**Instrument 1: wall-clock first contentful paint**, the browser's own
+`first-contentful-paint` entry, timed from the HTML's `responseEnd` so that request
+interception and network time drop out. Medians from
+10 runs per arm, with the interquartile range (IQR) in brackets. The box was carrying
+two other heavy jobs (1-minute load average 19–44).
+
+| Throttle | A (shipped) | B (stripped) | C (control) |
+| --- | --- | --- | --- |
+| Whole browser capped at 15% of one core, DPR 2 | 191 [188–271] | 224 [185–269] | 361 [269–407] |
+| Whole browser capped at 15% of one core, DPR 3 | 215 [193–271] | 191 [174–257] | 357 [293–368] |
+| CDP `setCPUThrottlingRate` 4×, DPR 2 | 315 [230–364] | 225 [201–309] | 307 [275–440] |
+
+Under the cgroup cap, C's median sits 140–170 ms above A and B, and its IQR barely
+touches A's at DPR 2. A and B are inside each other's spread.
+The CDP row cannot be trusted: it puts A level with C, which is impossible, since C is
+A made strictly costlier. CDP throttling slows only the renderer's main thread, and
+filters rasterize on worker threads, so the cap (a systemd scope with
+`CPUQuota=15%`, which binds every thread of every Chromium process) is the throttle
+that applies here.
+
+**Instrument 2: raster and paint CPU time.** This is the trace events' `tdur`, the
+thread's own CPU time, which background load barely moves. The browser ran
+unthrottled, 10 runs per arm.
+
+| | A | B | C |
+| --- | --- | --- | --- |
+| Before the reveal (0–800 ms), DPR 2 | 167 [124–188] | 73 [53–81] | 321 [298–377] |
+| Before the reveal (0–800 ms), DPR 3 | 152 [116–172] | 70 [59–81] | 343 [313–400] |
+| During the reveal (0.8–4 s), DPR 2 | 39 | 15 | 140 |
+| During the reveal (0.8–4 s), DPR 3 | 40 | 18 | 183 |
+
+Here A and B separate cleanly. The scaling comes from the control: C − B is about
+260 ms of raster CPU, which became +135–170 ms of first paint under the 15% cap. So
+A − B, about 90 ms, predicts roughly +50–60 ms. That is below instrument 1's noise
+floor, which agrees with instrument 1 not resolving it.
+
+The reveal does not jank on the filters. A and B show the same long-frame count and the
+same worst frame across the door swing.
+
+### What this does not cover
+
+- **It is emulation, not an old phone.** Headless Chromium rasterizes in software.
+  Chrome on Android normally rasterizes on the GPU, where `feTurbulence` is a shader, so
+  the real Android cost is likely lower than this.
+- **Safari is unmeasured.** WebKit is a different engine with its own filter
+  implementation, and much of the guest list will be on iPhones. A real measurement on
+  an old iPhone would replace the estimate above. Nothing here predicts it.
+
+### If it ever does need cutting
+
+The cheapest lever is the fibre's octaves. Counting from 0, octave *k* of `#std-fibre`
+runs at 0.82·2^k cycles per CSS pixel. A DPR 2 or 3 screen resolves at most 1 or 1.5, so
+everything past octave 0 (1.64, 3.28, 6.56) is beyond the pixel grid. Those octaves
+come back as aliased fine grain, not new structure. `#std-fibre-fine` starts at 1.1, so
+at DPR 2 all of it is already in that regime. Cutting `numOctaves` 4 → 2 on
+`#std-fibre` halves its turbulence work, 4 → 1 cuts it by three quarters, and 3 → 1 on
+`#std-fibre-fine` cuts that by two thirds. Aliased grain is still visible grain, though:
+it is part of the paper's look. So this is a look change, and needs screenshots at
+390px against the current build before shipping, not a free win. The mottle's octaves (0.011–0.088)
+are all visible: leave them alone.
+
+The harness (`measure_std.py` and `trace_std.py`) is attached to TAP-7809 rather than
+committed. A timing budget asserted on this machine is not a budget for a guest's phone,
+and the wall-clock numbers above show how such a guard would flake.

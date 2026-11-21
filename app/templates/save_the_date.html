@@ -62,7 +62,9 @@
 
     {# -- The materials --------------------------------------------------
        Zero bytes over the wire and sharp at any size, which a texture image is
-       neither. Declared once and referenced by both doors. #}
+       neither. Declared once and referenced by both doors. Their cost is measured, not
+       guessed: about 90ms of raster CPU on a desktop, most of it before the reveal
+       begins. See IMPLEMENTATION_PLAN.md §17 (TAP-7809) before changing them. #}
     <svg class="std-defs" width="0" height="0" aria-hidden="true" focusable="false"><defs>
 
       {# Paper fibre. feTurbulence's alpha channel is a height map; feDiffuseLighting
