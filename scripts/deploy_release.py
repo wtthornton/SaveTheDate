@@ -29,11 +29,19 @@ One tick:
    PRODUCTION MAY BE DOWN. A tick that
    was killed mid-deploy leaves an `attempt` file, and the next tick rolls it back the
    same way.
+6. Once the app is settled, at the new tag or back at the previous commit, run that
+   checkout's own `deploy/install-timers.sh` (TAP-12499). It replaces the installed
+   copy of this file and the units with the ones from the commit now serving, so the
+   installed copy never runs ahead of, or behind, what is live. The attempt file is
+   cleared first, so an installer that hangs or crashes cannot send later ticks into
+   recovery. If it fails after a good deploy, nothing is rolled back: the unit fails
+   with EXIT_REINSTALL_FAILED and later ticks run whatever copy is installed.
 
 This file is stdlib-only and is installed OUTSIDE the checkout it moves
 (`deploy/install-timers.sh` copies it). The code that decides what ships is not
-replaced by the thing it is about to check out. A change to this file reaches it13
-only when the installer runs again.
+replaced by the thing it is about to check out: a tag is verified by the copy already
+installed, and its own copy is installed only after it has shipped, to verify the
+next one. That is WebsiteDup's ADR-0044 split, verify with the live tag's code.
 
 It never removes a volume and never runs `down`. The guest list is in that volume.
 """
@@ -52,10 +60,14 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
-EXIT_DONE = 0
-EXIT_FAILED = 1
-EXIT_REFUSED = 2
-EXIT_ROLLBACK_FAILED = 3
+# Every exit but EXIT_DONE fails the unit, so `scripts/prod.sh status` lists it.
+EXIT_DONE = 0  # deployed, or nothing to do
+EXIT_FAILED = 1  # the deploy failed; the previous app is back and serving
+EXIT_REFUSED = 2  # a check before anything moved did not hold; nothing changed
+EXIT_ROLLBACK_FAILED = 3  # PRODUCTION MAY BE DOWN; the attempt file is kept for a retry
+# The tag deployed and is serving, but install-timers.sh failed afterwards, so the
+# installed deploy copy and units may be stale. Nothing is rolled back. TAP-12499.
+EXIT_REINSTALL_FAILED = 4
 
 IMAGE = "savethedate-prod:latest"
 PREVIOUS_IMAGE = "savethedate-prod:previous"
@@ -236,12 +248,55 @@ class Deployer:
         deployed = self._cmd("scripts/prod.sh", "deploy")
         self.log(deployed.stdout + deployed.stderr)
         if deployed.returncode == 0:
+            # Settled before the reinstall, on purpose. The release is live and
+            # healthy; a reinstall that fails or is killed must not leave an attempt
+            # behind, or the next tick would roll back a good release.
             self.config.attempt_file.unlink()
             self.log(f"DEPLOYED {tag}.")
+            if not self.reinstall(tag):
+                self.log(f"{tag} is serving and is NOT rolled back; only the reinstall failed.")
+                return EXIT_REINSTALL_FAILED
             return EXIT_DONE
 
         self.log(f"FAILED: {tag} did not deploy. Rolling back to {previous_commit[:12]}.")
         return self.fail(tag, previous_commit, had_image)
+
+    def reinstall(self, live: str) -> bool:
+        """Install this script and the units from the checkout, which is now `live`.
+
+        It runs the checkout's own `deploy/install-timers.sh`, so the copy the next
+        tick runs is the one from the tag (or the rolled-back commit) that is serving.
+        Only ever called once that is settled: the code being installed has already
+        run as prod.sh, and it decides nothing about the tag it came from. It does
+        decide about the next one, which is how a fix to this file ships with the
+        release that carries it rather than by hand.
+
+        The installer renames a finished copy over this file, so the process running
+        now is untouched, and it only daemon-reloads and enables timers, which affect
+        later runs of this unit, not this one.
+        """
+        try:
+            installed = self._cmd("bash", "deploy/install-timers.sh")
+        except OSError as exc:
+            # bash itself could not be started. Reported like any other failure, so
+            # the unit fails with its own exit instead of a traceback.
+            outcome = f"could not be started ({exc})"
+        else:
+            if installed.returncode == 0:
+                self.log(f"Installed the deploy script and units from {live}.")
+                return True
+            self.log(f"{installed.stdout}{installed.stderr}".rstrip())
+            outcome = f"exited {installed.returncode}"
+        self.log(
+            f"REINSTALL FAILED: deploy/install-timers.sh at {live} {outcome}. The installed "
+            f"deploy script and units may be stale: they may not be {live}'s. Later ticks "
+            "keep running whatever copy is installed."
+        )
+        self.log(
+            "Once the cause is fixed, run deploy/install-timers.sh from ~/code/SaveTheDate "
+            "on it13, or let the next release reinstall it."
+        )
+        return False
 
     def _write_attempt(self, text: str) -> None:
         # Written whole or not at all, so a kill mid-write cannot leave a file that
@@ -273,9 +328,17 @@ class Deployer:
     def fail(self, tag: str, previous_commit: str, had_image: bool) -> int:
         self._record_failed(tag)
         result = self.rollback(previous_commit, had_image)
-        if result != EXIT_ROLLBACK_FAILED:
+        if result == EXIT_ROLLBACK_FAILED:
             # Kept after a failed rollback, so the next tick tries the rollback again.
-            self.config.attempt_file.unlink()
+            return result
+        # The previous app answers /health, so the attempt is settled, and it is
+        # cleared BEFORE the reinstall, as after a good deploy. An installer that hangs
+        # until the unit's timeout kills it must not leave an attempt behind: every
+        # later tick would restart the previous app, reinstall, and never ship again.
+        self.config.attempt_file.unlink()
+        # A failure here is logged by reinstall(). The exit stays EXIT_FAILED, because
+        # the failed deploy is the news.
+        self.reinstall(previous_commit[:12])
         return result
 
     def rollback(self, previous_commit: str, had_image: bool) -> int:
