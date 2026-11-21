@@ -102,7 +102,7 @@ class JsonFormatter(logging.Formatter):
         return redact(json.dumps(entry, default=str))
 
 
-def configure_logging(level: int = logging.INFO) -> None:
+def configure_logging(level: int | None = None) -> None:
     """Send every logger, uvicorn's included, through one JSON handler on stdout.
 
     Called when `app.main` is imported. uvicorn has configured its own loggers by then,
@@ -113,7 +113,17 @@ def configure_logging(level: int = logging.INFO) -> None:
     command line, because a flag has to be remembered at every launch site and this
     does not. The request line it wrote is replaced by `app.main`'s own, which carries
     the request id and a duration and never held the token in the first place.
+
+    The level is uvicorn's own `--log-level` unless one is passed. That flag is the knob
+    every launch site already sets — `info` in the image, `warning` under the visual
+    tests — and ignoring it once filled the visual tests' undrained stdout pipe with
+    request lines until uvicorn blocked writing to it and every page load timed out.
     """
+    if level is None:
+        # uvicorn sets this logger's level from `--log-level` before importing the app.
+        # NOTSET means uvicorn is not the launcher (the test suite, a script).
+        level = logging.getLogger("uvicorn.error").level or logging.INFO
+
     handler = logging.StreamHandler(sys.stdout)
     handler.setFormatter(JsonFormatter())
 

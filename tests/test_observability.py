@@ -237,3 +237,31 @@ def test_a_failing_health_probe_is_logged(
     output = formatted_log.getvalue()
     assert '"status": 503' in output
     assert "database unreachable" in output
+
+
+def test_logging_follows_the_level_uvicorn_was_started_with() -> None:
+    """`--log-level warning` must silence the request lines.
+
+    The visual tests start uvicorn at `warning` with stdout piped and never read. When
+    this module forced INFO, request lines filled that pipe, uvicorn blocked writing to
+    it, and every page load in the suite timed out.
+    """
+    from app.observability import JsonFormatter, configure_logging
+
+    root = logging.getLogger()
+    uvicorn_error = logging.getLogger("uvicorn.error")
+    saved = (root.level, list(root.handlers), uvicorn_error.level)
+    try:
+        uvicorn_error.setLevel(logging.WARNING)
+        configure_logging()
+        assert root.level == logging.WARNING
+        assert not logging.getLogger("app.request").isEnabledFor(logging.INFO)
+
+        uvicorn_error.setLevel(logging.NOTSET)
+        configure_logging()
+        assert root.level == logging.INFO, "not launched by uvicorn: default to INFO"
+        assert sum(isinstance(h.formatter, JsonFormatter) for h in root.handlers) == 1
+    finally:
+        root.setLevel(saved[0])
+        root.handlers = saved[1]
+        uvicorn_error.setLevel(saved[2])
