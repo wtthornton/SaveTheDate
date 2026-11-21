@@ -342,15 +342,34 @@ thing it moves, and the code that decides what ships must not move with it. So a
 merged change to `scripts/deploy_release.py`, or to any unit file in `deploy/`,
 reaches it13 only when the installer runs again.
 
+Bill pastes this one line on it13. Nothing is edited by hand:
+
 ```bash
-mkdir -p ~/.config/savethedate
-install -m 600 /dev/null ~/.config/savethedate/allowed_signers
-# then add one line per approver, which here means Bill's key only:
-#   <email> namespaces="git" ssh-ed25519 AAAA...
-cd ~/code/SaveTheDate && git pull && deploy/install-timers.sh
+cd ~/code/SaveTheDate && git pull --ff-only && deploy/setup-deploy.sh ~/.config/websitedup/allowed_signers tapp.thornton@gmail.com
 ```
 
-`install-timers.sh` will not enable `savethedate-deploy.timer` until
+`deploy/setup-deploy.sh SIGNERS_FILE PRINCIPAL` copies the allowed_signers line for
+that principal, and only that one, into `~/.config/savethedate/allowed_signers` at
+mode 600. It then runs `deploy/install-timers.sh`. It refuses, and writes nothing,
+in four cases: the principal has no line; a line holds no valid key (each one is
+checked with `ssh-keygen -l`); the target already lists a different principal; or
+the first field lists several principals at once. The WebsiteDup file also
+lists WebsiteDup's release bot. That key is left out on purpose, because a signature
+from any key in the SaveTheDate file is a production approval.
+
+The `git pull` is for this first setup only. Once deploys run, the checkout sits
+detached at the live tag, and `git pull` fails there. To run it again (say, after
+rotating the key), leave the pull out:
+
+```bash
+cd ~/code/SaveTheDate && deploy/setup-deploy.sh ~/.config/websitedup/allowed_signers tapp.thornton@gmail.com
+```
+
+An unchanged signers file is left alone. To pick up a later change to
+`scripts/deploy_release.py` or the units, run `deploy/install-timers.sh` from the
+checkout at the new tag.
+
+`install-timers.sh` on its own will not enable `savethedate-deploy.timer` until
 `allowed_signers` exists and is non-empty.
 
 The checkout must stay clean. The deploy refuses to move a checkout with uncommitted
