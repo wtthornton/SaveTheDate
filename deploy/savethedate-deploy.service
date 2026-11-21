@@ -1,0 +1,30 @@
+# Deploy the newest release tag Bill has signed. TAP-12474.
+#
+# One tick of `scripts/deploy_release.py`. The unit runs the INSTALLED copy at
+# ~/.local/libexec/savethedate/, never the one in the checkout. The checkout is what
+# this moves to the new tag, and the code that decides what ships must not be
+# replaced by the tag it is checking. `deploy/install-timers.sh` puts the copy there.
+#
+# A signed tag is the production approval. Bill signs `v<N>` with his SSH key and
+# pushes it. A tag that is unsigned, signed by any other key, or not on origin/main is
+# refused, and nothing moves. See docs/RUNBOOK.md, "Deploying a change".
+#
+# A failed deploy rolls back to the previous app and FAILS this unit, so
+# `scripts/prod.sh status` lists it under FAILED UNITS. The failed tag is recorded in
+# ~/.local/state/savethedate/deploy/failed-tags and never retried.
+
+[Unit]
+Description=SaveTheDate: deploy the newest signed release tag
+Documentation=file:///home/wtthornton/code/SaveTheDate/docs/RUNBOOK.md
+After=docker.service network-online.target
+
+[Service]
+Type=oneshot
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+Environment=GIT_TERMINAL_PROMPT=0
+ExecStart=/usr/bin/python3 %h/.local/libexec/savethedate/deploy_release.py
+
+# A build, a migration, the app's 60-second health wait, and a rollback with its own
+# 90-second wait. A run killed here leaves its `attempt` file behind, and the next
+# tick rolls that deploy back as a failure.
+TimeoutStartSec=20min

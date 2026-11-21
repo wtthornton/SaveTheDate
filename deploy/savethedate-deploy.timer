@@ -1,0 +1,15 @@
+# Runs savethedate-deploy.service five minutes after boot, then five minutes after
+# each run ends, so two deploys never overlap. No Persistent=: after downtime it does
+# not replay missed ticks, because there is nothing to replay. A tick that finds no
+# new signed tag changes nothing.
+
+[Unit]
+Description=SaveTheDate: look for a new signed release tag every five minutes
+
+[Timer]
+OnBootSec=5min
+OnUnitInactiveSec=5min
+RandomizedDelaySec=30s
+
+[Install]
+WantedBy=timers.target

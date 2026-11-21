@@ -264,22 +264,119 @@ curl -sS -o /dev/null -w '%{http_code}\n' "https://wedding.tapphouse.co/invites/
 
 ## Deploying a change
 
+Production deploys itself from a release tag that Bill has signed (TAP-12474).
+Nobody logs in to it13 to run `scripts/prod.sh deploy`.
+
+**To release**, Bill signs a tag on a commit that is already on `main` and pushes it.
+The tags are `v1`, `v2`, and so on, with a plain number and no dots:
+
+```bash
+git fetch origin
+git -c gpg.format=ssh -c user.signingkey="$HOME/.ssh/id_ed25519.pub" \
+    tag -s v3 -m "v3: <what this release carries>" origin/main
+git push origin v3
+```
+
+The signature is the production approval. Within about five minutes,
+`savethedate-deploy.timer` on it13 runs `savethedate-deploy.service`, which:
+
+1. fetches `main` and the tags into `~/code/SaveTheDate`;
+2. looks at the `v<N>` tags numbered above the live one, newest first. A tag
+   **counts** only if `git tag -v` verifies it against
+   `~/.config/savethedate/allowed_signers` and the commit it names is on
+   `origin/main`. Tags that don't count are skipped and logged, so an unsigned tag
+   cannot block a signed one. If none count, the tick is refused and nothing changes;
+3. takes the newest tag that counts, and does nothing if that tag has failed before.
+   It never falls back to an older approval;
+4. keeps the running image as `savethedate-prod:previous`, checks out the tag
+   (detached), and runs that tag's `scripts/prod.sh deploy`: build the image, run
+   `migrate` to completion on its own, run `up -d`, and wait for `/health`;
+5. if any of that fails, records the tag in
+   `~/.local/state/savethedate/deploy/failed-tags`, checks out the previous commit,
+   makes the previous image `latest` again, starts the previous app with
+   `--no-deps` so the previous code's migrate never runs, and **fails the unit**.
+   A failed tag is never retried. Tag the fix as the next number.
+
+**A rollback after a migration that succeeded runs the previous app on the NEW
+schema.** Nothing reverses a migration. So the previous app comes back only if the
+migration was backward compatible. Write migrations expand-then-contract: add
+columns and tables in one release, and drop what the old code reads only in a later
+release, after the one that stopped reading it is live. If a release breaks that
+rule and then fails its health check, the previous app fails `/health` too. The
+deploy then logs **ROLLBACK FAILED / PRODUCTION MAY BE DOWN** rather than claiming
+it recovered.
+
+**A mistyped tag number is permanent once it ships.** If `v30` goes live where `v3`
+was meant, every later tag has to be numbered above 30. Numbers are cheap; carry on
+from `v31`. An unsigned or unmerged tag never ships, so it needs no cleanup. Deleting
+it (`git push origin :refs/tags/vN`) only quiets the log.
+
+What a deploy did:
+
+```bash
+journalctl --user -u savethedate-deploy.service -n 80 --no-pager
+./scripts/prod.sh status        # lists a failed deploy under FAILED UNITS
+git -C ~/code/SaveTheDate describe --tags   # the tag that is live
+```
+
+A deploy killed halfway (a reboot, the 20-minute timeout) leaves
+`~/.local/state/savethedate/deploy/attempt` behind. The next tick rolls that deploy
+back as a failure. If the log says **ROLLBACK FAILED / PRODUCTION MAY BE DOWN**, the
+attempt file is kept and every tick retries the rollback. Look at
+`./scripts/prod.sh status` and the app's logs straight away. If the log says
+**STUCK**, the attempt file is unreadable. No deploy runs until someone checks
+production and removes that file by hand.
+
+**Migrations run before the app is touched, on purpose (TAP-12474).** `up` on its own looks
+like it gates on `migrate`, but Compose recreates every container before it starts
+any of them. With a failing migration, the old app was already gone and the new one
+never started. `run --rm migrate` touches nothing else, and Alembic runs each Postgres
+migration in a transaction, so a failed migration leaves the previous app serving on
+an unchanged schema.
+
+### One-time setup on it13 (Bill)
+
+The deploy unit runs an **installed copy** of `scripts/deploy_release.py` from
+`~/.local/libexec/savethedate/`, not the copy in the checkout. The checkout is the
+thing it moves, and the code that decides what ships must not move with it. So a
+merged change to `scripts/deploy_release.py`, or to any unit file in `deploy/`,
+reaches it13 only when the installer runs again.
+
+```bash
+mkdir -p ~/.config/savethedate
+install -m 600 /dev/null ~/.config/savethedate/allowed_signers
+# then add one line per approver, which here means Bill's key only:
+#   <email> namespaces="git" ssh-ed25519 AAAA...
+cd ~/code/SaveTheDate && git pull && deploy/install-timers.sh
+```
+
+`install-timers.sh` will not enable `savethedate-deploy.timer` until
+`allowed_signers` exists and is non-empty.
+
+The checkout must stay clean. The deploy refuses to move a checkout with uncommitted
+changes to tracked files. `.env.prod` is gitignored and is not affected.
+
+### Break glass: only if the deploy unit itself is broken
+
+This is not a way to deploy. It skips every check the unit makes: the signature,
+`origin/main`, the rollback. Use it only to restore service with a tag Bill has
+already signed. Check it first:
+
 ```bash
 cd ~/code/SaveTheDate
-git pull
+git fetch --tags origin
+git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile="$HOME/.config/savethedate/allowed_signers" tag -v v3
+git checkout --detach v3
 ./scripts/prod.sh deploy
 ```
 
-`deploy` rebuilds the image, runs migrations to completion, and only then starts the
-app. It waits for `/health` and fails loudly if the app does not come back.
-
-Two things that are easy to get wrong:
+Three things that are easy to get wrong:
 
 - **Rebuilding re-resolves dependencies.** There is no lockfile, so an image built
   months from now may pull newer versions of FastAPI and friends than the ones this
   was tested against. If a deploy breaks for no reason you can see in the diff, that
-  is the first suspect. The previous image is still on disk — `docker images
-  savethedate-prod` — and starting it again is a fast way back.
+  is the first suspect. The deploy keeps the image it replaced as
+  `savethedate-prod:previous` and goes back to it on its own when a deploy fails.
 - **The review instance is separate.** `scripts/review-instance.sh reload` has
   nothing to do with production. Its root also behaves differently on purpose:
   `dev-wedding.tapphouse.co/` redirects into a guest's invitation so the token-gated
