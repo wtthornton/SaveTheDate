@@ -1,4 +1,6 @@
+import logging
 import math
+import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 
@@ -7,9 +9,19 @@ from fastapi.exception_handlers import http_exception_handler
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, PlainTextResponse
 from fastapi.staticfiles import StaticFiles
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
+from app.deps import DbSession
+from app.observability import (
+    REQUEST_ID_HEADER,
+    bind_request_id,
+    configure_logging,
+    redact,
+    request_id_from,
+)
 from app.ratelimit import client_address, get_limiter
 from app.routers import auth, events, host, invites, pages, public, webhooks
 from app.templating import templates
@@ -20,6 +32,10 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 # somebody's RSVP link, so nothing this app serves may be indexed — the meta tag on
 # the pages covers HTML, and this covers the JSON API and everything else.
 NOINDEX = "noindex, nofollow, noarchive"
+
+configure_logging()
+logger = logging.getLogger("app")
+request_logger = logging.getLogger("app.request")
 
 settings = get_settings()
 
@@ -84,6 +100,55 @@ async def throttle_guest_routes(
     )
 
 
+# Paths a probe hits every few seconds for as long as the stack runs. A line for each
+# would bury every real request, so they are logged only when they fail.
+QUIET_PATHS = frozenset({"/health", "/health/live"})
+
+
+@app.middleware("http")
+async def log_request(
+    request: Request, call_next: Callable[[Request], Awaitable[Response]]
+) -> Response:
+    """One line per request, carrying an id that every other line it causes shares. TAP-7734.
+
+    Registered last, so it is the OUTERMOST middleware: a request the throttle turns
+    away with a 429 is logged too, and so is one that raises. The path is redacted here
+    as well as in the formatter, so the `path` field is safe even to a reader who
+    pulls it out of the record before formatting.
+    """
+    request_id = request_id_from(request.headers.get(REQUEST_ID_HEADER))
+    bind_request_id(request_id)
+    started = time.perf_counter()
+    fields = {"method": request.method, "path": redact(request.url.path)}
+
+    try:
+        response = await call_next(request)
+    except Exception:
+        # Logged with the request's id and then RAISED again: Starlette still turns it
+        # into the 500, and nothing here decides the request succeeded.
+        request_logger.exception(
+            "request failed",
+            extra={**fields, "duration_ms": _elapsed_ms(started)},
+        )
+        raise
+
+    response.headers[REQUEST_ID_HEADER] = request_id
+    if request.url.path not in QUIET_PATHS or response.status_code >= 400:
+        request_logger.info(
+            "request",
+            extra={
+                **fields,
+                "status": response.status_code,
+                "duration_ms": _elapsed_ms(started),
+            },
+        )
+    return response
+
+
+def _elapsed_ms(started: float) -> float:
+    return round((time.perf_counter() - started) * 1000, 1)
+
+
 app.mount("/static", StaticFiles(directory=str(STATIC_DIR)), name="static")
 
 app.include_router(auth.router)
@@ -137,5 +202,30 @@ def robots() -> str:
 
 
 @app.get("/health", tags=["ops"])
-def health() -> dict[str, str]:
+def health(response: Response, db: DbSession) -> dict[str, str]:
+    """Ready: the process answers AND it can reach its database. TAP-7734.
+
+    This used to return ok without checking anything, so with Postgres down every
+    guest page failed while the Docker healthcheck, `scripts/prod.sh status` and
+    `scripts/prod.sh deploy` all reported a healthy site. Those three still call this
+    path, and now they report the outage.
+    """
+    try:
+        db.execute(text("select 1"))
+    except SQLAlchemyError:
+        # Not swallowed: logged with its traceback, and answered as a failure.
+        logger.exception("health check: database unreachable")
+        response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+        return {"status": "unavailable", "database": "unreachable"}
+    return {"status": "ok", "database": "ok"}
+
+
+@app.get("/health/live", tags=["ops"])
+def live() -> dict[str, str]:
+    """Alive: the process is up and serving, and nothing more.
+
+    For a supervisor deciding whether to RESTART the app. A database outage must not
+    answer that question with yes, because restarting the app cannot fix the database
+    and a restart loop makes the outage harder to read.
+    """
     return {"status": "ok"}
