@@ -118,8 +118,10 @@ browser's network tab points you straight at the request. Invite tokens show up 
 ./scripts/prod.sh compose logs --no-log-prefix app | jq -cR 'fromjson? | select(.request_id == "…")'
 ```
 
-An error carries its traceback in the `exception` field. Nothing collects errors off
-this box yet; the logs are the record.
+An error carries its traceback in the `exception` field. If `SENTRY_DSN` is set in
+`.env.prod`, each error is also sent to that collector, tagged with the same
+`request_id`, and with invite tokens shown as `[token]` there too (TAP-12484). With it
+empty, nothing leaves this box and the logs are the only record.
 
 If the app is crash-looping right after a deploy, the migration is the first
 suspect:

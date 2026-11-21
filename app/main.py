@@ -15,6 +15,7 @@ from starlette.exceptions import HTTPException as StarletteHTTPException
 
 from app.config import get_settings
 from app.deps import DbSession
+from app.error_collector import init_error_collector
 from app.observability import (
     REQUEST_ID_HEADER,
     bind_request_id,
@@ -39,6 +40,10 @@ logger = logging.getLogger("app")
 request_logger = logging.getLogger("app.request")
 
 settings = get_settings()
+
+# Before the app is built, so the SDK's Starlette patches are in place when the
+# middleware stack is assembled. Does nothing at all without a DSN. TAP-12484.
+init_error_collector(settings)
 
 app = FastAPI(
     title="SaveTheDate",

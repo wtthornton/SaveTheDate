@@ -21,6 +21,13 @@ dependencies = [
     # argon2id for host passwords (TAP-7725). The reference implementation, and the
     # only password KDF here — guests never have one, and never will.
     "argon2-cffi>=25.1",
+    # Sends errors to an off-box collector in the Sentry protocol, and only when a DSN
+    # is configured (TAP-12484, `app/error_collector.py`). Capped below 3: 3.0 is at
+    # release candidate, and 2.75 already deprecates `send_default_pii` in favor of
+    # `data_collection`. Those are the options that keep invite tokens and guests'
+    # details out of what is sent, so a major upgrade has to be a reviewed change, not
+    # something an image rebuild picks up.
+    "sentry-sdk>=2.75,<3",
 ]
 
 [project.optional-dependencies]

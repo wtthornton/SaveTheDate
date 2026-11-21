@@ -134,6 +134,15 @@ services:
       # the single real host, then remove it and redeploy. `:-` and not `:?` on
       # purpose: unset is the correct steady state.
       HOST_REGISTRATION_TOKEN: ${HOST_REGISTRATION_TOKEN:-}
+
+      # Where errors are sent off this box (TAP-12484). The DSN is a credential, so
+      # its value belongs in .env.prod and never here. Empty means OFF: the app does
+      # not even import the SDK. `:-` and not `:?`, because off is a valid state to
+      # deploy in. What an event may contain is fixed in app/error_collector.py.
+      SENTRY_DSN: ${SENTRY_DSN:-}
+
+      # So an event from production can never be read as one from the review instance.
+      SENTRY_ENVIRONMENT: production
     # One uvicorn worker (see the Dockerfile). Measured 2026-11-21: 134 MiB peak RSS
     # under 3,000 requests at 32-way concurrency across the welcome page, the card,
     # invite pages and the JSON view. 384M is that peak with roughly 3x headroom, and
