@@ -45,7 +45,14 @@ REDACTED = "[token]"
 # `secrets.token_urlsafe`, so the URL-safe base64 alphabet is the whole of one; this
 # also catches a made-up token someone typed, which is right — a near-miss of a real
 # token is not something a log should hold either.
-_INVITE_TOKEN = re.compile(r"(/invites/)[A-Za-z0-9_-]+")
+#
+# Either slash may arrive percent-encoded, once or more: a link carried inside another
+# URL's query string or Referer reads `%2Finvites%2F<token>`, and each further layer of
+# encoding adds a `25` (`%252F`, `%25252F`). A literal-slash pattern would let every
+# one of those through. Still idempotent: `[` is not in the token alphabet, so a
+# redacted path never matches again.
+_SLASH = r"(?:/|%(?:25)*2[Ff])"
+_INVITE_TOKEN = re.compile(rf"({_SLASH}invites{_SLASH})[A-Za-z0-9_-]+")
 
 # A caller may send its own id so its logs and ours line up. Accepted only if it is
 # short and dull; anything else is replaced, so a header cannot inject a newline, a

@@ -152,7 +152,9 @@ def test_importing_the_app_without_a_dsn_starts_no_collector(dsn: str | None) ->
 def test_importing_the_app_with_a_dsn_does_start_one() -> None:
     """The control for the test above, so its False cannot come from a broken probe.
 
-    Nothing is sent: no error happens, sessions are off, and the process exits.
+    This client has the SDK's real HTTP transport, pointed at a `.invalid` host. It is
+    safe only because no event fires: nothing errors, sessions are off, and the process
+    exits. A change that made this import send something would try the network here.
     """
     assert _import_the_app_with(FAKE_DSN) == {"imported": True, "active": True}
 
@@ -313,12 +315,13 @@ def _crash(token: str, request_id: str) -> Any:
     with TestClient(app, raise_server_exceptions=False) as crashing:
         # A host following a guest's link sends their session along with it.
         crashing.cookies.set("savethedate_host", SESSION_COOKIE_VALUE)
+        # The guest's path appears plain, encoded once and encoded twice: the query
+        # string is written out by hand so its bytes reach the app exactly as typed.
         return crashing.get(
-            f"/invites/{token}",
-            params={"from": f"/invites/{token}"},
+            f"/invites/{token}?from=/invites/{token}&next=%252Finvites%252F{token}",
             headers={
                 "X-Request-ID": request_id,
-                "Referer": f"https://wedding.tapphouse.co/invites/{token}/rsvp",
+                "Referer": f"https://wedding.tapphouse.co/login?next=%2Finvites%2F{token}%2Frsvp",
             },
         )
 
@@ -334,7 +337,7 @@ def test_an_unhandled_exception_reaches_the_collector_without_the_token(
 
     assert response.status_code == 500
     events = collector.events()
-    assert len(events) == 1, "one crash, one event"
+    assert len(events) == 1, "a crash nothing else logged is one event"
     (event,) = events
     assert event["tags"]["request_id"] == "crash-7"
     assert event["exception"]["values"][-1]["type"] == "RuntimeError"
@@ -344,8 +347,12 @@ def test_an_unhandled_exception_reaches_the_collector_without_the_token(
     assert SESSION_COOKIE_VALUE not in sent
     # The URL WAS in all of these, so their redacted form proves the walk reached them.
     headers = event["request"]["headers"]
-    assert headers["referer"].endswith("/invites/[token]/rsvp")
-    assert event["request"]["query_string"] == "from=/invites/[token]"
+    assert headers["referer"] == (
+        "https://wedding.tapphouse.co/login?next=%2Finvites%2F[token]%2Frsvp"
+    )
+    # The SDK decodes a query string once, so what was encoded twice on the wire is
+    # encoded once in the event, which a literal-slash pattern would have let through.
+    assert event["request"]["query_string"] == "from=/invites/[token]&next=%2Finvites%2F[token]"
     assert event["request"]["url"].endswith("/invites/[token]")
     assert event["exception"]["values"][-1]["value"].endswith("/invites/[token]")
     # The test client is itself an outbound httpx call the SDK instruments, so this is
@@ -397,15 +404,30 @@ def test_guest_details_logged_in_a_request_never_reach_the_collector(
 
     monkeypatch.setattr("app.rsvp.segments_for", broken)
 
+    # Keep a copy of each event as the SDK hands it over, before the allowlist runs.
+    before_filter: list[str] = []
+
+    def recording(event: dict[str, Any]) -> dict[str, Any]:
+        before_filter.append(json.dumps(event, default=str))
+        return keep_allowlisted(event)
+
+    monkeypatch.setattr("app.error_collector.keep_allowlisted", recording)
+
     assert _crash(token, "crash-guest").status_code == 500
 
     sent = collector.sent_bytes()
     for detail in (GUEST_NAME, GUEST_EMAIL, GUEST_DIET):
         assert detail not in sent
-    # Proof the records were there to leak: one event IS the guest-detail ERROR record,
-    # and the mail transport's breadcrumb arrived, only without its `data`. (The
-    # request-failed line is a second event here, because Starlette re-raises the error
-    # wrapped in an ExceptionGroup, which the SDK's dedupe does not match.)
+    # Without this, a pass could mean the SDK never picked the details up at all. They
+    # were in the events the SDK built (the breadcrumbs' `data`, the ERROR record's
+    # `extra`), and only the allowlist kept them from being sent.
+    assert before_filter
+    for detail in (GUEST_NAME, GUEST_EMAIL, GUEST_DIET):
+        assert any(detail in raw for raw in before_filter), detail
+    # One event IS the guest-detail ERROR record, and the mail transport's breadcrumb
+    # arrived, only without its `data`. (The request-failed line is a second event
+    # here, because Starlette re-raises the error wrapped in an ExceptionGroup, which
+    # the SDK's dedupe does not match.)
     events = collector.events()
     (event,) = [e for e in events if e.get("logentry", {}).get("message") == "render failed"]
     assert all("extra" not in e for e in events)

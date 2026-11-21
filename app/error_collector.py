@@ -26,8 +26,9 @@ nobody thinks of until it is the leak. If `before_send` ever raises, the SDK dro
 the event. A broken scrubber loses an event. It does not send one unscrubbed.
 
 **What the walk cannot see is closed where it starts**, which is the formatter's rule
-again. `redact` knows a token by the `/invites/` in front of it, and a bare token is
-just 43 characters. Three places in an event hold values with no URL around them:
+again. `redact` knows a token by the `/invites/` in front of it (either slash may be
+percent-encoded), and a bare token is just 43 characters. Three places in an event
+hold values with no URL around them:
 
 * Stack-frame locals. The guest routes take `token` as an argument, so every frame
   under one holds the credential bare. `include_local_variables=False`.
@@ -52,7 +53,28 @@ than at each log call.
 A log MESSAGE is still sent, redacted. Every log call in `app/` today passes a fixed
 string and puts its data in `extra=`. A new call that formats a guest's details into
 the message text itself would send them. That is the same gap the formatter has for a
-bare token, and it has the same answer: put data in `extra=`.
+bare token, and it has the same answer: put data in `extra=`. `tests/test_log_calls.py`
+reads every log call in `app/` and fails on one that does otherwise.
+
+**Exception messages are sent, redacted but not allowlisted, and that is a real
+gap.** An exception's value is the one free-form text an event exists to carry, so it
+is kept. Anything formatted into an exception's message goes to the collector. The
+plainest case is FastAPI's `ResponseValidationError`, whose message quotes the
+`input_value` that failed: a response model that rejected a guest row would send that
+guest's details. Three things keep the gap small today, none of them enforced here:
+
+* A request that fails validation raises `RequestValidationError`. FastAPI's own
+  handler turns it into a 422, it has no `status_code` for the SDK's handler to count
+  as a failure, and nothing logs it, so it is never sent.
+* `RsvpRefused`, whose messages name attendees and quote dietary entries, is caught
+  in both routes that raise it (`app.routers.invites`, `app.routers.pages`) and
+  becomes a 422.
+* `EmailRefused`, whose test transport's message holds an address, is caught by
+  `app.invitations.send`, the only caller of a transport, and stored on the delivery
+  row.
+
+A new exception that formats a guest's details into its message, and is not caught,
+would send them.
 
 **The request id is read at send time**, from the same context variable the formatter
 reads, and written to the event as a tag. An event and its JSON log line therefore
@@ -63,13 +85,20 @@ to this app's own outbound requests (`trace_propagation_targets=[]`; by default 
 SDK stamps `sentry-trace` and `baggage`, which name the environment and release, on
 every HTTP call it sees, the mail provider's included). None of it has been asked for,
 tracing and sessions would send something on every request rather than on failure,
-and each is one more payload whose contents would have to be argued about.
+and each is one more payload whose contents would have to be argued about. Metrics
+are the exception: the SDK's `enable_metrics` defaults on (and, by its own warning,
+cannot be turned off), and a metric goes through `before_send_metric`, never through
+`before_send`. Nothing in `app/` emits one, so none is sent.
 
-**One crash, one event.** `app.main.log_request` logs the exception before re-raising
-it, and the SDK's logging integration turns that ERROR line into an event. The outer
-ASGI capture then sees the same exception object, and the SDK's dedupe drops it. The
-response is not touched: the 500 still comes from `app.main.unhandled_error`, and the
-SDK re-raises everything it catches.
+**How many events a crash makes.** Every log record at ERROR or above becomes an
+event. `app.main.log_request` logs each unhandled exception before
+re-raising it, and the outer ASGI capture of that same object is dropped by the
+SDK's dedupe, so a crash that nothing else logged is one event. If app code logs an
+exception and then re-raises it, that is two: `log_request` receives it wrapped in
+the `ExceptionGroup` that Starlette's middleware raises, a different object, and the
+dedupe matches only the same object. The response is not touched either way: the 500
+still comes from `app.main.unhandled_error`, and the SDK re-raises everything it
+catches.
 """
 
 from __future__ import annotations
