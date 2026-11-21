@@ -318,6 +318,19 @@ idempotent. Once deploys have run, leave out the `git pull`, as that section say
 grep -q 'def reinstall' ~/.local/libexec/savethedate/deploy_release.py || echo "predates TAP-12499: rerun setup once"
 ```
 
+**Every release turns the backup and drill timers back on.** The reinstall runs
+`deploy/install-timers.sh`, which runs `enable --now` on
+`savethedate-backup.timer` and `savethedate-restore-drill.timer`. A timer you
+turned off by hand starts again at the next deploy or rollback. To keep one off for
+longer, stop releasing until it can come back, or change `install-timers.sh` in a
+release.
+
+**A rollback to a commit older than TAP-12499 breaks the reinstall chain.** The
+reinstall after a rollback installs that older commit's `deploy_release.py`, and
+that copy has no reinstall step. From then on no deploy installs itself, including
+the deploy of a later tag that carries TAP-12499 again, until the one-time setup
+line is run once more. The `grep` above tells you whether you are in that state.
+
 **If that reinstall fails after a good deploy**, the release stays live. Nothing is
 rolled back, because the app passed `/health`. The unit exits **4** and fails, so
 `./scripts/prod.sh status` lists it under FAILED UNITS until the next tick, and
