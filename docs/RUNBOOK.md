@@ -299,10 +299,24 @@ The signature is the production approval. Within about five minutes,
 6. once the app is settled, at the new tag or back at the previous commit, runs
    that checkout's own `deploy/install-timers.sh` (TAP-12499). That replaces the
    installed copy of `scripts/deploy_release.py` and the units with the ones from
-   the commit now serving. A release that changes the deploy script or a unit
-   therefore installs itself; nobody logs in to rerun the installer. The new copy
-   verifies the *next* tag. The copy that verified this one was already installed,
-   so a tag's own code never decides whether that tag ships.
+   the commit now serving. Once the installed copy has this step (see below), a
+   release that changes the deploy script or a unit installs itself; nobody logs
+   in to rerun the installer. The new copy verifies the *next* tag. The copy that
+   verified this one was already installed, so a tag's own code never decides
+   whether that tag ships. A `deploy_release.py` that does not compile is refused
+   and the working copy is kept (exit 4, below), so a bad tag cannot replace the
+   verifier with one that fails every tick.
+
+**Once, if the installed copy predates TAP-12499.** Only the installed copy runs the
+reinstall step. An installed copy older than TAP-12499 does not have that step, so
+the first tag that carries it would ship without installing it. If
+`~/.local/libexec/savethedate/deploy_release.py` has no `def reinstall`, rerun the
+one-time setup below once, after a tag that carries TAP-12499 is live. It is
+idempotent. Once deploys have run, leave out the `git pull`, as that section says.
+
+```bash
+grep -q 'def reinstall' ~/.local/libexec/savethedate/deploy_release.py || echo "predates TAP-12499: rerun setup once"
+```
 
 **If that reinstall fails after a good deploy**, the release stays live. Nothing is
 rolled back, because the app passed `/health`. The unit exits **4** and fails, so

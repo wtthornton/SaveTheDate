@@ -168,9 +168,11 @@ def test_an_empty_principal_is_refused(box: Box) -> None:
 def test_the_installed_deploy_script_is_replaced_never_rewritten_in_place(box: Box) -> None:
     """The deploy now reinstalls itself, so the file being replaced is the running one.
 
-    A hard link to the old copy still reads the old bytes afterwards: the installer
-    put a new file at that name rather than writing into the old one. And it leaves
-    no temporary file behind in the directory.
+    A hard link to the old copy still reads the old bytes afterwards, so the old file
+    was not written into. That alone does not prove a rename: GNU `install` passes it
+    too, because it unlinks the destination before writing a new one, leaving a moment
+    with no file there. The static test below is what pins the rename. This one checks
+    the result: the right bytes and mode, and no temporary file left behind.
     """
     libexec = box.home / ".local" / "libexec" / "savethedate"
     libexec.mkdir(parents=True)
@@ -202,14 +204,34 @@ def test_every_installed_file_arrives_by_rename_from_the_same_directory() -> Non
     body = text.split("install_atomically() {", 1)[1].split("\n}", 1)[0]
     commands = [line.strip() for line in body.splitlines() if line.strip()]
     assert 'tmp="$(mktemp "$(dirname "$dest")/.$(basename "$dest").XXXXXX")"' in commands
-    assert commands[-1] == 'mv -f -- "$tmp" "$dest"'
+    # Renamed into place, and only then forgotten by the EXIT trap that removes it.
+    assert commands[-2:] == ['mv -f -- "$tmp" "$dest"', 'tmp=""']
     writes_dest = [c for c in commands if '"$dest"' in c and not c.startswith("tmp=")]
     assert writes_dest == ['mv -f -- "$tmp" "$dest"']
 
     outside = text.replace(body, "")
+    assert 'trap \'if [ -n "$tmp" ]; then rm -f -- "$tmp"; fi\' EXIT' in outside
     assert "install -m" not in outside
     assert 'install_atomically 644 "${ROOT}/deploy/${unit}" "${UNIT_DIR}/${unit}"' in outside
     assert (
         'install_atomically 755 "${ROOT}/scripts/deploy_release.py" '
         '"${LIBEXEC_DIR}/deploy_release.py"' in outside
     )
+
+
+def test_a_failed_rename_leaves_no_temporary_file_and_fails(box: Box) -> None:
+    """Under `set -e` a failing `mv` would otherwise strand the dot-file it was moving."""
+    libexec = box.home / ".local" / "libexec" / "savethedate"
+    libexec.mkdir(parents=True)
+    installed = libexec / "deploy_release.py"
+    installed.write_text("# the copy that is running\n")
+    (box.bin / "mv").write_text("#!/bin/sh\nexit 1\n")
+    (box.bin / "mv").chmod(0o755)
+
+    result = box.install()
+
+    assert result.returncode != 0
+    assert installed.read_text() == "# the copy that is running\n"
+    unit_dir = box.home / ".config" / "systemd" / "user"
+    left = [p.name for d in (libexec, unit_dir) if d.exists() for p in d.iterdir()]
+    assert sorted(left) == ["deploy_release.py"]

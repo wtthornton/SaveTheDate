@@ -32,9 +32,10 @@ One tick:
 6. Once the app is settled, at the new tag or back at the previous commit, run that
    checkout's own `deploy/install-timers.sh` (TAP-12499). It replaces the installed
    copy of this file and the units with the ones from the commit now serving, so the
-   installed copy never runs ahead of, or behind, what is live. If it fails after a
-   good deploy, nothing is rolled back: the unit fails with EXIT_REINSTALL_FAILED and
-   later ticks run whatever copy is installed.
+   installed copy never runs ahead of, or behind, what is live. The attempt file is
+   cleared first, so an installer that hangs or crashes cannot send later ticks into
+   recovery. If it fails after a good deploy, nothing is rolled back: the unit fails
+   with EXIT_REINSTALL_FAILED and later ticks run whatever copy is installed.
 
 This file is stdlib-only and is installed OUTSIDE the checkout it moves
 (`deploy/install-timers.sh` copies it). The code that decides what ships is not
@@ -274,15 +275,22 @@ class Deployer:
         now is untouched, and it only daemon-reloads and enables timers, which affect
         later runs of this unit, not this one.
         """
-        installed = self._cmd("bash", "deploy/install-timers.sh")
-        if installed.returncode == 0:
-            self.log(f"Installed the deploy script and units from {live}.")
-            return True
-        self.log(f"{installed.stdout}{installed.stderr}".rstrip())
+        try:
+            installed = self._cmd("bash", "deploy/install-timers.sh")
+        except OSError as exc:
+            # bash itself could not be started. Reported like any other failure, so
+            # the unit fails with its own exit instead of a traceback.
+            outcome = f"could not be started ({exc})"
+        else:
+            if installed.returncode == 0:
+                self.log(f"Installed the deploy script and units from {live}.")
+                return True
+            self.log(f"{installed.stdout}{installed.stderr}".rstrip())
+            outcome = f"exited {installed.returncode}"
         self.log(
-            f"REINSTALL FAILED: deploy/install-timers.sh at {live} exited "
-            f"{installed.returncode}. The installed deploy script and units may be stale: "
-            f"they may not be {live}'s. Later ticks keep running whatever copy is installed."
+            f"REINSTALL FAILED: deploy/install-timers.sh at {live} {outcome}. The installed "
+            f"deploy script and units may be stale: they may not be {live}'s. Later ticks "
+            "keep running whatever copy is installed."
         )
         self.log(
             "Once the cause is fixed, run deploy/install-timers.sh from ~/code/SaveTheDate "
@@ -320,9 +328,17 @@ class Deployer:
     def fail(self, tag: str, previous_commit: str, had_image: bool) -> int:
         self._record_failed(tag)
         result = self.rollback(previous_commit, had_image)
-        if result != EXIT_ROLLBACK_FAILED:
+        if result == EXIT_ROLLBACK_FAILED:
             # Kept after a failed rollback, so the next tick tries the rollback again.
-            self.config.attempt_file.unlink()
+            return result
+        # The previous app answers /health, so the attempt is settled, and it is
+        # cleared BEFORE the reinstall, as after a good deploy. An installer that hangs
+        # until the unit's timeout kills it must not leave an attempt behind: every
+        # later tick would restart the previous app, reinstall, and never ship again.
+        self.config.attempt_file.unlink()
+        # A failure here is logged by reinstall(). The exit stays EXIT_FAILED, because
+        # the failed deploy is the news.
+        self.reinstall(previous_commit[:12])
         return result
 
     def rollback(self, previous_commit: str, had_image: bool) -> int:
@@ -351,11 +367,6 @@ class Deployer:
             self.log("PRODUCTION MAY BE DOWN. Run scripts/prod.sh status on it13.")
             return EXIT_ROLLBACK_FAILED
         self.log("Rolled back. The previous app is serving.")
-        # After the app is back, never before: putting the guests' site back comes
-        # first. A failure here is logged by reinstall(); the exit stays EXIT_FAILED,
-        # because a failed deploy is the news, and the attempt is still cleared so
-        # the next tick does not restart the previous app again.
-        self.reinstall(previous_commit[:12])
         return EXIT_FAILED
 
     def app_healthy(self) -> bool:

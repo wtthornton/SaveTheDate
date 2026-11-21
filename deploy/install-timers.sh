@@ -15,6 +15,10 @@
 # - Every file is copied to a temporary name in its destination directory and
 #   renamed over the old one. A rename is atomic: nothing ever sees a missing or
 #   half-written script or unit. The running process keeps the old file it opened.
+#   A temporary file that never made it into place is removed on exit.
+# - A deploy_release.py that does not compile is refused, and the installed copy,
+#   the verifier every later tick runs, is kept. The script goes in before the units,
+#   so a refusal leaves both as they were.
 # - `daemon-reload` and `enable --now` from inside the running unit do not stop it.
 #   systemd.unit(5): on a reload "all configuration settings are flushed out and
 #   replaced with the new configuration (which however might not be in effect
@@ -53,28 +57,53 @@ if ! loginctl show-user "$USER" -p Linger --value 2>/dev/null | grep -q '^yes$';
   exit 1
 fi
 
-# install_atomically MODE SRC DEST: put SRC at DEST by renaming a finished copy over
-# it. `install` and `cp` would instead unlink or truncate DEST and then write it, and
-# a deploy or a daemon-reload in that window would read a missing or partial file.
+# The temporary file in flight. Any exit that did not rename it into place, a failed
+# `cp`, check or `mv` under `set -e` included, removes it rather than leave a dot-file.
+tmp=""
+trap 'if [ -n "$tmp" ]; then rm -f -- "$tmp"; fi' EXIT
+
+# install_atomically MODE SRC DEST [CHECK...]: put SRC at DEST by renaming a finished
+# copy over it. `install` and `cp` would instead unlink or truncate DEST and then
+# write it, and a deploy or a daemon-reload in that window would read a missing or
+# partial file. CHECK, when given, runs on the finished copy first, with its path as
+# the last argument; if it fails, DEST is left exactly as it was.
 install_atomically() {
-  local mode="$1" src="$2" dest="$3" tmp
+  local mode="$1" src="$2" dest="$3"
+  shift 3
   tmp="$(mktemp "$(dirname "$dest")/.$(basename "$dest").XXXXXX")"
-  if ! { cp -- "$src" "$tmp" && chmod "$mode" "$tmp"; }; then
-    rm -f -- "$tmp"
+  cp -- "$src" "$tmp"
+  chmod "$mode" "$tmp"
+  if [ "$#" -gt 0 ] && ! "$@" "$tmp"; then
     return 1
   fi
   mv -f -- "$tmp" "$dest"
+  tmp=""
 }
+
+# The installed deploy script is the verifier every later tick runs. One that does not
+# compile would fail every tick from then on, and only a login could replace it, so
+# it is refused here and the working copy stays. Compiled by the interpreter the unit
+# runs it with, in memory: `python3 -m py_compile` would leave a __pycache__ behind.
+compiles() {
+  if ! /usr/bin/python3 -c \
+    'import sys; compile(open(sys.argv[1], "rb").read(), sys.argv[1], "exec")' "$1"; then
+    echo "REFUSED: scripts/deploy_release.py does not compile." >&2
+    echo "The installed ${LIBEXEC_DIR}/deploy_release.py is kept as it was." >&2
+    return 1
+  fi
+}
+
+# The script first: if it is refused, the units are not moved ahead of it either.
+mkdir -p "$LIBEXEC_DIR"
+install_atomically 755 "${ROOT}/scripts/deploy_release.py" "${LIBEXEC_DIR}/deploy_release.py" \
+  compiles
+echo "installed ${LIBEXEC_DIR}/deploy_release.py"
 
 mkdir -p "$UNIT_DIR"
 for unit in "${UNITS[@]}"; do
   install_atomically 644 "${ROOT}/deploy/${unit}" "${UNIT_DIR}/${unit}"
   echo "installed ${unit}"
 done
-
-mkdir -p "$LIBEXEC_DIR"
-install_atomically 755 "${ROOT}/scripts/deploy_release.py" "${LIBEXEC_DIR}/deploy_release.py"
-echo "installed ${LIBEXEC_DIR}/deploy_release.py"
 
 systemctl --user daemon-reload
 systemctl --user enable --now savethedate-backup.timer savethedate-restore-drill.timer

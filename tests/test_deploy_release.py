@@ -59,19 +59,31 @@ def _keypair(directory: Path, name: str) -> Path:
 class FakeHost:
     """Docker and prod.sh. Records each call with the checkout's commit at the time.
 
-    The installer is recorded too, and then really run, under `installer_env`.
+    The installer is recorded too, and then really run, under `installer_env`. Each
+    time it is asked for, whether the attempt file exists at that moment is kept.
     """
 
     checkout: Path
     installer_env: dict[str, str]
+    attempt_file: Path
     failing: set[tuple[str, ...]] = field(default_factory=set)
+    raising: set[tuple[str, ...]] = field(default_factory=set)
     calls: list[tuple[tuple[str, ...], str]] = field(default_factory=list)
+    attempt_at_install: list[bool] = field(default_factory=list)
+
+    def note(self, *call: str) -> None:
+        self.calls.append((call, _git(self.checkout, "rev-parse", "HEAD")))
 
     def run(self, argv: Sequence[str], cwd: Path) -> subprocess.CompletedProcess[str]:
         if argv[0] == "git":
             return run_command(argv, cwd)
         call = tuple(argv)
-        self.calls.append((call, _git(self.checkout, "rev-parse", "HEAD")))
+        self.note(*call)
+        if call == INSTALLER:
+            self.attempt_at_install.append(self.attempt_file.exists())
+        if call in self.raising:
+            # What run_command raises when the program cannot be started at all.
+            raise FileNotFoundError(2, "No such file or directory", call[0])
         failed = any(call[: len(prefix)] == prefix for prefix in self.failing)
         if call == INSTALLER and not failed:
             return subprocess.run(
@@ -124,7 +136,7 @@ class World:
             "USER": "wtthornton",
             "PATH": f"{self.bin}:{os.environ['PATH']}",
         }
-        self.host = FakeHost(self.checkout, installer_env)
+        self.host = FakeHost(self.checkout, installer_env, self.config.attempt_file)
         self.healthy = True
         self.log: list[str] = []
 
@@ -188,9 +200,13 @@ class World:
 
     def deploy(self) -> int:
         deployer = Deployer(
-            self.config, run=self.host.run, healthy=lambda: self.healthy, log=self.log.append
+            self.config, run=self.host.run, healthy=self._health_check, log=self.log.append
         )
         return deployer.run()
+
+    def _health_check(self) -> bool:
+        self.host.note("health")  # recorded in order, so a test can say what came after
+        return self.healthy
 
     def head(self) -> str:
         return _git(self.checkout, "rev-parse", "HEAD")
@@ -492,6 +508,91 @@ def test_a_rollback_reinstalls_from_the_commit_it_rolled_back_to(world: World) -
     assert world.installed_script.read_bytes() == world.deploy_script_at(before)
     assert world.host.asked(*INSTALLER) == [before]
     assert world.installer_ran_after("scripts/prod.sh", "compose", "up")
+    # Not before the previous app answers /health: the guests' site comes back first.
+    assert world.installer_ran_after("health")
+
+
+@pytest.mark.parametrize("path", ["deploy", "rollback"])
+def test_the_attempt_is_settled_before_the_installer_runs(world: World, path: str) -> None:
+    """An installer that hangs until TimeoutStartSec kills the unit cannot leave it.
+
+    A surviving attempt would send every later tick through recover(): restart the
+    previous app, reinstall, and never ship another release.
+    """
+    world.commit("release one", deploy_script="# deploy_release.py as of v1\n")
+    world.push_main()
+    world.tag("v1", world.bill)
+    if path == "rollback":
+        world.host.failing.add(("scripts/prod.sh", "deploy"))
+
+    world.deploy()
+
+    assert world.host.attempt_at_install == [False]
+
+
+def test_an_installer_that_cannot_even_start_after_a_deploy_is_a_reinstall_failure(
+    world: World,
+) -> None:
+    """`run_command` raises OSError when bash itself is missing. Reported, not a crash."""
+    tagged = world.commit("release one")
+    world.push_main()
+    world.tag("v1", world.bill)
+    world.host.raising.add(INSTALLER)
+
+    assert world.deploy() == EXIT_REINSTALL_FAILED
+
+    assert world.head() == tagged
+    assert not world.config.attempt_file.exists()
+    failure = next(line for line in world.log if line.startswith("REINSTALL FAILED"))
+    assert "No such file or directory" in failure
+
+    world.host.calls.clear()
+    assert world.deploy() == EXIT_DONE
+    assert world.host.calls == []
+
+
+def test_an_installer_that_cannot_even_start_after_a_rollback_does_not_wedge(
+    world: World,
+) -> None:
+    """The rollback is reported as one, and the next tick is quiet, not another rollback."""
+    before = world.head()
+    world.commit("broken release")
+    world.push_main()
+    world.tag("v1", world.bill)
+    world.host.failing.add(("scripts/prod.sh", "deploy"))
+    world.host.raising.add(INSTALLER)
+
+    assert world.deploy() == EXIT_FAILED
+
+    assert not world.config.attempt_file.exists()
+    assert any(line.startswith("REINSTALL FAILED") for line in world.log)
+    world.host.calls.clear()
+    assert world.deploy() == EXIT_DONE
+    assert world.host.calls == []
+    assert world.head() == before
+
+
+def test_a_tag_whose_deploy_script_does_not_compile_keeps_the_installed_one(
+    world: World,
+) -> None:
+    """A signed tag with a syntax error in deploy_release.py must not become the verifier.
+
+    Installed, it would fail at every tick from then on, and only a login would fix
+    it. The installer refuses the swap, so the deploy reports exit 4 and the copy that
+    works stays.
+    """
+    world.installed_script.parent.mkdir(parents=True)
+    world.installed_script.write_text("# the copy installed before v1\n")
+    tagged = world.commit("release one", deploy_script="def broken(:\n")
+    world.push_main()
+    world.tag("v1", world.bill)
+
+    assert world.deploy() == EXIT_REINSTALL_FAILED
+
+    assert world.head() == tagged
+    assert world.installed_script.read_text() == "# the copy installed before v1\n"
+    assert sorted(p.name for p in world.installed_script.parent.iterdir()) == ["deploy_release.py"]
+    assert any("does not compile" in line for line in world.log)
 
 
 def test_a_reinstall_that_fails_after_a_deploy_keeps_the_new_app_and_fails_loudly(
