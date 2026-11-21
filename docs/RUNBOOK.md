@@ -295,7 +295,29 @@ The signature is the production approval. Within about five minutes,
    `~/.local/state/savethedate/deploy/failed-tags`, checks out the previous commit,
    makes the previous image `latest` again, starts the previous app with
    `--no-deps` so the previous code's migrate never runs, and **fails the unit**.
-   A failed tag is never retried. Tag the fix as the next number.
+   A failed tag is never retried. Tag the fix as the next number;
+6. once the app is settled, at the new tag or back at the previous commit, runs
+   that checkout's own `deploy/install-timers.sh` (TAP-12499). That replaces the
+   installed copy of `scripts/deploy_release.py` and the units with the ones from
+   the commit now serving. A release that changes the deploy script or a unit
+   therefore installs itself; nobody logs in to rerun the installer. The new copy
+   verifies the *next* tag. The copy that verified this one was already installed,
+   so a tag's own code never decides whether that tag ships.
+
+**If that reinstall fails after a good deploy**, the release stays live. Nothing is
+rolled back, because the app passed `/health`. The unit exits **4** and fails, so
+`./scripts/prod.sh status` lists it under FAILED UNITS until the next tick, and
+the journal says **REINSTALL FAILED** and that the installed deploy copy may be
+stale. The next tick finds the tag live and changes nothing, running whatever copy
+is installed. The following release reinstalls as usual. To catch up sooner, fix
+the cause (the log shows the installer's own output) and run
+`deploy/install-timers.sh` from `~/code/SaveTheDate`. If the reinstall fails after
+a rollback, the unit still exits 1 for the failed deploy, and the log says
+REINSTALL FAILED too.
+
+The unit's exit codes: 0 deployed or nothing to do; 1 the deploy failed and the
+previous app is back; 2 refused, nothing changed; 3 **ROLLBACK FAILED / PRODUCTION
+MAY BE DOWN**; 4 deployed, but the reinstall failed.
 
 **A rollback after a migration that succeeded runs the previous app on the NEW
 schema.** Nothing reverses a migration. So the previous app comes back only if the
@@ -338,9 +360,9 @@ an unchanged schema.
 
 The deploy unit runs an **installed copy** of `scripts/deploy_release.py` from
 `~/.local/libexec/savethedate/`, not the copy in the checkout. The checkout is the
-thing it moves, and the code that decides what ships must not move with it. So a
-merged change to `scripts/deploy_release.py`, or to any unit file in `deploy/`,
-reaches it13 only when the installer runs again.
+thing it moves, and the code that decides what ships must not move with it. This
+setup installs the first copy and the units. From then on every deploy and every
+rollback reinstalls them from the commit that is live (step 6 above).
 
 Bill pastes this one line on it13. Nothing is edited by hand:
 
@@ -365,9 +387,7 @@ rotating the key), leave the pull out:
 cd ~/code/SaveTheDate && deploy/setup-deploy.sh ~/.config/websitedup/allowed_signers tapp.thornton@gmail.com
 ```
 
-An unchanged signers file is left alone. To pick up a later change to
-`scripts/deploy_release.py` or the units, run `deploy/install-timers.sh` from the
-checkout at the new tag.
+An unchanged signers file is left alone.
 
 `install-timers.sh` on its own will not enable `savethedate-deploy.timer` until
 `allowed_signers` exists and is non-empty.

@@ -1,14 +1,30 @@
 #!/usr/bin/env bash
 #
 # Install the backup, restore-drill and deploy timers as systemd USER units.
-# TAP-7733, TAP-12474.
+# TAP-7733, TAP-12474, TAP-12499.
 #
 #   deploy/install-timers.sh
 #
-# Idempotent: re-run it after editing any unit file in this directory, AND after any
-# change to scripts/deploy_release.py. The deploy unit runs an installed copy of that
-# script, outside the checkout it moves, so a merged change to it reaches production
-# only through this script.
+# Idempotent. Bill runs it once, through deploy/setup-deploy.sh. After that the deploy
+# runs it itself: scripts/deploy_release.py runs the checkout's copy of this script
+# after every settled deploy or rollback, so the installed copy of
+# scripts/deploy_release.py and these units always come from the commit that is live.
+#
+# That means this script runs INSIDE savethedate-deploy.service, and replaces the
+# file that service is running. So:
+# - Every file is copied to a temporary name in its destination directory and
+#   renamed over the old one. A rename is atomic: nothing ever sees a missing or
+#   half-written script or unit. The running process keeps the old file it opened.
+# - `daemon-reload` and `enable --now` from inside the running unit do not stop it.
+#   systemd.unit(5): on a reload "all configuration settings are flushed out and
+#   replaced with the new configuration (which however might not be in effect
+#   immediately), however all runtime state is saved/restored". Starting a timer that
+#   is already active is a no-op. Checked on systemd 259 with a oneshot service, run by
+#   its own timer, that rewrote its unit, reloaded and ran `enable --now` on its timer:
+#   it ran to completion, once, and the timer's next run stayed due relative to the
+#   end of that run (TAP-12499).
+# - `$USER` and the user bus are there: systemd sets $USER for every service, and
+#   $XDG_RUNTIME_DIR for every service of the user manager (systemd.exec(5)).
 #
 # These are user units rather than system units, to match cloudflared-tapphouse.
 # That makes `loginctl enable-linger` load-bearing — without it they stop when the
@@ -37,14 +53,27 @@ if ! loginctl show-user "$USER" -p Linger --value 2>/dev/null | grep -q '^yes$';
   exit 1
 fi
 
+# install_atomically MODE SRC DEST: put SRC at DEST by renaming a finished copy over
+# it. `install` and `cp` would instead unlink or truncate DEST and then write it, and
+# a deploy or a daemon-reload in that window would read a missing or partial file.
+install_atomically() {
+  local mode="$1" src="$2" dest="$3" tmp
+  tmp="$(mktemp "$(dirname "$dest")/.$(basename "$dest").XXXXXX")"
+  if ! { cp -- "$src" "$tmp" && chmod "$mode" "$tmp"; }; then
+    rm -f -- "$tmp"
+    return 1
+  fi
+  mv -f -- "$tmp" "$dest"
+}
+
 mkdir -p "$UNIT_DIR"
 for unit in "${UNITS[@]}"; do
-  install -m 644 "${ROOT}/deploy/${unit}" "${UNIT_DIR}/${unit}"
+  install_atomically 644 "${ROOT}/deploy/${unit}" "${UNIT_DIR}/${unit}"
   echo "installed ${unit}"
 done
 
 mkdir -p "$LIBEXEC_DIR"
-install -m 755 "${ROOT}/scripts/deploy_release.py" "${LIBEXEC_DIR}/deploy_release.py"
+install_atomically 755 "${ROOT}/scripts/deploy_release.py" "${LIBEXEC_DIR}/deploy_release.py"
 echo "installed ${LIBEXEC_DIR}/deploy_release.py"
 
 systemctl --user daemon-reload
