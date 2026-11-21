@@ -45,6 +45,19 @@ services:
       timeout: 5s
       retries: 10
       start_period: 10s
+    # A ceiling, so a leak here cannot push a shared host into memory pressure and get
+    # some other project's container killed instead (TAP-10296). It lives in this file
+    # because a limit set by hand with `docker update` is lost on the next recreate.
+    #
+    # Measured 2026-11-21 on the dev stack: 92 MiB cgroup peak across a full
+    # `pg_dump` + `pg_restore` round trip — what the nightly backup and the weekly
+    # drill both run inside THIS container — and most of that is reclaimable page
+    # cache. Postgres's own defaults (128 MB shared_buffers, 64 MB
+    # maintenance_work_mem for the restore's index builds) fit well under 512M.
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   # Migrations as a release step, not on app boot. TAP-7733 item 2.
   #
@@ -121,6 +134,14 @@ services:
       # the single real host, then remove it and redeploy. `:-` and not `:?` on
       # purpose: unset is the correct steady state.
       HOST_REGISTRATION_TOKEN: ${HOST_REGISTRATION_TOKEN:-}
+    # One uvicorn worker (see the Dockerfile). Measured 2026-11-21: 134 MiB peak RSS
+    # under 3,000 requests at 32-way concurrency across the welcome page, the card,
+    # invite pages and the JSON view. 384M is that peak with roughly 3x headroom, and
+    # still a hard stop on a leak. TAP-10296.
+    deploy:
+      resources:
+        limits:
+          memory: 384M
     depends_on:
       db:
         condition: service_healthy

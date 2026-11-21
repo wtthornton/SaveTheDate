@@ -186,6 +186,41 @@ def test_the_image_does_not_migrate_on_start() -> None:
         assert "alembic" not in line, line
 
 
+# -- The settings that decide what it can do to its neighbours -------------
+
+_MIB = {"K": 1 / 1024, "M": 1, "G": 1024}
+
+# Peaks measured on 2026-11-21 and recorded beside each limit in the compose file.
+_MEASURED_PEAK_MIB = {"app": 134, "db": 92}
+
+
+def _memory_limit_mib(service: str) -> float:
+    raw = str(_service(service)["deploy"]["resources"]["limits"]["memory"])
+    return float(raw[:-1]) * _MIB[raw[-1].upper()]
+
+
+def test_the_long_lived_services_have_a_memory_ceiling() -> None:
+    """The box runs dozens of containers; an unbounded leak here gets someone else killed.
+
+    Under host memory pressure the kernel or systemd-oomd picks a victim, and it need
+    not be the container that is leaking. A limit in this file survives a recreate,
+    where one applied with `docker update` does not (TAP-10296).
+    """
+    for service in ("app", "db"):
+        assert _memory_limit_mib(service) > 0, service
+
+
+def test_the_memory_ceilings_leave_room_above_what_was_measured() -> None:
+    """A ceiling at the observed peak turns a busy evening into an OOM-killed site.
+
+    The `db` figure covers the nightly `pg_dump` and the weekly drill's `pg_restore`,
+    both of which run inside that container, so a limit that cut it close would show
+    up first as a failed backup rather than as a slow page.
+    """
+    for service, peak in _MEASURED_PEAK_MIB.items():
+        assert _memory_limit_mib(service) >= 2 * peak, service
+
+
 # -- The settings that decide whether a credential reaches the internet -----
 
 

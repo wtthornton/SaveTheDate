@@ -113,6 +113,18 @@ A migration that fails **stops the release on purpose**, so the app will not sta
 against a half-migrated schema. That is the system working. Fix the migration, or
 redeploy the previous commit.
 
+If the app or database restarted and the logs simply stop with no error, check
+whether it hit its memory ceiling (384M for the app, 512M for the database, set in
+`docker-compose.prod.yml`, TAP-10296):
+
+```bash
+docker inspect -f '{{.Name}} OOMKilled={{.State.OOMKilled}}' savethedate-prod-app-1 savethedate-prod-db-1
+```
+
+`OOMKilled=true` means the limit did its job — something grew without bound. Find
+what grew before raising the number; the limits sit at roughly three and five times
+the measured peaks.
+
 ### 3. Timeout or DNS failure: the tunnel
 
 ```bash
