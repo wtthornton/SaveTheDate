@@ -36,6 +36,24 @@ just 43 characters. Three places in an event hold values with no URL around them
 * The SDK's personal data: cookies (the host session cookie among them), the client
   address and the user. `send_default_pii=False`.
 
+**Guests' details are kept out by an allowlist, because they have no pattern.**
+`redact` finds a token by its URL. A name, an email address or a dietary note looks
+like any other text. The SDK's logging integration copies every `extra=` field of an
+INFO record into a breadcrumb's `data`, and of an ERROR record into the event's
+`extra`. The console mail transport logs a guest's address, name and invitation in
+exactly those fields, and production runs that transport until mail is configured.
+So `before_send` keeps only named fields wherever free-form data collects. A
+breadcrumb keeps its type, category, level, timestamp and message and loses `data`.
+A log entry keeps its message and loses `params`, which are already rendered into
+it. The event's `extra` is dropped whole. The JSON logs keep all of it, because they
+stay on this box. The collector is the boundary, so the allowlist sits there rather
+than at each log call.
+
+A log MESSAGE is still sent, redacted. Every log call in `app/` today passes a fixed
+string and puts its data in `extra=`. A new call that formats a guest's details into
+the message text itself would send them. That is the same gap the formatter has for a
+bare token, and it has the same answer: put data in `extra=`.
+
 **The request id is read at send time**, from the same context variable the formatter
 reads, and written to the event as a tag. An event and its JSON log line therefore
 carry the same id, and nothing keeps a second copy of it that could drift.
@@ -70,6 +88,48 @@ if TYPE_CHECKING:
 REQUEST_ID_TAG = "request_id"
 
 
+# What survives of a breadcrumb. `data` is excluded on purpose: see the docstring.
+BREADCRUMB_FIELDS = frozenset({"type", "category", "level", "timestamp", "message"})
+
+# What survives of a log entry. `params` are the record's arguments, already rendered
+# into `formatted`, so dropping them loses nothing but a second copy to vet.
+LOGENTRY_FIELDS = frozenset({"message", "formatted"})
+
+
+def keep_allowlisted(event: dict[str, Any]) -> dict[str, Any]:
+    """`event` with the free-form fields that can carry a guest's details removed.
+
+    The event's `extra` goes entirely. Breadcrumbs and the log entry keep only the
+    fields named above. A breadcrumbs or log entry value of any shape other than the
+    SDK's is dropped rather than passed through: what the allowlist cannot read, it
+    cannot vouch for.
+    """
+    kept = {key: value for key, value in event.items() if key != "extra"}
+
+    if "breadcrumbs" in event:
+        crumbs = event["breadcrumbs"]
+        values = crumbs.get("values") if isinstance(crumbs, dict) else None
+        if isinstance(values, list):
+            kept["breadcrumbs"] = {"values": [_only(crumb, BREADCRUMB_FIELDS) for crumb in values]}
+        else:
+            del kept["breadcrumbs"]
+
+    if "logentry" in event:
+        logentry = event["logentry"]
+        if isinstance(logentry, dict):
+            kept["logentry"] = _only(logentry, LOGENTRY_FIELDS)
+        else:
+            del kept["logentry"]
+
+    return kept
+
+
+def _only(entry: Any, fields: frozenset[str]) -> dict[str, Any]:
+    if not isinstance(entry, dict):
+        return {}
+    return {key: value for key, value in entry.items() if key in fields}
+
+
 def scrub(value: Any) -> Any:
     """`value` with `redact` applied to every string in it, keys included.
 
@@ -87,12 +147,12 @@ def scrub(value: Any) -> Any:
 
 
 def before_send(event: Event, hint: Hint) -> Event:
-    """Tag the event with its request id, then scrub all of it."""
+    """Tag the event with its request id, cut it to the allowlist, then scrub the rest."""
     request_id = current_request_id()
     if request_id is not None:
         tags = event.get("tags") or {}
         event["tags"] = {**tags, REQUEST_ID_TAG: request_id}
-    return cast("Event", scrub(event))
+    return cast("Event", scrub(keep_allowlisted(cast(dict[str, Any], event))))
 
 
 def init_error_collector(settings: Settings, *, transport: Transport | None = None) -> bool:
