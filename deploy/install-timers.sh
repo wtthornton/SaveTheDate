@@ -58,9 +58,8 @@ if [ -s "$ALLOWED_SIGNERS" ]; then
 else
   echo
   echo "NOT enabling savethedate-deploy.timer: ${ALLOWED_SIGNERS} is missing or empty." >&2
-  echo "Create it with one line per approver, mode 600:" >&2
-  echo "  <email> namespaces=\"git\" ssh-ed25519 AAAA..." >&2
-  echo "then run this script again." >&2
+  echo "Create it from an existing signers file, copying only the approver's line:" >&2
+  echo "  deploy/setup-deploy.sh ~/.config/websitedup/allowed_signers <principal>" >&2
 fi
 
 echo
