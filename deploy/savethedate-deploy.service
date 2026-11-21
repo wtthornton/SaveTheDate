@@ -25,6 +25,6 @@ Environment=GIT_TERMINAL_PROMPT=0
 ExecStart=/usr/bin/python3 %h/.local/libexec/savethedate/deploy_release.py
 
 # A build, a migration, the app's 60-second health wait, and a rollback with its own
-# 60-second wait. A run killed here leaves its `attempt` file behind, and the next
+# 90-second wait. A run killed here leaves its `attempt` file behind, and the next
 # tick rolls that deploy back as a failure.
 TimeoutStartSec=20min

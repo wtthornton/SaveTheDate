@@ -272,7 +272,7 @@ The tags are `v1`, `v2`, and so on, with a plain number and no dots:
 
 ```bash
 git fetch origin
-git -c gpg.format=ssh -c user.signingkey=~/.ssh/id_ed25519.pub \
+git -c gpg.format=ssh -c user.signingkey="$HOME/.ssh/id_ed25519.pub" \
     tag -s v3 -m "v3: <what this release carries>" origin/main
 git push origin v3
 ```
@@ -281,19 +281,35 @@ The signature is the production approval. Within about five minutes,
 `savethedate-deploy.timer` on it13 runs `savethedate-deploy.service`, which:
 
 1. fetches `main` and the tags into `~/code/SaveTheDate`;
-2. takes the highest-numbered `v<N>`, and does nothing if it is already live, if it
-   is numbered below what is live, or if it has failed before;
-3. **refuses** the tag unless `git tag -v` verifies it against
+2. looks at the `v<N>` tags numbered above the live one, newest first. A tag
+   **counts** only if `git tag -v` verifies it against
    `~/.config/savethedate/allowed_signers` and the commit it names is on
-   `origin/main`; a refusal changes nothing;
+   `origin/main`. Tags that don't count are skipped and logged, so an unsigned tag
+   cannot block a signed one. If none count, the tick is refused and nothing changes;
+3. takes the newest tag that counts, and does nothing if that tag has failed before.
+   It never falls back to an older approval;
 4. keeps the running image as `savethedate-prod:previous`, checks out the tag
    (detached), and runs that tag's `scripts/prod.sh deploy`: build the image, run
    `migrate` to completion on its own, run `up -d`, and wait for `/health`;
 5. if any of that fails, records the tag in
    `~/.local/state/savethedate/deploy/failed-tags`, checks out the previous commit,
    makes the previous image `latest` again, starts the previous app with
-   `--no-deps` (so the previous code's migrate never meets a newer schema), and
-   **fails the unit**. A failed tag is never retried. Tag the fix as the next number.
+   `--no-deps` so the previous code's migrate never runs, and **fails the unit**.
+   A failed tag is never retried. Tag the fix as the next number.
+
+**A rollback after a migration that succeeded runs the previous app on the NEW
+schema.** Nothing reverses a migration. So the previous app comes back only if the
+migration was backward compatible. Write migrations expand-then-contract: add
+columns and tables in one release, and drop what the old code reads only in a later
+release, after the one that stopped reading it is live. If a release breaks that
+rule and then fails its health check, the previous app fails `/health` too. The
+deploy then logs **ROLLBACK FAILED / PRODUCTION MAY BE DOWN** rather than claiming
+it recovered.
+
+**A mistyped tag number is permanent once it ships.** If `v30` goes live where `v3`
+was meant, every later tag has to be numbered above 30. Numbers are cheap; carry on
+from `v31`. An unsigned or unmerged tag never ships, so it needs no cleanup. Deleting
+it (`git push origin :refs/tags/vN`) only quiets the log.
 
 What a deploy did:
 
@@ -307,9 +323,11 @@ A deploy killed halfway (a reboot, the 20-minute timeout) leaves
 `~/.local/state/savethedate/deploy/attempt` behind. The next tick rolls that deploy
 back as a failure. If the log says **ROLLBACK FAILED / PRODUCTION MAY BE DOWN**, the
 attempt file is kept and every tick retries the rollback. Look at
-`./scripts/prod.sh status` and the app's logs straight away.
+`./scripts/prod.sh status` and the app's logs straight away. If the log says
+**STUCK**, the attempt file is unreadable. No deploy runs until someone checks
+production and removes that file by hand.
 
-**Migrations run before the app is touched, on purpose.** `up` on its own looks
+**Migrations run before the app is touched, on purpose (TAP-12474).** `up` on its own looks
 like it gates on `migrate`, but Compose recreates every container before it starts
 any of them. With a failing migration, the old app was already gone and the new one
 never started. `run --rm migrate` touches nothing else, and Alembic runs each Postgres
@@ -338,10 +356,16 @@ cd ~/code/SaveTheDate && git pull && deploy/install-timers.sh
 The checkout must stay clean. The deploy refuses to move a checkout with uncommitted
 changes to tracked files. `.env.prod` is gitignored and is not affected.
 
-### By hand, only if the deploy unit itself is broken
+### Break glass: only if the deploy unit itself is broken
+
+This is not a way to deploy. It skips every check the unit makes: the signature,
+`origin/main`, the rollback. Use it only to restore service with a tag Bill has
+already signed. Check it first:
 
 ```bash
 cd ~/code/SaveTheDate
+git fetch --tags origin
+git -c gpg.format=ssh -c gpg.ssh.allowedSignersFile="$HOME/.config/savethedate/allowed_signers" tag -v v3
 git checkout --detach v3
 ./scripts/prod.sh deploy
 ```

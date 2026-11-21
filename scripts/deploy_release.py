@@ -10,17 +10,23 @@ That signature is the production approval, and nothing else moves production.
 One tick:
 
 1. Fetch `main` and the tags from `origin` into the deploy checkout.
-2. Take the newest `v<N>` tag. Stop quietly if it is already live, older than what is
-   live, or has failed before. A failed tag is never retried; the fix is a new tag.
-3. Refuse it unless its signature verifies against `allowed_signers`, and unless the
-   commit it names is on `origin/main`. Only merged code ships. A refusal changes
-   nothing.
+2. Look at the `v<N>` tags numbered above the live one, newest first. A tag counts
+   only if its signature verifies against `allowed_signers` and the commit it names is
+   on `origin/main`: only merged code that Bill approved ships. Tags that do not count
+   are skipped and logged, so an unsigned tag cannot block a real one. If none count,
+   the tick is refused and nothing changes.
+3. Take the newest tag that counts. Stop quietly if it has failed before. A failed tag
+   is never retried, and an older approval is never shipped in its place; the fix is
+   a new tag.
 4. Keep the running image as `savethedate-prod:previous`, move the checkout to the tag
    and run the tag's own `scripts/prod.sh deploy`. That is build, migrate to completion,
    start the app, then wait for `/health`.
 5. If that fails, record the tag as failed, move the checkout back, restore the
    previous image and start the previous app without re-running migrations. The unit
-   then fails, and `scripts/prod.sh status` lists it under FAILED UNITS. A tick that
+   then fails, and `scripts/prod.sh status` lists it under FAILED UNITS. The previous
+   app is then running on whatever schema the new migration left; that is safe only
+   for backward-compatible migrations, and a /health failure there is reported as
+   PRODUCTION MAY BE DOWN. A tick that
    was killed mid-deploy leaves an `attempt` file, and the next tick rolls it back the
    same way.
 
@@ -140,12 +146,11 @@ class Deployer:
             return self.recover()
         try:
             tag = self.choose_tag()
-            if tag is None:
-                return EXIT_DONE
-            self.verify(tag)
         except Refusal as refusal:
             self.log(f"REFUSED: {refusal}. Nothing was changed.")
             return EXIT_REFUSED
+        if tag is None:
+            return EXIT_DONE
         return self.deploy(tag)
 
     def choose_tag(self) -> str | None:
@@ -160,20 +165,39 @@ class Deployer:
         if not tags:
             self.log("No release tag yet.")
             return None
-        newest = max(tags, key=lambda t: tag_number(t) or 0)
 
         live = self._cmd("git", "describe", "--exact-match", "--tags", "--match", "v*", "HEAD")
         live_tag = live.stdout.strip() if live.returncode == 0 else None
-        live_number = tag_number(live_tag) if live_tag else None
-        if live_number is not None and (tag_number(newest) or 0) <= live_number:
+        live_number = (tag_number(live_tag) if live_tag else None) or 0
+        newer = sorted(
+            (t for t in tags if (tag_number(t) or 0) > live_number),
+            key=lambda t: tag_number(t) or 0,
+            reverse=True,
+        )
+        if not newer:
             self.log(f"{live_tag} is live and is the newest release tag.")
             return None
-        if newest in self._failed_tags():
-            self.log(f"{newest} failed to deploy earlier and is not retried. Tag a fix as new.")
-            return None
-        return newest
 
-    def verify(self, tag: str) -> None:
+        # Newest first, skipping any tag that is not an approval. An unsigned `v99`
+        # that anyone could push must not stand in front of the next real release.
+        refused: list[str] = []
+        failed = self._failed_tags()
+        for tag in newer:
+            problem = self.problem_with(tag)
+            if problem is not None:
+                self.log(f"Ignoring {tag}: {problem}.")
+                refused.append(f"{tag} ({problem})")
+                continue
+            if tag in failed:
+                # Never fall back to an older approval: that would ship something
+                # Bill has since superseded.
+                self.log(f"{tag} failed to deploy earlier and is not retried. Tag a fix as new.")
+                return None
+            return tag
+        raise Refusal(f"no tag newer than what is live is approved: {', '.join(refused)}")
+
+    def problem_with(self, tag: str) -> str | None:
+        """Why `tag` is not a production approval, or None when it is one."""
         verified = self._cmd(
             "git",
             "-c",
@@ -186,14 +210,14 @@ class Deployer:
         )
         match = GOOD_SIGNATURE.search(f"{verified.stderr}\n{verified.stdout}")
         if verified.returncode != 0 or match is None:
-            raise Refusal(f"{tag} is not signed by a key in {self.config.allowed_signers}")
-        self.log(f"{tag} is signed by {match.group(1)}.")
-
+            return f"not signed by a key in {self.config.allowed_signers}"
         on_main = self._cmd(
             "git", "merge-base", "--is-ancestor", f"{tag}^{{commit}}", "origin/main"
         )
         if on_main.returncode != 0:
-            raise Refusal(f"{tag} names a commit that is not on origin/main")
+            return "signed, but names a commit that is not on origin/main"
+        self.log(f"{tag} is signed by {match.group(1)} and is on origin/main.")
+        return None
 
     def deploy(self, tag: str) -> int:
         previous_commit = self._git("rev-parse", "HEAD")
@@ -203,9 +227,12 @@ class Deployer:
             return EXIT_REFUSED
 
         self.log(f"Deploying {tag} over {previous_commit[:12]}.")
-        self.config.state_dir.mkdir(parents=True, exist_ok=True)
-        self.config.attempt_file.write_text(f"{tag} {previous_commit} {int(had_image)}\n")
-        self._git("checkout", "--quiet", "--detach", tag)
+        self._write_attempt(f"{tag} {previous_commit} {int(had_image)}\n")
+        try:
+            self._git("checkout", "--quiet", "--detach", tag)
+        except Refusal as refusal:
+            self.log(f"FAILED: {refusal}.")
+            return self.fail(tag, previous_commit, had_image)
         deployed = self._cmd("scripts/prod.sh", "deploy")
         self.log(deployed.stdout + deployed.stderr)
         if deployed.returncode == 0:
@@ -216,6 +243,14 @@ class Deployer:
         self.log(f"FAILED: {tag} did not deploy. Rolling back to {previous_commit[:12]}.")
         return self.fail(tag, previous_commit, had_image)
 
+    def _write_attempt(self, text: str) -> None:
+        # Written whole or not at all, so a kill mid-write cannot leave a file that
+        # every later tick fails to read.
+        self.config.state_dir.mkdir(parents=True, exist_ok=True)
+        partial = self.config.attempt_file.with_suffix(".partial")
+        partial.write_text(text)
+        os.replace(partial, self.config.attempt_file)
+
     def recover(self) -> int:
         """A tick that was killed mid-deploy left its attempt behind.
 
@@ -223,7 +258,13 @@ class Deployer:
         read it as live and the half-finished deploy would stand. It is a failure, and
         it is rolled back like one.
         """
-        tag, previous_commit, had_image = self.config.attempt_file.read_text().split()
+        fields = self.config.attempt_file.read_text().split()
+        if len(fields) != 3 or tag_number(fields[0]) is None:
+            self.log(f"STUCK: {self.config.attempt_file} is not an attempt record: {fields!r}.")
+            self.log("A deploy may be half finished. Check scripts/prod.sh status on it13,")
+            self.log("then remove the file by hand. No deploy runs until then.")
+            return EXIT_ROLLBACK_FAILED
+        tag, previous_commit, had_image = fields
         self.log(
             f"FAILED: the deploy of {tag} was interrupted. Rolling back to {previous_commit[:12]}."
         )
@@ -241,8 +282,16 @@ class Deployer:
         steps: list[Sequence[str]] = [("git", "checkout", "--quiet", "--detach", previous_commit)]
         if had_image:
             steps.append(("docker", "image", "tag", PREVIOUS_IMAGE, IMAGE))
+        else:
+            self.log(
+                f"There was no {IMAGE} before this deploy, so there is no image to go back to."
+            )
         # --no-deps: the schema may already be at the new revision, which the previous
         # code's `alembic upgrade head` does not know, so migrate must not run again.
+        # That also means the previous app now runs on the NEW schema. It comes back
+        # only if the migration was backward compatible (expand, then contract in a
+        # later release); if it dropped something the previous code reads, /health
+        # fails below and this says so.
         steps.append(("scripts/prod.sh", "compose", "up", "-d", "--no-deps", "db", "app"))
         for step in steps:
             result = self._cmd(*step)
@@ -265,9 +314,10 @@ class Deployer:
         port = published.rsplit(":", 1)[-1] if published else "8100"
         url = f"http://127.0.0.1:{port}/health"
         last_error = "no answer"
-        for _ in range(60):
+        deadline = time.monotonic() + 90
+        while time.monotonic() < deadline:
             try:
-                with urllib.request.urlopen(url, timeout=5) as response:
+                with urllib.request.urlopen(url, timeout=3) as response:
                     if response.status == 200:
                         return True
                     last_error = f"HTTP {response.status}"

@@ -123,7 +123,7 @@ status() {
   echo
   echo "backups:"
   systemctl --user list-timers --all 'savethedate-*' --no-pager 2>/dev/null |
-    sed -n '1,5p' || echo "  no timers installed (deploy/install-timers.sh)"
+    sed -n '1,4p' || echo "  no timers installed (deploy/install-timers.sh)"
   local failed
   failed="$(systemctl --user --failed --no-legend 'savethedate-*' 2>/dev/null || true)"
   if [ -n "$failed" ]; then

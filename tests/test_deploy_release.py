@@ -11,6 +11,8 @@ Nothing here starts Docker or touches the network.
 
 from __future__ import annotations
 
+import os
+import shutil
 import subprocess
 from collections.abc import Sequence
 from dataclasses import dataclass, field
@@ -221,6 +223,20 @@ def test_a_tag_bill_did_not_sign_is_refused_and_nothing_moves(world: World, sign
     assert world.host.calls == []
 
 
+def test_an_unsigned_tag_cannot_stand_in_front_of_a_signed_one(world: World) -> None:
+    """Anyone who can push can push `v99`. It is skipped, not obeyed and not blocking."""
+    approved = world.commit("approved")
+    world.push_main()
+    world.tag("v2", world.bill)
+    world.commit("pushed by someone else")
+    world.push_main()
+    world.tag("v99")
+
+    assert world.deploy() == EXIT_DONE
+    assert world.head() == approved
+    assert any(line.startswith("Ignoring v99") for line in world.log)
+
+
 def test_a_signed_tag_on_a_commit_not_on_main_is_refused(world: World) -> None:
     """Only merged code ships, even when Bill signed it."""
     before = world.head()
@@ -314,6 +330,37 @@ def test_a_rollback_that_does_not_come_back_healthy_says_production_may_be_down(
     assert world.config.attempt_file.exists()
 
 
+def test_a_tag_that_cannot_be_checked_out_is_a_failure_not_a_crash(world: World) -> None:
+    """Git refuses to overwrite an untracked file. That must roll back, not traceback.
+
+    A traceback would leave the attempt file behind and blame the next tick.
+    """
+    before = world.head()
+    (world.dev / "new.txt").write_text("tracked in v1")
+    _git(world.dev, "add", "new.txt")
+    world.commit("adds new.txt")
+    world.push_main()
+    world.tag("v1", world.bill)
+    (world.checkout / "new.txt").write_text("untracked on it13")
+
+    assert world.deploy() == EXIT_FAILED
+    assert world.head() == before
+    assert world.host.asked("scripts/prod.sh", "deploy") == []
+    assert not world.config.attempt_file.exists()
+
+
+def test_an_unreadable_attempt_file_stops_everything_loudly(world: World) -> None:
+    world.commit("release one")
+    world.push_main()
+    world.tag("v1", world.bill)
+    world.config.state_dir.mkdir()
+    world.config.attempt_file.write_text("")
+
+    assert world.deploy() == EXIT_ROLLBACK_FAILED
+    assert any(line.startswith("STUCK") for line in world.log)
+    assert world.host.calls == []
+
+
 def test_a_deploy_killed_halfway_is_rolled_back_by_the_next_tick(world: World) -> None:
     """The checkout already sits at the tag, so it would otherwise read as live."""
     before = world.head()
@@ -348,6 +395,36 @@ def test_prod_sh_migrates_on_its_own_before_up() -> None:
     body = text.split("deploy() {", 1)[1].split("\n}", 1)[0]
     steps = [line.strip() for line in body.splitlines() if line.strip().startswith(("dc ", "_"))]
     assert steps == ["dc build", "dc run --rm migrate", "dc up -d", "_wait_healthy"]
+
+
+def test_prod_sh_stops_before_up_when_the_migration_fails(tmp_path: Path) -> None:
+    """The real prod.sh, with a fake `docker` that fails only the migration."""
+    (tmp_path / "scripts").mkdir()
+    shutil.copy(ROOT / "scripts" / "prod.sh", tmp_path / "scripts" / "prod.sh")
+    (tmp_path / ".env.prod").write_text("POSTGRES_PASSWORD=not-a-real-one\n")
+    bin_dir = tmp_path / "bin"
+    bin_dir.mkdir()
+    calls = tmp_path / "docker-calls"
+    docker = bin_dir / "docker"
+    docker.write_text(
+        "#!/bin/sh\n"
+        f'echo "$*" >> {calls}\n'
+        'case "$*" in *" run --rm migrate"*) exit 1 ;; esac\n'
+        "exit 0\n"
+    )
+    docker.chmod(0o755)
+
+    result = subprocess.run(
+        ["bash", str(tmp_path / "scripts" / "prod.sh"), "deploy"],
+        env={**os.environ, "PATH": f"{bin_dir}:{os.environ['PATH']}"},
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode != 0
+    asked = [line.split(" -f ", 1)[1].split(" ", 1)[1] for line in calls.read_text().splitlines()]
+    assert asked == ["build", "run --rm migrate"]
 
 
 def test_the_deploy_unit_runs_the_installed_copy_not_the_checkout() -> None:
