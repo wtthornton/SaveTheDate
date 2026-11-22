@@ -494,8 +494,9 @@ and are deliberately not stubbed out:
   unattended after a power cut, so power is covered. A battery does nothing for the line
   going down while the household is in Texas, though — the tunnel reconnects by itself,
   so what is actually unsolved is a long outage, and whether anyone would know.
-- **No error reporting**, and `/health` says the process is up rather than that the
-  service works. TAP-7734.
+- **Errors stay on the box until a collector is chosen.** Sending them off it is built
+  and inert (TAP-12484): it starts when `SENTRY_DSN` is set in `.env.prod`, and until
+  then the JSON logs are the only record and nothing alerts anyone.
 - **Every photograph is a placeholder**, and the hero is a stock photograph of another
   couple. TAP-7762.
 - **The mail webhook's signature scheme is unverified** against a live provider — see

@@ -108,6 +108,28 @@ def test_host_registration_is_closed_by_default() -> None:
     assert _app_env()["HOST_REGISTRATION_TOKEN"] == "${HOST_REGISTRATION_TOKEN:-}"
 
 
+# -- The settings that decide what reaches the error collector --------------
+
+
+def test_the_error_collector_dsn_comes_only_from_the_secret_file() -> None:
+    """The DSN is a credential, so this file passes it through and never holds one.
+
+    `:-` with no fallback, so an `.env.prod` without it deploys with the collector off,
+    which `app.error_collector` treats as never importing the SDK at all. A literal
+    here would put a write credential for the collector in a public repository.
+    """
+    assert _app_env()["SENTRY_DSN"] == "${SENTRY_DSN:-}"
+
+
+def test_production_errors_are_labelled_production() -> None:
+    """Without it they would arrive as `development`, the code's default.
+
+    The review instance runs the same code against invented guests; an event from it
+    read as production is how somebody goes looking for a guest who does not exist.
+    """
+    assert _app_env()["SENTRY_ENVIRONMENT"] == "production"
+
+
 # -- The settings that decide whether one guest can throttle another --------
 
 
@@ -243,7 +265,7 @@ def test_the_example_env_files_carry_no_values() -> None:
             if line.startswith("#") or "=" not in line:
                 continue
             key, _, value = line.partition("=")
-            if key in {"POSTGRES_PASSWORD", "HOST_REGISTRATION_TOKEN"}:
+            if key in {"POSTGRES_PASSWORD", "HOST_REGISTRATION_TOKEN", "SENTRY_DSN"}:
                 assert value == "", f"{name} has a value for {key}"
             if "SECRET" in key or "ACCESS_KEY" in key:
                 assert value == "", f"{name} has a value for {key}"

@@ -1,0 +1,210 @@
+"""Errors sent off this box, with no invite token in them. TAP-12484.
+
+`app.observability` writes every error to stdout as a JSON line, and those lines live
+and die with the machine. This module also sends each one to a collector somewhere
+else, so a crash can raise an alert and outlive the box. It uses `sentry-sdk`, and
+its wire format is the Sentry protocol, which more than one collector accepts. The DSN
+decides where events go. Nothing in the code does.
+
+**Inert without a DSN.** `init_error_collector` returns before it even imports the
+SDK, so an unconfigured deployment starts no thread, patches no class and opens no
+socket. That is the stance `app.mail.build_transport` takes with a missing Resend key:
+not configured means nothing happens, visibly, and never means half-configured. The
+DSN is a credential (it is what lets a sender write to the project), so it lives in
+`.env.prod`. Every other setting is fixed in this file or committed in
+`docker-compose.prod.yml`, where a test can read it.
+
+**Redaction comes last, for the same reason it does in the log formatter.**
+`app.observability` puts it at the last step before bytes leave the process, so that a
+call site that forgets cannot leak. For an event, that step is `before_send`: the SDK
+has already assembled and serialized the event, request data, breadcrumbs and
+exception values included, and the next thing that happens to it is the transport.
+`scrub` walks every string in the event and every key, rather than a list of fields
+known to hold a URL. A list is only as good as its author's guess about what the SDK
+attaches; the SDK adds fields between releases, and the Referer header is a field
+nobody thinks of until it is the leak. If `before_send` ever raises, the SDK drops
+the event. A broken scrubber loses an event. It does not send one unscrubbed.
+
+**What the walk cannot see is closed where it starts**, which is the formatter's rule
+again. `redact` knows a token by the `/invites/` in front of it (either slash may be
+percent-encoded), and a bare token is just 43 characters. Three places in an event
+hold values with no URL around them:
+
+* Stack-frame locals. The guest routes take `token` as an argument, so every frame
+  under one holds the credential bare. `include_local_variables=False`.
+* Request bodies. The RSVP form carries guests' names and dietary notes, and a body
+  can carry anything. `max_request_body_size="never"`.
+* The SDK's personal data: cookies (the host session cookie among them), the client
+  address and the user. `send_default_pii=False`.
+
+**Guests' details are kept out by an allowlist, because they have no pattern.**
+`redact` finds a token by its URL. A name, an email address or a dietary note looks
+like any other text. The SDK's logging integration copies every `extra=` field of an
+INFO record into a breadcrumb's `data`, and of an ERROR record into the event's
+`extra`. The console mail transport logs a guest's address, name and invitation in
+exactly those fields, and production runs that transport until mail is configured.
+So `before_send` keeps only named fields wherever free-form data collects. A
+breadcrumb keeps its type, category, level, timestamp and message and loses `data`.
+A log entry keeps its message and loses `params`, which are already rendered into
+it. The event's `extra` is dropped whole. The JSON logs keep all of it, because they
+stay on this box. The collector is the boundary, so the allowlist sits there rather
+than at each log call.
+
+A log MESSAGE is still sent, redacted. Every log call in `app/` today passes a fixed
+string and puts its data in `extra=`. A new call that formats a guest's details into
+the message text itself would send them. That is the same gap the formatter has for a
+bare token, and it has the same answer: put data in `extra=`. `tests/test_log_calls.py`
+reads every log call in `app/` and fails on one that does otherwise.
+
+**Exception messages are sent, redacted but not allowlisted, and that is a real
+gap.** An exception's value is the one free-form text an event exists to carry, so it
+is kept. Anything formatted into an exception's message goes to the collector. The
+plainest case is FastAPI's `ResponseValidationError`, whose message quotes the
+`input_value` that failed: a response model that rejected a guest row would send that
+guest's details. Three things keep the gap small today, none of them enforced here:
+
+* A request that fails validation raises `RequestValidationError`. FastAPI's own
+  handler turns it into a 422, it has no `status_code` for the SDK's handler to count
+  as a failure, and nothing logs it, so it is never sent.
+* `RsvpRefused`, whose messages name attendees and quote dietary entries, is caught
+  in both routes that raise it (`app.routers.invites`, `app.routers.pages`) and
+  becomes a 422.
+* `EmailRefused`, whose test transport's message holds an address, is caught by
+  `app.invitations.send`, the only caller of a transport, and stored on the delivery
+  row.
+
+A new exception that formats a guest's details into its message, and is not caught,
+would send them.
+
+**The request id is read at send time**, from the same context variable the formatter
+reads, and written to the event as a tag. An event and its JSON log line therefore
+carry the same id, and nothing keeps a second copy of it that could drift.
+
+**Errors only.** No tracing, no release-health sessions, and no trace headers added
+to this app's own outbound requests (`trace_propagation_targets=[]`; by default the
+SDK stamps `sentry-trace` and `baggage`, which name the environment and release, on
+every HTTP call it sees, the mail provider's included). None of it has been asked for,
+tracing and sessions would send something on every request rather than on failure,
+and each is one more payload whose contents would have to be argued about. Metrics
+are the exception: the SDK's `enable_metrics` defaults on (and, by its own warning,
+cannot be turned off), and a metric goes through `before_send_metric`, never through
+`before_send`. Nothing in `app/` emits one, so none is sent.
+
+**How many events a crash makes.** Every log record at ERROR or above becomes an
+event. `app.main.log_request` logs each unhandled exception before
+re-raising it, and the outer ASGI capture of that same object is dropped by the
+SDK's dedupe, so a crash that nothing else logged is one event. If app code logs an
+exception and then re-raises it, that is two: `log_request` receives it wrapped in
+the `ExceptionGroup` that Starlette's middleware raises, a different object, and the
+dedupe matches only the same object. The response is not touched either way: the 500
+still comes from `app.main.unhandled_error`, and the SDK re-raises everything it
+catches.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any, cast
+
+from app.config import Settings
+from app.observability import current_request_id, redact
+
+if TYPE_CHECKING:
+    from sentry_sdk.transport import Transport
+    from sentry_sdk.types import Event, Hint
+
+# The tag an event's request id travels under. The same id is the `request_id` field
+# of every JSON log line the request wrote, and the `X-Request-ID` the caller got.
+REQUEST_ID_TAG = "request_id"
+
+
+# What survives of a breadcrumb. `data` is excluded on purpose: see the docstring.
+BREADCRUMB_FIELDS = frozenset({"type", "category", "level", "timestamp", "message"})
+
+# What survives of a log entry. `params` are the record's arguments, already rendered
+# into `formatted`, so dropping them loses nothing but a second copy to vet.
+LOGENTRY_FIELDS = frozenset({"message", "formatted"})
+
+
+def keep_allowlisted(event: dict[str, Any]) -> dict[str, Any]:
+    """`event` with the free-form fields that can carry a guest's details removed.
+
+    The event's `extra` goes entirely. Breadcrumbs and the log entry keep only the
+    fields named above. A breadcrumbs or log entry value of any shape other than the
+    SDK's is dropped rather than passed through: what the allowlist cannot read, it
+    cannot vouch for.
+    """
+    kept = {key: value for key, value in event.items() if key != "extra"}
+
+    if "breadcrumbs" in event:
+        crumbs = event["breadcrumbs"]
+        values = crumbs.get("values") if isinstance(crumbs, dict) else None
+        if isinstance(values, list):
+            kept["breadcrumbs"] = {"values": [_only(crumb, BREADCRUMB_FIELDS) for crumb in values]}
+        else:
+            del kept["breadcrumbs"]
+
+    if "logentry" in event:
+        logentry = event["logentry"]
+        if isinstance(logentry, dict):
+            kept["logentry"] = _only(logentry, LOGENTRY_FIELDS)
+        else:
+            del kept["logentry"]
+
+    return kept
+
+
+def _only(entry: Any, fields: frozenset[str]) -> dict[str, Any]:
+    if not isinstance(entry, dict):
+        return {}
+    return {key: value for key, value in entry.items() if key in fields}
+
+
+def scrub(value: Any) -> Any:
+    """`value` with `redact` applied to every string in it, keys included.
+
+    Containers come back as new objects; everything that is not a string, a dict, a
+    list or a tuple is returned untouched. An event reaches `before_send` already
+    serialized, so in practice those are numbers, booleans and None.
+    """
+    if isinstance(value, str):
+        return redact(value)
+    if isinstance(value, dict):
+        return {scrub(key): scrub(item) for key, item in value.items()}
+    if isinstance(value, list | tuple):
+        return [scrub(item) for item in value]
+    return value
+
+
+def before_send(event: Event, hint: Hint) -> Event:
+    """Tag the event with its request id, cut it to the allowlist, then scrub the rest."""
+    request_id = current_request_id()
+    if request_id is not None:
+        tags = event.get("tags") or {}
+        event["tags"] = {**tags, REQUEST_ID_TAG: request_id}
+    return cast("Event", scrub(keep_allowlisted(cast(dict[str, Any], event))))
+
+
+def init_error_collector(settings: Settings, *, transport: Transport | None = None) -> bool:
+    """Start sending errors if, and only if, a DSN is configured. True if it did.
+
+    `transport` replaces the SDK's HTTP transport, and exists so a test can catch the
+    exact bytes that would have left the process without anything opening a socket.
+    """
+    if not settings.sentry_dsn:
+        return False
+
+    import sentry_sdk
+
+    sentry_sdk.init(
+        dsn=settings.sentry_dsn,
+        environment=settings.sentry_environment,
+        transport=transport,
+        before_send=before_send,
+        send_default_pii=False,
+        include_local_variables=False,
+        max_request_body_size="never",
+        traces_sample_rate=None,
+        trace_propagation_targets=[],
+        auto_session_tracking=False,
+    )
+    return True

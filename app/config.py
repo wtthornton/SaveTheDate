@@ -71,6 +71,19 @@ class Settings(BaseSettings):
     # changes delivery state.
     email_webhook_secret: str | None = None
 
+    # -- Errors sent off the box (TAP-12484) -------------------------------
+
+    # Where `app.error_collector` sends errors, in the Sentry protocol's DSN form.
+    # Unset or empty means nothing is sent and the SDK is never even imported. It is a
+    # credential, so production reads it from `.env.prod`, and compose passes an empty
+    # string when that file has no value.
+    sentry_dsn: str | None = None
+
+    # Which deployment an event came from, so the review instance and production can
+    # never be mistaken for each other in the collector. Production's is committed in
+    # docker-compose.prod.yml.
+    sentry_environment: str = "development"
+
     @property
     def cookie_secure(self) -> bool:
         if self.session_cookie_secure is not None:

@@ -293,3 +293,43 @@ def test_logging_follows_the_level_uvicorn_was_started_with() -> None:
         root.setLevel(saved[0])
         root.handlers = saved[1]
         uvicorn_error.setLevel(saved[2])
+
+
+TOKEN = "q9Zk-3_xY7wVbN2rT8sLmP4dHf6gJ1cA0eRuIoK5nQz"
+
+
+@pytest.mark.parametrize(
+    ("raw", "expected"),
+    [
+        (f"/invites/{TOKEN}/rsvp", "/invites/[token]/rsvp"),
+        (f"/api/invites/{TOKEN}", "/api/invites/[token]"),
+        # A guest's link carried inside another URL: a Referer, a `next=` parameter.
+        (f"?next=%2Finvites%2F{TOKEN}", "?next=%2Finvites%2F[token]"),
+        (f"?next=%2finvites%2f{TOKEN}", "?next=%2finvites%2f[token]"),
+        (f"?next=%2Fapi%2Finvites%2F{TOKEN}", "?next=%2Fapi%2Finvites%2F[token]"),
+        # Encoded again, and again: each layer adds a `25`.
+        (f"?next=%252Finvites%252F{TOKEN}", "?next=%252Finvites%252F[token]"),
+        (f"?next=%25252Finvites%25252F{TOKEN}", "?next=%25252Finvites%25252F[token]"),
+        # One slash plain and one encoded, either way round.
+        (f"/invites%2F{TOKEN}", "/invites%2F[token]"),
+        (f"%2Finvites/{TOKEN}", "%2Finvites/[token]"),
+    ],
+)
+def test_redaction_finds_a_token_behind_plain_or_encoded_slashes(raw: str, expected: str) -> None:
+    from app.observability import redact
+
+    assert redact(raw) == expected
+    assert redact(expected) == expected, "redacting twice must change nothing"
+
+
+def test_redaction_leaves_a_path_that_only_looks_similar() -> None:
+    from app.observability import redact
+
+    for near_miss in (
+        "/invitesx/abc",
+        "/invites",
+        "%2Finvites",
+        "/myinvites/abc",
+        "%2Xinvites%2Fabc",
+    ):
+        assert redact(near_miss) == near_miss
