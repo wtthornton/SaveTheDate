@@ -480,9 +480,20 @@ after the directory, so the stack started from the new directory uses the same
 the image repository you chose. it13 must be able to `docker pull` from it and
 nlt-dev must be able to `docker push` to it.
 
-On **it13**, stop the old deploy unit first. Its installed copy still deploys the old
-way, from `~/code/SaveTheDate`; it would try `vN`, fail for want of `image.env`, roll
-back, and mark the tag failed.
+Nothing breaks if this waits. Until it is done, it13 keeps running the deploy script
+and units that were installed before TAP-10322, from `~/code/SaveTheDate`, and they
+keep working on releases that carry TAP-10322:
+
+- `scripts/prod.sh` finds no `image.env`, sees that the app container was created from
+  the local build `savethedate-prod:latest`, and builds in the checkout as it always
+  did. It prints `NOT PINNED` each time. Once the app runs a pinned image this stops:
+  a missing `image.env` is then refused.
+- `deploy/install-timers.sh` finds no `~/srv/savethedate`, installs nothing, and says
+  `NOT INSTALLED`. The old units and the old deploy script stay as they are, so the
+  nightly backup keeps running from the old checkout.
+
+On **it13**, stop the deploy timer for the length of the move, so a tick cannot deploy
+from the old checkout while you are starting production from the new one.
 
 ```bash
 systemctl --user stop savethedate-deploy.timer

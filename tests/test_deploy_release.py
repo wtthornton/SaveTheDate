@@ -174,6 +174,8 @@ class World:
         )
         self.home = tmp / "home"
         self.home.mkdir()
+        # The directory the installed units run from; the installer looks for it.
+        (self.home / "srv" / "savethedate").mkdir(parents=True)
         self.bin = tmp / "bin"
         self.bin.mkdir()
         self.systemctl_calls = tmp / "systemctl-calls"
@@ -706,18 +708,90 @@ def test_a_live_commit_that_cannot_be_rolled_back_to_by_pin_is_not_deployed_over
     assert "Moving production out of" in refusal
 
 
-def test_an_attempt_left_by_a_deploy_from_before_images_were_pinned_is_stuck(
-    world: World,
+OLD_ATTEMPTS = pytest.mark.parametrize(
+    "record",
+    ["v1 {commit} 1\n", "v1 {commit} 0\n", "v1 {commit}\n"],
+    ids=["had-an-image", "had-no-image", "two-fields"],
+)
+
+
+@OLD_ATTEMPTS
+def test_an_attempt_left_by_the_deployer_from_before_the_move_does_not_block_deploys(
+    world: World, record: str
 ) -> None:
-    """The older attempt file ended in 0 or 1, not a pin. There is no image to restore
-    from that, so it stops loudly rather than guess."""
+    """The old deployer wrote `tag commit 0|1`, about a deploy in the OLD checkout.
+
+    It names no pin, so there is nothing in it this deployer could roll back to, and
+    nothing in this directory that it describes. Production was put here by hand, at
+    the move. If the app is serving the pinned image, the record is stale: it is
+    cleared, said out loud, and the tick carries on to the next signed tag. The old
+    tag is not marked failed; nothing is known against it.
+    """
     before = world.head()
+    world.commit("release one")
+    world.push_main()
+    world.tag("v1", world.bill)
+    world.config.state_dir.mkdir()
+    world.config.attempt_file.write_text(record.format(commit=before))
+
+    assert world.deploy() == EXIT_DONE
+
+    assert any("from before production was moved" in line for line in world.log)
+    assert world.head() == _git(world.dev, "rev-parse", "v1^{commit}")
+    assert not world.config.attempt_file.exists()
+    assert not world.config.failed_tags_file.exists()
+
+
+@OLD_ATTEMPTS
+def test_an_old_attempt_is_kept_when_the_app_is_not_serving(world: World, record: str) -> None:
+    """Then a deploy may really be half finished, and a person has to look."""
+    before = world.head()
+    world.healthy = False
+    world.config.state_dir.mkdir()
+    world.config.attempt_file.write_text(record.format(commit=before))
+
+    assert world.deploy() == EXIT_ROLLBACK_FAILED
+
+    assert any(line.startswith("STUCK") for line in world.log)
+    assert world.config.attempt_file.exists()
+    assert world.head() == before
+    assert world.pin() == FIRST_PIN
+
+
+def test_an_old_attempt_is_kept_when_there_is_no_pin_to_be_serving(world: World) -> None:
+    before = world.head()
+    (world.checkout / "image.env").unlink()
     world.config.state_dir.mkdir()
     world.config.attempt_file.write_text(f"v1 {before} 1\n")
 
     assert world.deploy() == EXIT_ROLLBACK_FAILED
+
     assert any(line.startswith("STUCK") for line in world.log)
+    assert world.config.attempt_file.exists()
+
+
+@pytest.mark.parametrize("attempt", [False, True], ids=["idle", "mid-deploy"])
+def test_a_deploy_directory_that_is_not_there_is_a_refusal_not_a_crash(
+    world: World, attempt: bool
+) -> None:
+    """Before the move `~/srv/savethedate` does not exist. Nothing was changed, so it
+    is exit 2 with the reason, not a traceback from the first git command."""
+    world.commit("release one")
+    world.push_main()
+    world.tag("v1", world.bill)
+    if attempt:
+        world.config.state_dir.mkdir()
+        world.config.attempt_file.write_text(f"v1 {world.head()} {FIRST_PIN}\n")
+    world.checkout.rename(world.tmp / "moved-away")
+
+    assert world.deploy() == EXIT_REFUSED
+
+    refusal = next(line for line in world.log if line.startswith("REFUSED"))
+    assert str(world.checkout) in refusal
+    assert "Moving production out of" in refusal
     assert world.host.calls == []
+    assert world.config.attempt_file.exists() == attempt
+    assert not world.config.failed_tags_file.exists()
 
 
 # -- The installed copy follows the live tag (TAP-12499) ----------------------------
@@ -922,7 +996,7 @@ def test_prod_sh_migrates_on_its_own_before_up() -> None:
     text = (ROOT / "scripts" / "prod.sh").read_text()
     body = text.split("deploy() {", 1)[1].split("\n}", 1)[0]
     steps = [line.strip() for line in body.splitlines() if line.strip().startswith(("dc ", "_"))]
-    assert steps == ["dc pull migrate app", "dc run --rm migrate", "dc up -d", "_wait_healthy"]
+    assert steps == ["_obtain_image", "dc run --rm migrate", "dc up -d", "_wait_healthy"]
 
 
 def test_prod_sh_stops_before_up_when_the_migration_fails(tmp_path: Path) -> None:

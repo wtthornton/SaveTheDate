@@ -380,8 +380,21 @@ def test_the_pin_is_not_tracked_so_writing_it_never_dirties_the_deploy_directory
     assert tracked.stdout == ""
 
 
-def _deploy_dir(tmp_path: Path, image_env: str | None) -> tuple[Path, Path]:
-    """A deploy directory with the real scripts and a `docker` that only takes notes."""
+# What production ran before TAP-10322: built in the checkout, under this local name.
+LOCAL_BUILD = "savethedate-prod:latest"
+# How prod.sh asks what the app container was created from. No compose file, so it
+# can be asked with no pin.
+ASKS_WHAT_THE_APP_RUNS = "compose -p savethedate-prod ps -a --format {{.Image}} app"
+
+
+def _deploy_dir(
+    tmp_path: Path, image_env: str | None, app_runs: str | None = None
+) -> tuple[Path, Path]:
+    """A deploy directory with the real scripts and a `docker` that only takes notes.
+
+    `app_runs` is the image the production app container was created from, which is
+    all the fake answers; None is no app container at all.
+    """
     (tmp_path / "scripts").mkdir()
     for name in ("prod.sh", "backup.sh", "restore-drill.sh"):
         shutil.copy(ROOT / "scripts" / name, tmp_path / "scripts" / name)
@@ -393,8 +406,19 @@ def _deploy_dir(tmp_path: Path, image_env: str | None) -> tuple[Path, Path]:
     bin_dir.mkdir()
     calls = tmp_path / "docker-calls"
     docker = bin_dir / "docker"
-    docker.write_text(f'#!/bin/sh\necho "$*" >> {calls}\nexit 0\n')
+    answer = f'case "$*" in "{ASKS_WHAT_THE_APP_RUNS}") echo "{app_runs}" ;; esac\n'
+    docker.write_text(
+        "#!/bin/sh\n"
+        f'echo "$*" >> {calls}\n'
+        f'echo "${{SAVETHEDATE_IMAGE:-}}" >> {tmp_path}/docker-image-variable\n'
+        + (answer if app_runs is not None else "")
+        + "exit 0\n"
+    )
     docker.chmod(0o755)
+    # /health answers. Without this `deploy` and `up` wait a minute for a real app.
+    curl = bin_dir / "curl"
+    curl.write_text("#!/bin/sh\nexit 0\n")
+    curl.chmod(0o755)
     return bin_dir, calls
 
 
@@ -412,7 +436,6 @@ def _run(cwd: Path, bin_dir: Path, *argv: str) -> subprocess.CompletedProcess[st
 @pytest.mark.parametrize(
     "image_env",
     [
-        None,
         "",
         "SAVETHEDATE_IMAGE=\n",
         "SAVETHEDATE_IMAGE=registry.test:5000/savethedate:v7\n",
@@ -427,7 +450,6 @@ def _run(cwd: Path, bin_dir: Path, *argv: str) -> subprocess.CompletedProcess[st
         f"SAVETHEDATE_IMAGE={PIN}\nPOSTGRES_PASSWORD=something-else\n",
     ],
     ids=[
-        "missing",
         "empty-file",
         "empty-value",
         "tag-only",
@@ -442,20 +464,107 @@ def _run(cwd: Path, bin_dir: Path, *argv: str) -> subprocess.CompletedProcess[st
     ],
 )
 def test_prod_sh_refuses_an_image_that_is_not_pinned_by_tag_and_digest(
-    tmp_path: Path, image_env: str | None
+    tmp_path: Path, image_env: str
 ) -> None:
     """Compose's `:?` only catches a missing value. A bare tag would sail through it.
 
     `savethedate:v7` is a name somebody can push over; the digest is what makes the
-    image the one that was built. Docker is never reached.
+    image the one that was built. Docker is never reached, and an `image.env` that
+    is there but wrong is never excused by what production happens to be running.
     """
-    bin_dir, calls = _deploy_dir(tmp_path, image_env)
+    bin_dir, calls = _deploy_dir(tmp_path, image_env, app_runs=LOCAL_BUILD)
 
     result = _run(tmp_path, bin_dir, "scripts/prod.sh", "up")
 
     assert result.returncode != 0
     assert "image.env" in result.stderr
     assert not calls.exists()
+
+
+@pytest.mark.parametrize("app_runs", [None, PIN], ids=["no-app-container", "a-pinned-app"])
+@pytest.mark.parametrize("command", ["deploy", "up"])
+def test_without_a_pin_prod_sh_starts_nothing_once_production_has_moved(
+    tmp_path: Path, app_runs: str | None, command: str
+) -> None:
+    """No `image.env` is refused, unless production is still the pre-move local build.
+
+    The only thing asked of Docker is what the app container was created from.
+    """
+    bin_dir, calls = _deploy_dir(tmp_path, None, app_runs=app_runs)
+
+    result = _run(tmp_path, bin_dir, "scripts/prod.sh", command)
+
+    assert result.returncode != 0
+    assert "image.env" in result.stderr
+    assert calls.read_text().splitlines() == [ASKS_WHAT_THE_APP_RUNS]
+
+
+def test_the_deployer_installed_before_the_move_can_still_deploy_this_release(
+    tmp_path: Path,
+) -> None:
+    """it13 runs the OLD installed deploy_release.py until Bill moves production.
+
+    With the deploy timer on, a signed tag carrying TAP-10322 is deployed by that old
+    copy, from `~/code/SaveTheDate`, where there is no `image.env`. What it runs, in
+    order (scripts/deploy_release.py at f4ed1af, `deploy()`):
+
+        docker image inspect savethedate-prod:latest
+        docker image tag savethedate-prod:latest savethedate-prod:previous
+        git checkout --detach <tag>
+        scripts/prod.sh deploy          <- this release's prod.sh
+        bash deploy/install-timers.sh   <- this release's installer (test_setup_deploy)
+
+    If prod.sh failed there, the old deployer would roll back and write the tag into
+    failed-tags. So while the app container is still the local build, prod.sh does
+    what the old one did: build here, migrate, start. It says so, loudly.
+    """
+    bin_dir, calls = _deploy_dir(tmp_path, None, app_runs=LOCAL_BUILD)
+    _run(tmp_path, bin_dir, "-c", f"docker image inspect {LOCAL_BUILD}")
+    _run(tmp_path, bin_dir, "-c", f"docker image tag {LOCAL_BUILD} savethedate-prod:previous")
+    calls.unlink()
+    (tmp_path / "docker-image-variable").unlink()
+
+    result = _run(tmp_path, bin_dir, "scripts/prod.sh", "deploy")
+
+    assert result.returncode == 0, result.stderr
+    compose = f"compose --env-file {tmp_path}/.env.prod -f {tmp_path}/docker-compose.prod.yml"
+    steps = [line for line in calls.read_text().splitlines() if line != ASKS_WHAT_THE_APP_RUNS]
+    assert steps[:3] == [
+        f"build --tag {LOCAL_BUILD} {tmp_path}",
+        f"{compose} run --rm migrate",
+        f"{compose} up -d",
+    ]
+    assert not any(" pull" in step for step in steps)
+    # Every compose call is told to run the image that was just built.
+    seen = (tmp_path / "docker-image-variable").read_text().splitlines()
+    told = [
+        image
+        for call, image in zip(calls.read_text().splitlines(), seen, strict=True)
+        if call.startswith(compose)
+    ]
+    assert told and set(told) == {LOCAL_BUILD}
+    assert "docs/RUNBOOK.md" in result.stderr
+    assert "Moving production out of" in result.stderr
+
+
+def test_the_old_deployers_rollback_command_works_on_this_release_too(tmp_path: Path) -> None:
+    """`scripts/prod.sh compose up -d --no-deps db app`, and `compose port app 8000`.
+
+    The old deployer runs these after checking the previous commit out, but a later
+    tag rolled back to THIS release runs them against this prod.sh.
+    """
+    bin_dir, calls = _deploy_dir(tmp_path, None, app_runs=LOCAL_BUILD)
+
+    result = _run(
+        tmp_path, bin_dir, "scripts/prod.sh", "compose", "up", "-d", "--no-deps", "db", "app"
+    )
+
+    assert result.returncode == 0, result.stderr
+    assert calls.read_text().splitlines()[-1] == (
+        f"compose --env-file {tmp_path}/.env.prod -f {tmp_path}/docker-compose.prod.yml "
+        "up -d --no-deps db app"
+    )
+    assert "build" not in calls.read_text()
 
 
 def test_prod_sh_accepts_a_pin_with_comments_around_it(tmp_path: Path) -> None:

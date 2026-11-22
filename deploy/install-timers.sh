@@ -50,6 +50,29 @@ UNITS=(
 LIBEXEC_DIR="${HOME}/.local/libexec/savethedate"
 ALLOWED_SIGNERS="${HOME}/.config/savethedate/allowed_signers"
 
+# Where the units run from, read from the unit that says so.
+DEPLOY_DIR="$(sed -n 's|^WorkingDirectory=%h/||p' "${ROOT}/deploy/savethedate-backup.service")"
+if [ -z "$DEPLOY_DIR" ]; then
+  echo "Could not read WorkingDirectory= from deploy/savethedate-backup.service" >&2
+  exit 1
+fi
+DEPLOY_DIR="${HOME}/${DEPLOY_DIR}"
+
+# Before production is moved, that directory does not exist, and this script still
+# gets run: the deploy script installed before TAP-10322 runs the live checkout's
+# installer after every deploy. Installing these units then would point the nightly
+# backup at a script that is not there, and replace the deploy script with one that
+# refuses every tick. So nothing is installed and what is installed keeps running
+# from the old checkout. That is the right state until the move, so it is not an
+# error: a non-zero exit would have the old deploy script report a failed reinstall
+# for every release.
+if [ ! -d "$DEPLOY_DIR" ]; then
+  echo "NOT INSTALLED: ${DEPLOY_DIR} does not exist, and these units run from it." >&2
+  echo "The installed units and deploy script are left exactly as they were." >&2
+  echo "Move production there first: docs/RUNBOOK.md, 'Moving production out of \`~/code\`'." >&2
+  exit 0
+fi
+
 if ! loginctl show-user "$USER" -p Linger --value 2>/dev/null | grep -q '^yes$'; then
   echo "Lingering is OFF for $USER." >&2
   echo "These timers would stop the moment you log out." >&2

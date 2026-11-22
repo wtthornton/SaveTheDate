@@ -19,7 +19,9 @@
 # It runs from the DEPLOY DIRECTORY, `~/srv/savethedate` on it13, and reads three
 # files beside itself there: `docker-compose.prod.yml`, `.env.prod` (secrets) and
 # `image.env` (the image this release runs). It builds nothing and needs no source
-# tree; nothing here reads `~/code` (TAP-10322). `scripts/backup.sh` and
+# tree; nothing here reads `~/code` (TAP-10322). The one exception is production that
+# has not been moved yet, which is still built where it stands: see `_require_env`.
+# `scripts/backup.sh` and
 # `scripts/restore-drill.sh` reach the database through `prod.sh db-exec`, which
 # needs no image pin, so a bad `image.env` cannot stop a backup.
 #
@@ -39,6 +41,32 @@ APP_URL_DEFAULT_PORT=8100
 # digest is what Docker actually pulls, so a tag that is moved later changes nothing.
 IMAGE_PIN='^SAVETHEDATE_IMAGE=[^[:space:]@]+:[^[:space:]@:/]+@sha256:[0-9a-f]{64}$'
 
+# What production ran before TAP-10322: built in the checkout, under this local name.
+LOCAL_BUILD="savethedate-prod:latest"
+# 1 once `_require_env` has found production still running that local build.
+BUILT_HERE=0
+IMAGE_CHECKED=0
+
+_project() {
+  # The Compose project's name, from the one place it is written.
+  local project
+  project="$(sed -n 's/^name:[[:space:]]*//p' "$COMPOSE_FILE")"
+  if [ -z "$project" ]; then
+    echo "Could not read the project name from $COMPOSE_FILE" >&2
+    exit 1
+  fi
+  echo "$project"
+}
+
+_app_container_image() {
+  # What the production app container was created from, stopped or running. Asked
+  # by project name, with no compose file, so it can be answered with no pin. From
+  # /, so Compose does not read the development `docker-compose.yml` beside this.
+  local project
+  project="$(_project)"
+  (cd / && docker compose -p "$project" ps -a --format '{{.Image}}' app 2>/dev/null) || true
+}
+
 _require_env() {
   if [ ! -f "$ENV_FILE" ]; then
     echo "Missing $ENV_FILE" >&2
@@ -56,6 +84,29 @@ _require_env() {
   # The compose file's `:?` catches a missing pin. It cannot tell `savethedate:v3`
   # from a pinned reference, and a bare tag is exactly the unpinned image this file
   # exists to rule out, so the shape is checked here.
+  if [ "$IMAGE_CHECKED" = 1 ]; then
+    return
+  fi
+  if [ ! -f "$IMAGE_FILE" ] && [ "$(_app_container_image)" = "$LOCAL_BUILD" ]; then
+    # PRODUCTION HAS NOT BEEN MOVED YET. Until Bill moves it, it13 runs the deploy
+    # script that was installed before TAP-10322. That copy checks a signed tag out
+    # in the old checkout, where there is no `image.env`, and runs this file. If this
+    # refused, it would roll the release back and record the tag as failed, for a
+    # release with nothing wrong with it. So this does what it did before the move:
+    # build here and run that.
+    #
+    # The test is what the app container was created from, not where this file is.
+    # The local build is what production ran before the move and never after it:
+    # the move starts the app from a pinned image, and from then on a missing
+    # `image.env` is refused below like any other. An `image.env` that exists is
+    # always held to the pin, whatever is running.
+    BUILT_HERE=1
+    IMAGE_CHECKED=1
+    echo "NOT PINNED: there is no $IMAGE_FILE, and production is still running the image" >&2
+    echo "built in this checkout ($LOCAL_BUILD). Carrying on the old way, building here." >&2
+    echo "Move production to its deploy directory: docs/RUNBOOK.md, 'Moving production out of \`~/code\`'." >&2
+    return
+  fi
   if [ ! -f "$IMAGE_FILE" ]; then
     echo "Missing $IMAGE_FILE" >&2
     echo "It names the image production runs, as one line:" >&2
@@ -79,11 +130,32 @@ _require_env() {
     sed 's/^/  /' <<<"${assignments:-(nothing)}" >&2
     exit 1
   fi
+  IMAGE_CHECKED=1
 }
 
 dc() {
   _require_env
-  docker compose --env-file "$ENV_FILE" --env-file "$IMAGE_FILE" -f "$COMPOSE_FILE" "$@"
+  if [ "$BUILT_HERE" = 1 ]; then
+    SAVETHEDATE_IMAGE="$LOCAL_BUILD" docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  else
+    docker compose --env-file "$ENV_FILE" --env-file "$IMAGE_FILE" -f "$COMPOSE_FILE" "$@"
+  fi
+}
+
+_obtain_image() {
+  # The image is PULLED, never built here (TAP-10322). `image.env` pins it by digest,
+  # so this fetches exactly the bytes that were built on nlt-dev, and is a no-op when
+  # they are already on this box. Only `migrate` and `app` are named: a bare `pull`
+  # would also move Postgres to whatever `postgres:17-alpine` means today.
+  #
+  # Production that has not been moved yet is the exception, and it is built from
+  # this checkout exactly as `docker compose build` built it before.
+  _require_env
+  if [ "$BUILT_HERE" = 1 ]; then
+    docker build --tag "$LOCAL_BUILD" "$ROOT"
+  else
+    dc pull migrate app
+  fi
 }
 
 db_exec() {
@@ -103,13 +175,8 @@ db_exec() {
     echo "Missing $ENV_FILE — this is not a configured production deploy directory." >&2
     exit 1
   fi
-  # The project's name, from the one place it is written.
   local project
-  project="$(sed -n 's/^name:[[:space:]]*//p' "$COMPOSE_FILE")"
-  if [ -z "$project" ]; then
-    echo "Could not read the project name from $COMPOSE_FILE" >&2
-    exit 1
-  fi
+  project="$(_project)"
   # From /, so Compose does not pick up the development `docker-compose.yml` that
   # sits in this directory and read it under the production project's name.
   cd /
@@ -132,11 +199,6 @@ deploy() {
   # The release order the plan asks for: get the image, run the migration to
   # completion, and only then start the app.
   #
-  # The image is PULLED, never built here (TAP-10322). `image.env` pins it by digest,
-  # so this fetches exactly the bytes that were built on nlt-dev, and is a no-op when
-  # they are already on this box. Only `migrate` and `app` are named: a bare `pull`
-  # would also move Postgres to whatever `postgres:17-alpine` means today.
-  #
   # The migration runs on its own first, and `up` comes only after it has passed.
   # `up` alone looks equivalent because the app waits on
   # `service_completed_successfully`, but it is not. Compose RECREATES every
@@ -148,7 +210,7 @@ deploy() {
   # the schema is unchanged too. `up` then runs migrate once more, as a no-op.
   #
   # `scripts/deploy_release.py` runs this from a signed tag; nobody should need to.
-  dc pull migrate app
+  _obtain_image
   dc run --rm migrate
   dc up -d
   _wait_healthy

@@ -179,8 +179,19 @@ class Deployer:
     # -- the tick --------------------------------------------------------
 
     def run(self) -> int:
+        if not self.config.checkout.is_dir():
+            # Before the move there is no deploy directory. Every command below runs
+            # in it, so this would otherwise be a traceback from the first of them.
+            self.log(
+                f"REFUSED: the deploy directory {self.config.checkout} does not exist. "
+                "Production has not been moved there: docs/RUNBOOK.md, "
+                "'Moving production out of `~/code`'. Nothing was changed."
+            )
+            return EXIT_REFUSED
         if self.config.attempt_file.exists():
-            return self.recover()
+            settled = self.recover()
+            if settled is not None:
+                return settled
         try:
             tag = self.choose_tag()
         except Refusal as refusal:
@@ -439,28 +450,56 @@ class Deployer:
         partial.write_text(text)
         os.replace(partial, self.config.attempt_file)
 
-    def recover(self) -> int:
+    def recover(self) -> int | None:
         """A tick that was killed mid-deploy left its attempt behind.
 
         The checkout already sits at that tag, so without this the next tick would
         read it as live and the half-finished deploy would stand. It is a failure, and
-        it is rolled back like one.
+        it is rolled back like one. The exit code, or None when the record turned out
+        to be stale and this tick should carry on.
         """
         fields = self.config.attempt_file.read_text().split()
-        if (
-            len(fields) != 3
-            or tag_number(fields[0]) is None
-            or PIN_PATTERN.match(fields[2]) is None
-        ):
-            self.log(f"STUCK: {self.config.attempt_file} is not an attempt record: {fields!r}.")
-            self.log("A deploy may be half finished. Check scripts/prod.sh status on it13,")
-            self.log("then remove the file by hand. No deploy runs until then.")
-            return EXIT_ROLLBACK_FAILED
+        named_a_tag = bool(fields) and tag_number(fields[0]) is not None
+        if named_a_tag and (len(fields) == 2 or (len(fields) == 3 and fields[2] in ("0", "1"))):
+            return self._recover_from_before_the_move(fields[0])
+        if not named_a_tag or len(fields) != 3 or PIN_PATTERN.match(fields[2]) is None:
+            return self._stuck(f"is not an attempt record: {fields!r}")
         tag, previous_commit, previous_pin = fields
         self.log(
             f"FAILED: the deploy of {tag} was interrupted. Rolling back to {previous_commit[:12]}."
         )
         return self.fail(tag, previous_commit, previous_pin)
+
+    def _stuck(self, why: str) -> int:
+        self.log(f"STUCK: {self.config.attempt_file} {why}.")
+        self.log("A deploy may be half finished. Check scripts/prod.sh status on it13,")
+        self.log("then remove the file by hand. No deploy runs until then.")
+        return EXIT_ROLLBACK_FAILED
+
+    def _recover_from_before_the_move(self, tag: str) -> int | None:
+        """An attempt in the format the deploy script wrote before TAP-10322.
+
+        `tag commit 0|1`: no pin. It is about a deploy in the old checkout, which this
+        script does not move, and it names nothing this script could roll back to.
+        Production was started in this directory by hand, at the move. If it is
+        serving the pinned image now, the record describes nothing that is still
+        true, and leaving it would block every deploy until someone logged in.
+        If it is not serving, a person has to look, as for any unreadable record.
+        """
+        try:
+            self.current_pin()
+        except Refusal as refusal:
+            return self._stuck(f"is from before production was moved, and {refusal}")
+        if not self.app_healthy():
+            return self._stuck(
+                "is from before production was moved, and the app does not answer /health"
+            )
+        self.config.attempt_file.unlink()
+        self.log(
+            f"Cleared an attempt at {tag} from before production was moved. It was a deploy "
+            "in the old checkout; the app here is serving the pinned image."
+        )
+        return None
 
     def fail(self, tag: str, previous_commit: str, previous_pin: str) -> int:
         self._record_failed(tag)
