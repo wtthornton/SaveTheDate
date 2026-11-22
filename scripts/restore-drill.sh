@@ -22,7 +22,6 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="${ROOT}/docker-compose.prod.yml"
 ENV_FILE="${ROOT}/.env.prod"
 BACKUP_ENV="${ROOT}/.env.backup"
 WORK="$(mktemp -d)"
@@ -39,13 +38,16 @@ cleanup() {
   rm -rf "$WORK"
   # Dropping the scratch database is cleanup, not part of the result — if the drill
   # already failed, its exit status must survive this.
-  dc exec -T db psql -U savethedate -d postgres \
+  dc psql -U savethedate -d postgres \
     -c "drop database if exists ${SCRATCH};" >/dev/null 2>&1 || true
 }
 trap cleanup EXIT
 
 [ -f "$ENV_FILE" ] || die "missing $ENV_FILE"
-dc() { docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"; }
+# A command inside the running database container, through prod.sh, which knows the
+# Compose project. `db-exec` needs no image pin: nothing here starts a container, so
+# a missing or malformed `image.env` cannot stop this (TAP-10322).
+dc() { "${ROOT}/scripts/prod.sh" db-exec "$@"; }
 
 # -- 1. Get a dump and its manifest ------------------------------------------
 DUMP=""
@@ -89,18 +91,18 @@ fi
 
 # -- 2. Restore into a scratch database ---------------------------------------
 log "creating scratch database ${SCRATCH}"
-dc exec -T db psql -U savethedate -d postgres -c "create database ${SCRATCH};" >/dev/null ||
+dc psql -U savethedate -d postgres -c "create database ${SCRATCH};" >/dev/null ||
   die "could not create the scratch database"
 
 log "restoring"
 # --exit-on-error: a restore that logs errors and carries on is how a partial
 # restore gets mistaken for a successful one.
-dc exec -T db pg_restore -U savethedate -d "${SCRATCH}" --no-owner --no-acl --exit-on-error \
+dc pg_restore -U savethedate -d "${SCRATCH}" --no-owner --no-acl --exit-on-error \
   <"$DUMP" || die "pg_restore refused the archive"
 
 # -- 3. Count what came back, and compare -------------------------------------
 log "counting rows in the restored database"
-RESTORED="$(dc exec -T db psql -U savethedate -d "${SCRATCH}" -At -F$'\t' -c "
+RESTORED="$(dc psql -U savethedate -d "${SCRATCH}" -At -F$'\t' -c "
   select 'events', count(*) from events
   union all select 'guests', count(*) from guests
   union all select 'rsvps', count(*) from rsvps

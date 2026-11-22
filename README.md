@@ -249,15 +249,22 @@ written to be followable by someone who has never seen this project.
 
 ### Running production
 
+Production runs from a deploy directory, `~/srv/savethedate` on it13, not from a
+development checkout, and builds nothing there (TAP-10322). The image is built on
+nlt-dev by `scripts/build-image.sh` and pulled by digest.
+
 ```bash
 cp .env.prod.example .env.prod     # fill in POSTGRES_PASSWORD; it is gitignored
-./scripts/prod.sh deploy           # build, migrate, start, wait for /health
+# image.env: one line, SAVETHEDATE_IMAGE=<repository>:v<N>@sha256:<digest>
+#            (see image.env.example; the deploy unit rewrites it for each release)
+./scripts/prod.sh deploy           # pull, migrate, start, wait for /health
 ./scripts/prod.sh status           # containers, health, and backup timer state
 ```
 
-Always go through `scripts/prod.sh`. It supplies `--env-file .env.prod`, and Compose
-substitutes *nothing* for an unset variable rather than failing — so running the compose
-file directly starts Postgres with a blank password instead of erroring.
+Always go through `scripts/prod.sh`. It supplies `--env-file .env.prod` and
+`--env-file image.env`, and Compose substitutes *nothing* for an unset variable rather
+than failing — so running the compose file directly starts Postgres with a blank
+password instead of erroring.
 
 ## Quick start
 

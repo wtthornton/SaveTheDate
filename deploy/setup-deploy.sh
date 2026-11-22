@@ -2,7 +2,7 @@
 #
 # One-time setup of the release-tag deploy on it13, as one command. TAP-12474.
 #
-#   cd ~/code/SaveTheDate && git pull --ff-only && \
+#   cd ~/srv/savethedate && git pull --ff-only && \
 #     deploy/setup-deploy.sh ~/.config/websitedup/allowed_signers tapp.thornton@gmail.com
 #
 # 1. Copies the allowed_signers line(s) for PRINCIPAL, and only those, from

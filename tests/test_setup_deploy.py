@@ -36,6 +36,9 @@ class Box:
         lookalike = f'bill@example.com.evil namespaces="git" {_public_key(tmp, "evil")}'
         self.home = tmp / "home"
         self.home.mkdir()
+        # The deploy directory the units run from. Production has been moved.
+        self.deploy_dir = self.home / "srv" / "savethedate"
+        self.deploy_dir.mkdir(parents=True)
         self.bin = tmp / "bin"
         self.bin.mkdir()
         self.systemctl_calls = tmp / "systemctl-calls"
@@ -160,6 +163,45 @@ def test_an_empty_principal_is_refused(box: Box) -> None:
 
     assert result.returncode != 0
     assert not box.target.exists()
+
+
+# -- before production is moved (TAP-10322) ------------------------------------------
+
+
+def test_before_the_move_the_installer_leaves_the_old_units_and_deployer_alone(box: Box) -> None:
+    """The old deployer runs this release's installer after it deploys this release.
+
+    The units here run from `~/srv/savethedate`. Until Bill has made that directory,
+    installing them would point the nightly backup at a script that is not there, and
+    replace the deployer with one that refuses every tick. So nothing is installed,
+    the old units keep running from the old checkout, and it exits 0: the old
+    deployer would otherwise report the release as a failed reinstall.
+    """
+    box.deploy_dir.rmdir()
+    libexec = box.home / ".local" / "libexec" / "savethedate"
+    libexec.mkdir(parents=True)
+    (libexec / "deploy_release.py").write_text("# the deployer from before the move\n")
+    unit_dir = box.home / ".config" / "systemd" / "user"
+    unit_dir.mkdir(parents=True)
+    (unit_dir / "savethedate-backup.service").write_text("# the old unit\n")
+
+    result = box.install()
+
+    assert result.returncode == 0, result.stderr
+    assert (libexec / "deploy_release.py").read_text() == "# the deployer from before the move\n"
+    assert sorted(p.name for p in unit_dir.iterdir()) == ["savethedate-backup.service"]
+    assert (unit_dir / "savethedate-backup.service").read_text() == "# the old unit\n"
+    assert not box.systemctl_calls.exists()
+    assert "NOT INSTALLED" in result.stderr
+    assert "Moving production out of" in result.stderr
+
+
+def test_the_installer_reads_the_deploy_directory_from_the_units_it_installs() -> None:
+    """One place says where production runs from. The installer's check follows it."""
+    installer = INSTALLER.read_text()
+
+    assert "srv/savethedate" not in installer
+    assert "WorkingDirectory=" in installer
 
 
 # -- install-timers.sh replaces what is running (TAP-12499) -------------------------

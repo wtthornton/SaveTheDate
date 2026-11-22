@@ -5,7 +5,10 @@
 #   scripts/backup.sh            dump, verify, upload, prune
 #   scripts/backup.sh --local    dump and verify only; do NOT upload (for testing)
 #
-# Run on a timer by `deploy/savethedate-backup.timer`.
+# Run on a timer by `deploy/savethedate-backup.timer`, from the deploy directory
+# (`~/srv/savethedate` on it13). It reads `.env.backup` from beside the compose file
+# there and stages dumps in `.backups/` there. It needs no other checkout to exist,
+# and it does not read `image.env`: a broken image pin must not stop a backup.
 #
 # LOSING THE GUEST LIST IS THE ONE FAILURE HERE WITH NO RECOVERY PATH, and the date
 # cannot move. Three things follow, and each is enforced below rather than hoped for:
@@ -31,7 +34,6 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="${ROOT}/docker-compose.prod.yml"
 ENV_FILE="${ROOT}/.env.prod"
 BACKUP_ENV="${ROOT}/.env.backup"
 STAGING="${BACKUP_STAGING:-${ROOT}/.backups}"
@@ -57,7 +59,10 @@ chmod 700 "$STAGING"
 
 [ -f "$ENV_FILE" ] || die "missing $ENV_FILE — the production stack is not configured"
 
-dc() { docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"; }
+# A command inside the running database container, through prod.sh, which knows the
+# Compose project. `db-exec` needs no image pin: nothing here starts a container, so
+# a missing or malformed `image.env` cannot stop this (TAP-10322).
+dc() { "${ROOT}/scripts/prod.sh" db-exec "$@"; }
 
 # -- 1. The manifest, BEFORE the dump ---------------------------------------
 #
@@ -66,7 +71,7 @@ dc() { docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"; }
 # write landing between the two would show up as a one-row difference, which is why
 # the drill treats a SHORTFALL as failure and a surplus as information.
 log "counting rows in the production database"
-COUNTS="$(dc exec -T db psql -U savethedate -d savethedate -At -F$'\t' -c "
+COUNTS="$(dc psql -U savethedate -d savethedate -At -F$'\t' -c "
   select 'events', count(*) from events
   union all select 'guests', count(*) from guests
   union all select 'rsvps', count(*) from rsvps
@@ -96,7 +101,7 @@ PY
 # Custom format: compressed in place, and readable by `pg_restore --list`, which is
 # what makes step 3 possible. A plain-SQL dump can only be verified by restoring it.
 log "dumping"
-dc exec -T db pg_dump -U savethedate -d savethedate --format=custom --no-owner --no-acl \
+dc pg_dump -U savethedate -d savethedate --format=custom --no-owner --no-acl \
   >"$DUMP" || die "pg_dump failed"
 
 [ -s "$DUMP" ] || die "the dump is empty"
@@ -107,7 +112,7 @@ dc exec -T db pg_dump -U savethedate -d savethedate --format=custom --no-owner -
 # fills. Reading the table of contents back proves the archive parses and that the
 # tables are in it.
 log "verifying the archive"
-TOC="$(dc exec -T db pg_restore --list <"$DUMP" 2>/dev/null)" || die "the dump is not a readable archive"
+TOC="$(dc pg_restore --list <"$DUMP" 2>/dev/null)" || die "the dump is not a readable archive"
 # A data SECTION for each table, which is not the same as rows — pg_dump emits one
 # for an empty table too. Proving rows arrived is the restore drill's job, via the
 # manifest; claiming it here would be the kind of overstatement that gets believed.
