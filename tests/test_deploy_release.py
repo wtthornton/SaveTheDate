@@ -41,6 +41,7 @@ from scripts.deploy_release import (
 
 ROOT = Path(__file__).resolve().parent.parent
 INSTALLER = ("bash", "deploy/install-timers.sh")
+COMPOSE_FILE = "docker-compose.prod.yml"
 REPOSITORY = "registry.test:5000/savethedate"
 ROLLBACK = ("scripts/prod.sh", "compose", "up", "-d", "--no-deps", "db", "app")
 
@@ -150,7 +151,10 @@ class World:
         # The real installer and units, so the checkout can reinstall from itself.
         shutil.copytree(ROOT / "deploy", self.dev / "deploy")
         (self.dev / "scripts").mkdir()
-        _git(self.dev, "add", "deploy")
+        # The real compose file: the deploy reads the live commit's copy to see that
+        # it runs the pinned image, which is what makes `image.env` a way back.
+        shutil.copy(ROOT / COMPOSE_FILE, self.dev / COMPOSE_FILE)
+        _git(self.dev, "add", "deploy", COMPOSE_FILE)
         self.commit("first", deploy_script="# deploy_release.py as of the first commit\n")
         _git(self.dev, "push", "-q", "origin", "main")
         subprocess.run(["git", "clone", "-q", str(self.origin), str(self.checkout)], check=True)
@@ -194,9 +198,14 @@ class World:
         """What `loginctl show-user -p Linger` says. The installer refuses on "no"."""
         self._fake("loginctl", f"echo {answer}")
 
-    def commit(self, message: str, deploy_script: str | None = None) -> str:
+    def commit(
+        self, message: str, deploy_script: str | None = None, compose: str | None = None
+    ) -> str:
         (self.dev / "file.txt").write_text(message)
         _git(self.dev, "add", "file.txt")
+        if compose is not None:
+            (self.dev / COMPOSE_FILE).write_text(compose)
+            _git(self.dev, "add", COMPOSE_FILE)
         if deploy_script is not None:
             (self.dev / "scripts" / "deploy_release.py").write_text(deploy_script)
             _git(self.dev, "add", "scripts/deploy_release.py")
@@ -589,8 +598,20 @@ def test_an_image_built_from_another_commit_is_not_what_bill_signed(world: World
         f"SAVETHEDATE_IMAGE={REPOSITORY}:v0\n",
         f"SAVETHEDATE_IMAGE={REPOSITORY}@{_digest('v0')}\n",
         "SAVETHEDATE_IMAGE=savethedate-prod:latest\n",
+        f"SAVETHEDATE_IMAGE={FIRST_PIN}\nexport SAVETHEDATE_IMAGE={REPOSITORY}:v0\n",
+        f"SAVETHEDATE_IMAGE={FIRST_PIN}\nPOSTGRES_PASSWORD=something-else\n",
+        f"SAVETHEDATE_IMAGE={FIRST_PIN}\nSAVETHEDATE_IMAGE={FIRST_PIN}\n",
     ],
-    ids=["missing", "empty", "tag-only", "digest-only", "the-old-local-tag"],
+    ids=[
+        "missing",
+        "empty",
+        "tag-only",
+        "digest-only",
+        "the-old-local-tag",
+        "a-pin-then-an-export",
+        "a-pin-and-another-variable",
+        "the-pin-twice",
+    ],
 )
 def test_without_a_pinned_image_to_go_back_to_nothing_moves(
     world: World, contents: str | None
@@ -627,6 +648,62 @@ def test_each_release_is_pulled_from_the_repository_the_live_pin_names(world: Wo
 
     assert world.pin() == f"{REPOSITORY}:v2@{_digest('v2')}"
     assert len(world.host.asked("docker", "pull", "--quiet", f"{REPOSITORY}:v2")) == 1
+
+
+BUILDS_ITS_OWN_IMAGE = """\
+name: savethedate-prod
+services:
+  app:
+    build:
+      context: .
+    image: savethedate-prod:latest
+"""
+
+
+@pytest.mark.parametrize(
+    "live_compose",
+    [
+        BUILDS_ITS_OWN_IMAGE,
+        # Reads the pin but can still build: `up` would build what it cannot pull.
+        BUILDS_ITS_OWN_IMAGE.replace("savethedate-prod:latest", "${SAVETHEDATE_IMAGE:?unset}"),
+        None,
+    ],
+    ids=["builds-and-ignores-the-pin", "reads-the-pin-but-can-build", "no-compose-file"],
+)
+def test_a_live_commit_that_cannot_be_rolled_back_to_by_pin_is_not_deployed_over(
+    world: World, live_compose: str | None
+) -> None:
+    """A rollback puts the previous pin back in `image.env`. That only works if the
+    previous commit's compose file runs what `image.env` names.
+
+    A commit from before TAP-10322 builds its own `savethedate-prod:latest` and never
+    reads the pin. Rolling back to it would start whatever that local tag last
+    pointed at, or rebuild it, and report the previous app as back. So it is refused
+    before anything moves, with the one-time move named as the fix. The tag is not
+    burned: it deploys once production runs from a pinned commit.
+    """
+    if live_compose is None:
+        _git(world.dev, "rm", "-q", COMPOSE_FILE)
+        world.commit("live, with no production compose file")
+    else:
+        world.commit("live, from before images were pinned", compose=live_compose)
+    world.push_main()
+    _git(world.checkout, "pull", "-q", "--ff-only")
+    before = world.head()
+    world.commit("release one", compose=(ROOT / COMPOSE_FILE).read_text())
+    world.push_main()
+    world.tag("v1", world.bill)
+
+    assert world.deploy() == EXIT_REFUSED
+
+    assert world.head() == before
+    assert world.pin() == FIRST_PIN
+    assert world.host.calls == []
+    assert not world.config.attempt_file.exists()
+    assert not world.config.failed_tags_file.exists()
+    refusal = next(line for line in world.log if line.startswith("REFUSED"))
+    assert "docs/RUNBOOK.md" in refusal
+    assert "Moving production out of" in refusal
 
 
 def test_an_attempt_left_by_a_deploy_from_before_images_were_pinned_is_stuck(

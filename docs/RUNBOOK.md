@@ -316,7 +316,12 @@ Within about five minutes of both, `savethedate-deploy.timer` on it13 runs
    cannot block a signed one. If none count, the tick is refused and nothing changes;
 3. takes the newest tag that counts, and does nothing if that tag has failed before.
    It never falls back to an older approval;
-4. pulls `<repository>:v<N>` and reads its digest. The image must carry the tag's
+4. refuses if the commit that is live does not run the pinned image: its
+   `docker-compose.prod.yml` must read `SAVETHEDATE_IMAGE` and have no `build:`. A
+   rollback puts the previous pin back, and that brings nothing back if the previous
+   commit builds its own image. A commit from before TAP-10322 is refused this way,
+   and the fix is the one-time move below, not a deploy. Then it
+   pulls `<repository>:v<N>` and reads its digest. The image must carry the tag's
    commit in its `org.opencontainers.image.revision` label. If the image is missing,
    or was built from a different commit, the tick is **refused**: nothing has moved,
    the tag is not marked failed, and the next tick tries again;
@@ -547,7 +552,9 @@ echo 'SAVETHEDATE_IMAGE=<repository>:v3@sha256:...' > image.env    # the digest 
 ./scripts/prod.sh deploy
 ```
 
-`prod.sh` refuses an `image.env` that is not pinned by tag and digest. To go back, put
+`prod.sh` refuses an `image.env` that is not exactly one line pinned by tag and
+digest. Backups are not affected by it: `scripts/backup.sh` and the restore drill
+talk to the running database container directly and never read `image.env`. To go back, put
 the line you kept back in `image.env`, check out the tag it names, and run
 `./scripts/prod.sh compose up -d --no-deps db app`.
 

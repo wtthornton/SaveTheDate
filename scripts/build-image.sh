@@ -74,8 +74,16 @@ docker push "$reference"
 
 # The digest exists only once the registry has the image, which is why it is read
 # back here and cannot be written into the compose file ahead of time.
-digest="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$reference" |
-          awk -F@ -v repo="$repository" '$1 == repo { print $2 }')"
+#
+# Tested with `if !`, not left to `set -e`. A failing command substitution in a plain
+# assignment ends the script on the spot, with no message, and by this line the image
+# is already in the registry. That has to be said.
+if ! digests="$(docker image inspect --format '{{range .RepoDigests}}{{println .}}{{end}}' "$reference")"; then
+  echo "FAILED: pushed ${reference}, but \`docker image inspect\` on it failed, so there is no digest to pin." >&2
+  echo "The image IS in the registry. Do not build it again; read its digest and write the pin by hand." >&2
+  exit 1
+fi
+digest="$(awk -F@ -v repo="$repository" '$1 == repo { print $2 }' <<<"$digests")"
 if ! [[ "$digest" =~ ^sha256:[0-9a-f]{64}$ ]]; then
   echo "FAILED: pushed ${reference}, but Docker reports no single digest for it: '${digest}'" >&2
   exit 1

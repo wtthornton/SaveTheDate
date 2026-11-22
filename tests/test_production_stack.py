@@ -419,8 +419,27 @@ def _run(cwd: Path, bin_dir: Path, *argv: str) -> subprocess.CompletedProcess[st
         "SAVETHEDATE_IMAGE=registry.test:5000/savethedate:latest\n",
         "SAVETHEDATE_IMAGE=registry.test:5000/savethedate@sha256:" + "ab" * 32 + "\n",
         "SAVETHEDATE_IMAGE=registry.test:5000/savethedate:v7@sha256:abc\n",
+        # Compose takes the LAST assignment, so a pin followed by anything is not a pin.
+        f"SAVETHEDATE_IMAGE={PIN}\nSAVETHEDATE_IMAGE=registry.test:5000/savethedate:v7\n",
+        f"SAVETHEDATE_IMAGE={PIN}\nexport SAVETHEDATE_IMAGE=savethedate:latest\n",
+        f"SAVETHEDATE_IMAGE={PIN}\n  SAVETHEDATE_IMAGE = savethedate:latest\n",
+        f"SAVETHEDATE_IMAGE={PIN}\nSAVETHEDATE_IMAGE={PIN}\n",
+        f"SAVETHEDATE_IMAGE={PIN}\nPOSTGRES_PASSWORD=something-else\n",
     ],
-    ids=["missing", "empty-file", "empty-value", "tag-only", "latest", "digest-only", "short"],
+    ids=[
+        "missing",
+        "empty-file",
+        "empty-value",
+        "tag-only",
+        "latest",
+        "digest-only",
+        "short",
+        "a-pin-then-a-bare-tag",
+        "a-pin-then-an-export",
+        "a-pin-then-a-spaced-assignment",
+        "the-pin-twice",
+        "a-pin-and-another-variable",
+    ],
 )
 def test_prod_sh_refuses_an_image_that_is_not_pinned_by_tag_and_digest(
     tmp_path: Path, image_env: str | None
@@ -439,6 +458,18 @@ def test_prod_sh_refuses_an_image_that_is_not_pinned_by_tag_and_digest(
     assert not calls.exists()
 
 
+def test_prod_sh_accepts_a_pin_with_comments_around_it(tmp_path: Path) -> None:
+    """Exactly one assignment is the rule. A comment or a blank line is not one."""
+    bin_dir, calls = _deploy_dir(
+        tmp_path, f"# written by the deploy unit\n\nSAVETHEDATE_IMAGE={PIN}\n"
+    )
+
+    result = _run(tmp_path, bin_dir, "scripts/prod.sh", "compose", "ps")
+
+    assert result.returncode == 0, result.stderr
+    assert calls.exists()
+
+
 def test_prod_sh_gives_compose_the_secrets_and_the_pin_from_beside_itself(
     tmp_path: Path,
 ) -> None:
@@ -454,41 +485,75 @@ def test_prod_sh_gives_compose_the_secrets_and_the_pin_from_beside_itself(
     ]
 
 
-def test_the_backup_reaches_compose_only_through_prod_sh(tmp_path: Path) -> None:
-    """One place knows which files Compose is given, so the backup cannot disagree.
+@pytest.mark.parametrize(
+    "image_env",
+    [f"SAVETHEDATE_IMAGE={PIN}\n", None, "", "SAVETHEDATE_IMAGE=savethedate:latest\n"],
+    ids=["pinned", "missing", "empty", "unpinned"],
+)
+def test_the_backup_does_not_depend_on_the_image_pin(tmp_path: Path, image_env: str | None) -> None:
+    """The guest list is backed up whatever state `image.env` is in.
 
-    The compose file now needs `image.env` to be read at all. A script that named the
-    compose file and `.env.prod` itself would fail every night from the release that
-    added the pin, and the backup is the one thing here that must not quietly stop.
+    The backup and the drill only ever run a command inside the database container
+    that is already running. Neither starts anything, so neither needs to know which
+    application image is pinned. A half-written or missing `image.env` is a deploy
+    problem; it must not also become a night with no backup.
+
+    They ask for the container by the Compose project's name, with no compose file
+    and no env file, so there is nothing in `image.env` for Compose to read.
     """
     for name in ("backup.sh", "restore-drill.sh"):
         text = (ROOT / "scripts" / name).read_text()
-        assert 'dc() { "${ROOT}/scripts/prod.sh" compose "$@"; }' in text, name
+        assert 'dc() { "${ROOT}/scripts/prod.sh" db-exec "$@"; }' in text, name
         assert "docker compose" not in text, name
         assert "docker-compose.prod.yml" not in text, name
 
-    bin_dir, calls = _deploy_dir(tmp_path, f"SAVETHEDATE_IMAGE={PIN}\n")
+    bin_dir, calls = _deploy_dir(tmp_path, image_env)
     # The fake database answers nothing, so the run stops at the empty dump. What is
     # checked is how Compose was reached on the way there.
     result = _run(tmp_path, bin_dir, "scripts/backup.sh", "--local")
 
-    assert "the dump is empty" in result.stderr
+    assert "the dump is empty" in result.stderr, result.stderr
     # One call per `compose` line; the SQL it was handed spills onto the lines after.
     asked = [line for line in calls.read_text().splitlines() if line.startswith("compose ")]
     assert len(asked) == 2, "the row count and the dump"
-    prefix = (
-        f"compose --env-file {tmp_path}/.env.prod --env-file {tmp_path}/image.env "
-        f"-f {tmp_path}/docker-compose.prod.yml exec -T db "
-    )
     for line in asked:
-        assert line.startswith(prefix), line
+        assert line.startswith("compose -p savethedate-prod exec -T db "), line
+
+
+def test_db_exec_can_only_run_a_command_in_the_database_container(tmp_path: Path) -> None:
+    """It is not a second, unchecked way to drive the stack.
+
+    `db-exec` skips the image check, so it must not be able to start or recreate
+    anything: it is `exec` on `db` and nothing else, and what follows is the command.
+    The project name is read from the compose file, not written a second time.
+    """
+    bin_dir, calls = _deploy_dir(tmp_path, None)
+
+    result = _run(tmp_path, bin_dir, "scripts/prod.sh", "db-exec", "up", "-d", "app")
+
+    assert result.returncode == 0, result.stderr
+    assert calls.read_text().splitlines() == ["compose -p savethedate-prod exec -T db up -d app"]
+    prod = (ROOT / "scripts" / "prod.sh").read_text()
+    assert "savethedate-prod exec" not in prod
+
+
+def test_db_exec_still_needs_the_production_stack_to_be_configured(tmp_path: Path) -> None:
+    """No `.env.prod` means this is not the production deploy directory."""
+    bin_dir, calls = _deploy_dir(tmp_path, None)
+    (tmp_path / ".env.prod").unlink()
+
+    result = _run(tmp_path, bin_dir, "scripts/prod.sh", "db-exec", "true")
+
+    assert result.returncode != 0
+    assert ".env.prod" in result.stderr
+    assert not calls.exists()
 
 
 # -- The image that is pulled is the commit that was tagged ---------------------
 
 
 def _build_image(
-    tmp_path: Path, *argv: str, digests: str = ""
+    tmp_path: Path, *argv: str, digests: str = "", inspect_exit: int = 0
 ) -> tuple[subprocess.CompletedProcess[str], Path, Path]:
     """Run the real build-image.sh in a small git repository, with Docker faked.
 
@@ -520,7 +585,7 @@ def _build_image(
         f'echo "$*" >> {calls}\n'
         'case "$1" in\n'
         f"  build) cat > {context} ;;\n"
-        f"  image) printf '%s' '{digests}' ;;\n"
+        f"  image) printf '%s' '{digests}'; exit {inspect_exit} ;;\n"
         "esac\n"
         "exit 0\n"
     )
@@ -590,4 +655,22 @@ def test_a_push_that_yields_no_digest_does_not_print_a_pin(tmp_path: Path) -> No
     result, _calls, _context = _build_image(tmp_path, "registry.test:5000/savethedate", "v7")
 
     assert result.returncode != 0
+    assert "SAVETHEDATE_IMAGE=" not in result.stdout
+
+
+def test_an_inspect_that_fails_after_the_push_says_the_image_is_already_pushed(
+    tmp_path: Path,
+) -> None:
+    """The image is in the registry by then. Exiting without a word would hide that.
+
+    Under `set -e` a failing command substitution ends the script on the spot, so
+    the message has to be reached deliberately.
+    """
+    repository = "registry.test:5000/savethedate"
+    result, calls, _context = _build_image(tmp_path, repository, "v7", inspect_exit=1)
+
+    assert result.returncode != 0
+    assert f"push {repository}:v7" in calls.read_text().splitlines()
+    assert "FAILED" in result.stderr
+    assert f"pushed {repository}:v7" in result.stderr
     assert "SAVETHEDATE_IMAGE=" not in result.stdout

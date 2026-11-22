@@ -20,7 +20,10 @@ One tick:
 3. Take the newest tag that counts. Stop quietly if it has failed before. A failed tag
    is never retried, and an older approval is never shipped in its place; the fix is
    a new tag.
-4. Pull the image that was built for the tag, `<repository>:v<N>`, and read its
+4. Refuse if the live commit's compose file does not run the image `image.env`
+   pins. A rollback restores the previous pin, which brings nothing back when the
+   previous commit builds its own image and ignores the pin (any commit from before
+   TAP-10322). Then pull the image that was built for the tag, `<repository>:v<N>`, and read its
    digest. Nothing is built on it13. The repository is the one `image.env` already
    names. The image must carry the tag's commit in its
    `org.opencontainers.image.revision` label, which `scripts/build-image.sh` sets. No
@@ -78,6 +81,7 @@ EXIT_ROLLBACK_FAILED = 3  # PRODUCTION MAY BE DOWN; the attempt file is kept for
 # installed deploy copy and units may be stale. Nothing is rolled back. TAP-12499.
 EXIT_REINSTALL_FAILED = 4
 
+COMPOSE_FILE = "docker-compose.prod.yml"
 # The one line of `image.env`, which Compose reads as `${SAVETHEDATE_IMAGE}`.
 IMAGE_VARIABLE = "SAVETHEDATE_IMAGE"
 # repository:tag@sha256:<64 hex>. `scripts/prod.sh` refuses anything else too.
@@ -265,18 +269,47 @@ class Deployer:
                 f"{self.config.image_file} is missing, so there is no image repository to "
                 "pull from and no image to go back to"
             ) from None
-        values = [
-            line.partition("=")[2].strip()
-            for line in lines
-            if line.partition("=")[0].strip() == IMAGE_VARIABLE
-        ]
-        match = PIN_PATTERN.match(values[0]) if len(values) == 1 else None
+        # The same rule as scripts/prod.sh: exactly one assignment in the file, and it
+        # is the pin, written with no spaces and no `export`. Compose takes the last
+        # value it reads, so a pin with anything after it is not a pin.
+        assignments = [line for line in lines if line.strip() and not line.lstrip().startswith("#")]
+        name, _, value = assignments[0].partition("=") if len(assignments) == 1 else ("", "", "")
+        match = PIN_PATTERN.match(value) if name == IMAGE_VARIABLE else None
         if match is None:
             raise Refusal(
-                f"{self.config.image_file} does not hold exactly one "
-                f"{IMAGE_VARIABLE}=repository:tag@sha256:digest line"
+                f"{self.config.image_file} does not hold exactly one line, "
+                f"{IMAGE_VARIABLE}=repository:tag@sha256:digest"
             )
-        return values[0], match.group("repository")
+        return value, match.group("repository")
+
+    def require_a_way_back(self) -> None:
+        """Refuse to deploy over a live commit that does not run the pinned image.
+
+        A rollback checks the previous commit out again and puts the previous pin
+        back in `image.env`. That brings the previous app back only if the previous
+        commit's compose file runs what `image.env` names. A commit from before
+        TAP-10322 does not: it has `build:` and `image: savethedate-prod:latest`, and
+        never reads the pin. Rolling back to it would start whatever that local tag
+        last pointed at, or rebuild it, and then report the previous app as serving.
+
+        So it is checked here, before anything has moved. Production reaches a pinned
+        commit by the one-time move in the runbook, not by a deploy.
+        """
+        shown = self._cmd("git", "show", f"HEAD:{COMPOSE_FILE}")
+        settings = [
+            line.strip()
+            for line in (shown.stdout if shown.returncode == 0 else "").splitlines()
+            if not line.lstrip().startswith("#")
+        ]
+        reads_the_pin = any("${" + IMAGE_VARIABLE + ":?" in line for line in settings)
+        can_build = any(line.startswith("build:") for line in settings)
+        if not reads_the_pin or can_build:
+            raise Refusal(
+                f"the live commit's {COMPOSE_FILE} does not run the image {IMAGE_VARIABLE} "
+                "pins (it predates TAP-10322, or builds its own), so a failed deploy could "
+                "not be rolled back to it. Move production onto a pinned release by hand: "
+                "docs/RUNBOOK.md, 'Moving production out of `~/code`'"
+            )
 
     def pin_for(self, tag: str, repository: str) -> str:
         """Pull the image built for `tag` and return it pinned by tag and digest.
@@ -330,6 +363,7 @@ class Deployer:
     def deploy(self, tag: str) -> int:
         previous_commit = self._git("rev-parse", "HEAD")
         try:
+            self.require_a_way_back()
             previous_pin, repository = self.current_pin()
             pin = self.pin_for(tag, repository)
         except Refusal as refusal:

@@ -10,6 +10,7 @@
 #   scripts/prod.sh logs     follow the app's logs
 #   scripts/prod.sh psql     a psql shell on the production database
 #   scripts/prod.sh compose  raw `docker compose` with the right file and env-file
+#   scripts/prod.sh db-exec  run a command inside the running database container
 #
 # This exists so that `--env-file .env.prod` is never forgotten. Compose does not
 # error on an unset variable, it substitutes nothing — so running the compose file
@@ -19,8 +20,8 @@
 # files beside itself there: `docker-compose.prod.yml`, `.env.prod` (secrets) and
 # `image.env` (the image this release runs). It builds nothing and needs no source
 # tree; nothing here reads `~/code` (TAP-10322). `scripts/backup.sh` and
-# `scripts/restore-drill.sh` reach Compose through `prod.sh compose`, so this is the
-# only place that knows which files Compose is given.
+# `scripts/restore-drill.sh` reach the database through `prod.sh db-exec`, which
+# needs no image pin, so a bad `image.env` cannot stop a backup.
 #
 # THIS IS THE GUEST LIST. `docker-compose.prod.yml` holds the only copy on this
 # machine, in the volume `savethedate-prod_pgdata`. Nothing here removes a volume,
@@ -63,9 +64,19 @@ _require_env() {
     echo "the deploy unit rewrites it for each release. See docs/RUNBOOK.md." >&2
     exit 1
   fi
-  if ! grep -qE "$IMAGE_PIN" "$IMAGE_FILE"; then
-    echo "SAVETHEDATE_IMAGE in $IMAGE_FILE is not pinned by tag and digest." >&2
-    echo "It must be exactly: SAVETHEDATE_IMAGE=<repository>:v<N>@sha256:<64 hex digits>" >&2
+  # EXACTLY ONE assignment, and that one is the pin. Compose takes the LAST value
+  # it reads for a variable, so a good pin followed by `SAVETHEDATE_IMAGE=repo:v7`
+  # runs the bare tag; "some line is a pin" is not the check. Nothing else belongs
+  # in this file either: the secrets are in .env.prod, and a second variable here
+  # would be one this check never looked at. Comments and blank lines are fine.
+  # `scripts/deploy_release.py` reads the file by the same rule.
+  local assignments
+  assignments="$(grep -vE '^[[:space:]]*(#|$)' "$IMAGE_FILE" || true)"
+  if [ "$(grep -c . <<<"$assignments")" != 1 ] || ! grep -qE "$IMAGE_PIN" <<<"$assignments"; then
+    echo "$IMAGE_FILE must hold exactly one line, pinned by tag and digest:" >&2
+    echo "  SAVETHEDATE_IMAGE=<repository>:v<N>@sha256:<64 hex digits>" >&2
+    echo "It holds:" >&2
+    sed 's/^/  /' <<<"${assignments:-(nothing)}" >&2
     exit 1
   fi
 }
@@ -73,6 +84,36 @@ _require_env() {
 dc() {
   _require_env
   docker compose --env-file "$ENV_FILE" --env-file "$IMAGE_FILE" -f "$COMPOSE_FILE" "$@"
+}
+
+db_exec() {
+  # A command inside the database container that is ALREADY RUNNING, and nothing
+  # else: `exec`, on `db`. This is what the backup and the restore drill use.
+  #
+  # It deliberately does not go through `dc`. `dc` reads the compose file, and the
+  # compose file cannot be read without a valid `image.env`. Neither the backup nor
+  # the drill starts a container, so neither has any use for the application image,
+  # and a missing or half-written pin must not cost a night's backup of the guest
+  # list. Compose finds a running project by its name alone, so this gives it no
+  # compose file and no env file: there is no pin for it to read.
+  #
+  # That is also why skipping the pin check here weakens nothing. `exec` cannot
+  # create, start or recreate a container, so no image can be run through this.
+  if [ ! -f "$ENV_FILE" ]; then
+    echo "Missing $ENV_FILE — this is not a configured production deploy directory." >&2
+    exit 1
+  fi
+  # The project's name, from the one place it is written.
+  local project
+  project="$(sed -n 's/^name:[[:space:]]*//p' "$COMPOSE_FILE")"
+  if [ -z "$project" ]; then
+    echo "Could not read the project name from $COMPOSE_FILE" >&2
+    exit 1
+  fi
+  # From /, so Compose does not pick up the development `docker-compose.yml` that
+  # sits in this directory and read it under the production project's name.
+  cd /
+  docker compose -p "$project" exec -T db "$@"
 }
 
 _app_port() {
@@ -174,8 +215,9 @@ case "${1:-}" in
   logs) shift; dc logs -f --tail 100 "${@:-app}" ;;
   psql) dc exec db psql -U savethedate -d savethedate ;;
   compose) shift; dc "$@" ;;
+  db-exec) shift; db_exec "$@" ;;
   *)
-    sed -n '3,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
+    sed -n '3,14p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//' >&2
     exit 2
     ;;
 esac
