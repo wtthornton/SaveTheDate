@@ -17,6 +17,7 @@ keeps envelopes in a list.
 from __future__ import annotations
 
 import contextvars
+import io
 import json
 import logging
 import os
@@ -460,3 +461,98 @@ def test_the_collector_does_not_change_the_response_to_a_crash(
     assert without.headers["X-Request-ID"] == "crash-off"
     assert with_collector.headers["X-Robots-Tag"] == without.headers["X-Robots-Tag"]
     assert with_collector.headers["content-type"] == without.headers["content-type"]
+
+
+# -- A database outage, probed every 15 seconds ---------------------------------
+
+
+def _probe_events(collector: RecordingTransport) -> list[dict[str, Any]]:
+    return [
+        event
+        for event in collector.events()
+        if "database unreachable" in event.get("logentry", {}).get("message", "")
+    ]
+
+
+def _failed_probe_lines(formatted_log: io.StringIO) -> list[dict[str, Any]]:
+    lines = [json.loads(line) for line in formatted_log.getvalue().splitlines()]
+    return [line for line in lines if "database unreachable" in line["message"]]
+
+
+def test_an_outage_of_any_length_sends_one_event_and_logs_every_probe(
+    database_down: TestClient,
+    collector: RecordingTransport,
+    formatted_log: io.StringIO,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TAP-12504. Docker probes /health every 15s: a day down is 5,760 failed probes.
+
+    Each used to be an ERROR record and so an event, a month of a free plan's quota
+    in a day. Now the collector hears when health CHANGES, and the JSON log on the box
+    still has a line, with its traceback, for every probe that failed.
+    """
+    from app import main
+    from app.db import get_db
+
+    now = [1_000.0]
+    monkeypatch.setattr(main, "database_health", main.HealthTransitions(clock=lambda: now[0]))
+    outage = main.app.dependency_overrides[get_db]
+
+    probes = 20
+    for _ in range(probes):
+        assert database_down.get("/health").status_code == 503
+    assert len(_probe_events(collector)) == 1, "an outage starting is one event"
+    assert len(_failed_probe_lines(formatted_log)) == probes
+    assert all("exception" in line for line in _failed_probe_lines(formatted_log))
+
+    del main.app.dependency_overrides[get_db]
+    try:
+        for _ in range(3):
+            assert database_down.get("/health").status_code == 200
+    finally:
+        main.app.dependency_overrides[get_db] = outage
+
+    now[0] += 3_600.0  # an hour on, so the second outage is reported in its own right
+    for _ in range(probes):
+        assert database_down.get("/health").status_code == 503
+    assert len(_probe_events(collector)) == 2, "a second outage is one more event"
+    assert len(_failed_probe_lines(formatted_log)) == 2 * probes
+
+
+def test_a_flapping_database_sends_one_event_an_hour_at_most(
+    database_down: TestClient,
+    collector: RecordingTransport,
+    formatted_log: io.StringIO,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """TAP-12504, review finding. Down one probe, up the next, all day long.
+
+    Each down is a change of state, so reporting changes alone made that 2,880 events
+    a day: the flood again, by another road. After one outage is reported, a new one
+    is reported only once an hour has passed; the JSON log still has every failure.
+    """
+    from app import main
+    from app.db import get_db
+
+    now = [1_000.0]
+    monkeypatch.setattr(main, "database_health", main.HealthTransitions(clock=lambda: now[0]))
+    outage = main.app.dependency_overrides[get_db]
+
+    def flap() -> None:
+        assert database_down.get("/health").status_code == 503
+        del main.app.dependency_overrides[get_db]
+        try:
+            assert database_down.get("/health").status_code == 200
+        finally:
+            main.app.dependency_overrides[get_db] = outage
+        now[0] += 30.0
+
+    for _ in range(100):  # 50 minutes of flapping
+        flap()
+    assert len(_probe_events(collector)) == 1, "an hour's flapping is one event"
+    assert len(_failed_probe_lines(formatted_log)) == 100
+
+    now[0] += 600.0  # past the hour since the reported outage
+    flap()
+    assert len(_probe_events(collector)) == 2, "a new hour, a new report"
+    assert len(_failed_probe_lines(formatted_log)) == 101

@@ -21,7 +21,7 @@ from collections.abc import Iterator
 
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import create_engine, text
+from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
@@ -34,30 +34,6 @@ def test_health_checks_the_database(anonymous_client: TestClient) -> None:
     response = anonymous_client.get("/health")
     assert response.status_code == 200
     assert response.json() == {"status": "ok", "database": "ok"}
-
-
-@pytest.fixture
-def database_down(anonymous_client: TestClient) -> Iterator[TestClient]:
-    """The app's sessions point at a port nothing listens on.
-
-    Port 1 on loopback refuses at once, so the test measures the app's handling of an
-    outage rather than a TCP timeout.
-    """
-    from app.db import get_db
-    from app.main import app
-
-    unreachable = create_engine("postgresql+psycopg://nobody:nothing@127.0.0.1:1/none")
-
-    def no_database() -> Iterator[Session]:
-        with Session(unreachable) as session:
-            yield session
-
-    app.dependency_overrides[get_db] = no_database
-    try:
-        yield anonymous_client
-    finally:
-        del app.dependency_overrides[get_db]
-        unreachable.dispose()
 
 
 def test_a_database_outage_fails_the_health_check(database_down: TestClient) -> None:
@@ -128,26 +104,6 @@ def test_a_crash_still_returns_its_request_id(
 
 
 # -- No invite token in the logs ---------------------------------------------
-
-
-@pytest.fixture
-def formatted_log() -> Iterator[io.StringIO]:
-    """Everything logged during the test, formatted exactly as production writes it."""
-    from app.observability import JsonFormatter
-
-    buffer = io.StringIO()
-    handler = logging.StreamHandler(buffer)
-    handler.setFormatter(JsonFormatter())
-    handler.setLevel(logging.DEBUG)
-    root = logging.getLogger()
-    previous_level = root.level
-    root.addHandler(handler)
-    root.setLevel(logging.DEBUG)
-    try:
-        yield buffer
-    finally:
-        root.removeHandler(handler)
-        root.setLevel(previous_level)
 
 
 @pytest.fixture

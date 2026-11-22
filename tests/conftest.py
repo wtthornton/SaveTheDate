@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import io
+import logging
 import os
 from collections.abc import Iterator
 from pathlib import Path
@@ -96,6 +98,19 @@ def _clean_rate_limiter() -> None:
     reset_limiter()
 
 
+@pytest.fixture(autouse=True)
+def _fresh_database_health(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Start every test with /health believing the database is up. TAP-12504.
+
+    /health remembers its last probe in process memory, so a test that probes a down
+    database would otherwise leave the next one's first failure logged at WARNING, not
+    ERROR — the same leak `_clean_rate_limiter` closes for the throttle.
+    """
+    from app import main
+
+    monkeypatch.setattr(main, "database_health", main.HealthTransitions())
+
+
 @pytest.fixture
 def db_session(engine: Engine) -> Iterator[Session]:
     """A session alongside the app's own, for setting up rows the API cannot create yet."""
@@ -164,3 +179,47 @@ def _sign_in(test_client: TestClient) -> TestClient:
     )
     assert response.status_code == 200, response.text
     return test_client
+
+
+@pytest.fixture
+def database_down(anonymous_client: TestClient) -> Iterator[TestClient]:
+    """The app's sessions point at a port nothing listens on.
+
+    Port 1 on loopback refuses at once, so the test measures the app's handling of an
+    outage rather than a TCP timeout.
+    """
+    from app.db import get_db
+    from app.main import app
+
+    unreachable = create_engine("postgresql+psycopg://nobody:nothing@127.0.0.1:1/none")
+
+    def no_database() -> Iterator[Session]:
+        with Session(unreachable) as session:
+            yield session
+
+    app.dependency_overrides[get_db] = no_database
+    try:
+        yield anonymous_client
+    finally:
+        del app.dependency_overrides[get_db]
+        unreachable.dispose()
+
+
+@pytest.fixture
+def formatted_log() -> Iterator[io.StringIO]:
+    """Everything logged during the test, formatted exactly as production writes it."""
+    from app.observability import JsonFormatter
+
+    buffer = io.StringIO()
+    handler = logging.StreamHandler(buffer)
+    handler.setFormatter(JsonFormatter())
+    handler.setLevel(logging.DEBUG)
+    root = logging.getLogger()
+    previous_level = root.level
+    root.addHandler(handler)
+    root.setLevel(logging.DEBUG)
+    try:
+        yield buffer
+    finally:
+        root.removeHandler(handler)
+        root.setLevel(previous_level)
