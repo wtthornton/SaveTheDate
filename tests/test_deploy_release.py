@@ -2,9 +2,11 @@
 
 `scripts/deploy_release.py` is the only thing that moves production now. These tests
 run it against real git repositories with real SSH-signed tags: an `origin`, and a
-clone standing in for it13's checkout. Signature verification is git's own. Only
-Docker and `scripts/prod.sh` are faked, and the fake records what was asked of them
-and where the checkout was at that moment.
+clone standing in for it13's deploy directory. Signature verification is git's own.
+Only Docker and `scripts/prod.sh` are faked, and the fake records what was asked of
+them and where the checkout was at that moment. The fake Docker is also a registry:
+it holds the images that were "pushed", each with a digest and the commit it was built
+from, so pulling and pinning one (TAP-10322) runs the real code.
 
 The checkout's own `deploy/install-timers.sh` (TAP-12499) runs for real, under a
 temporary HOME with `systemctl` and `loginctl` faked on PATH, so "the installed copy"
@@ -15,6 +17,7 @@ Nothing here starts Docker or touches the network.
 
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -30,8 +33,7 @@ from scripts.deploy_release import (
     EXIT_REFUSED,
     EXIT_REINSTALL_FAILED,
     EXIT_ROLLBACK_FAILED,
-    IMAGE,
-    PREVIOUS_IMAGE,
+    REVISION_LABEL,
     Config,
     Deployer,
     run_command,
@@ -39,6 +41,16 @@ from scripts.deploy_release import (
 
 ROOT = Path(__file__).resolve().parent.parent
 INSTALLER = ("bash", "deploy/install-timers.sh")
+REPOSITORY = "registry.test:5000/savethedate"
+ROLLBACK = ("scripts/prod.sh", "compose", "up", "-d", "--no-deps", "db", "app")
+
+
+def _digest(seed: str) -> str:
+    return "sha256:" + (seed.encode().hex() * 64)[:64]
+
+
+# What it13 was running before any test's release: Bill wrote this pin at setup.
+FIRST_PIN = f"{REPOSITORY}:v0@{_digest('v0')}"
 
 
 def _git(cwd: Path, *argv: str) -> str:
@@ -61,6 +73,10 @@ class FakeHost:
 
     The installer is recorded too, and then really run, under `installer_env`. Each
     time it is asked for, whether the attempt file exists at that moment is kept.
+
+    `images` is the registry: reference -> (digest, the commit it was built from).
+    `pins` is what `image.env` held each time prod.sh was run, which is the image that
+    call would have started.
     """
 
     checkout: Path
@@ -70,6 +86,28 @@ class FakeHost:
     raising: set[tuple[str, ...]] = field(default_factory=set)
     calls: list[tuple[tuple[str, ...], str]] = field(default_factory=list)
     attempt_at_install: list[bool] = field(default_factory=list)
+    images: dict[str, tuple[str, str]] = field(default_factory=dict)
+    pins: list[tuple[tuple[str, ...], str]] = field(default_factory=list)
+
+    def _docker(self, call: tuple[str, ...]) -> subprocess.CompletedProcess[str] | None:
+        reference = call[-1]
+        if call[:2] == ("docker", "pull"):
+            known = reference in self.images
+            return subprocess.CompletedProcess(call, 0 if known else 1, "", "" if known else "gone")
+        if call[:3] == ("docker", "image", "inspect") and reference in self.images:
+            digest, revision = self.images[reference]
+            repository = reference.rpartition(":")[0]
+            image = {
+                # A second name for the same image, as a box that pulled it from two
+                # places would report. Only the pinned repository's digest counts.
+                "RepoDigests": [
+                    f"elsewhere.test/copy@{_digest('other')}",
+                    f"{repository}@{digest}",
+                ],
+                "Config": {"Labels": {REVISION_LABEL: revision}},
+            }
+            return subprocess.CompletedProcess(call, 0, json.dumps([image]), "")
+        return None
 
     def note(self, *call: str) -> None:
         self.calls.append((call, _git(self.checkout, "rev-parse", "HEAD")))
@@ -79,12 +117,17 @@ class FakeHost:
             return run_command(argv, cwd)
         call = tuple(argv)
         self.note(*call)
+        if call[0] == "scripts/prod.sh":
+            self.pins.append((call, (self.checkout / "image.env").read_text()))
         if call == INSTALLER:
             self.attempt_at_install.append(self.attempt_file.exists())
         if call in self.raising:
             # What run_command raises when the program cannot be started at all.
             raise FileNotFoundError(2, "No such file or directory", call[0])
         failed = any(call[: len(prefix)] == prefix for prefix in self.failing)
+        answer = None if failed else self._docker(call)
+        if answer is not None:
+            return answer
         if call == INSTALLER and not failed:
             return subprocess.run(
                 call, cwd=cwd, env=self.installer_env, capture_output=True, text=True, check=False
@@ -111,6 +154,8 @@ class World:
         self.commit("first", deploy_script="# deploy_release.py as of the first commit\n")
         _git(self.dev, "push", "-q", "origin", "main")
         subprocess.run(["git", "clone", "-q", str(self.origin), str(self.checkout)], check=True)
+        # Untracked, as on it13 where it is gitignored: it never makes the checkout dirty.
+        (self.checkout / "image.env").write_text(f"SAVETHEDATE_IMAGE={FIRST_PIN}\n")
 
         self.bill = _keypair(tmp, "bill")
         self.stranger = _keypair(tmp, "stranger")
@@ -179,7 +224,20 @@ class World:
     def push_main(self) -> None:
         _git(self.dev, "push", "-q", "origin", "main")
 
-    def tag(self, name: str, key: Path | None = None, commit: str = "HEAD") -> None:
+    def push_image(self, name: str, built_from: str | None = None) -> str:
+        """What `scripts/build-image.sh` leaves in the registry. Returns the pin."""
+        revision = built_from or _git(self.dev, "rev-parse", f"{name}^{{commit}}")
+        reference = f"{REPOSITORY}:{name}"
+        self.host.images[reference] = (_digest(name), revision)
+        return f"{reference}@{_digest(name)}"
+
+    def pin(self) -> str:
+        """The image `image.env` names now, which is what Compose would run."""
+        return (self.checkout / "image.env").read_text().strip().partition("=")[2]
+
+    def tag(
+        self, name: str, key: Path | None = None, commit: str = "HEAD", image: bool = True
+    ) -> None:
         if key is None:
             _git(self.dev, "tag", "-a", name, "-m", name, commit)
         else:
@@ -197,6 +255,8 @@ class World:
                 commit,
             )
         _git(self.dev, "push", "-q", "origin", name)
+        if image:
+            self.push_image(name)
 
     def deploy(self) -> int:
         deployer = Deployer(
@@ -230,8 +290,10 @@ def world(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> World:
 def test_a_tag_bill_signed_on_main_is_deployed_from_the_tag(world: World) -> None:
     """The happy path, in the order that keeps a way back.
 
-    The running image is kept as `previous` BEFORE the checkout moves, and the deploy
-    runs with the checkout at the tag, so it is the tag's own prod.sh that runs.
+    The tag's image is pulled BEFORE the checkout moves, so a missing image costs
+    nothing. The deploy then runs with the checkout at the tag, so it is the tag's own
+    prod.sh that runs, and `image.env` already pins the tag's image by digest when it
+    does. Nothing is built: Docker is asked to pull and to inspect, and nothing else.
     """
     before = world.head()
     tagged = world.commit("release one")
@@ -241,8 +303,14 @@ def test_a_tag_bill_signed_on_main_is_deployed_from_the_tag(world: World) -> Non
     assert world.deploy() == EXIT_DONE
 
     assert world.head() == tagged
-    assert world.host.asked("docker", "image", "tag", IMAGE, PREVIOUS_IMAGE) == [before]
+    assert world.host.asked("docker", "pull", "--quiet", f"{REPOSITORY}:v1") == [before]
     assert world.host.asked("scripts/prod.sh", "deploy") == [tagged]
+    pin = f"{REPOSITORY}:v1@{_digest('v1')}"
+    assert world.host.pins == [(("scripts/prod.sh", "deploy"), f"SAVETHEDATE_IMAGE={pin}\n")]
+    assert {call[:2] for call, _ in world.host.calls if call[0] == "docker"} == {
+        ("docker", "pull"),
+        ("docker", "image"),
+    }
     assert not world.config.attempt_file.exists()
 
 
@@ -352,7 +420,7 @@ def test_without_allowed_signers_nothing_is_deployed(world: World) -> None:
 def test_a_failed_deploy_rolls_back_and_the_tag_is_never_retried(world: World) -> None:
     """A failed migration or health check puts the previous app back and fails loudly.
 
-    The checkout returns to the previous commit, the previous image becomes `latest`
+    The checkout returns to the previous commit, `image.env` names the previous image
     again, and the previous app is started WITHOUT its dependencies, so migrate does
     not run against a schema the previous code may not know. The exit is a failure,
     so the systemd unit fails and `prod.sh status` shows it.
@@ -366,9 +434,10 @@ def test_a_failed_deploy_rolls_back_and_the_tag_is_never_retried(world: World) -
     assert world.deploy() == EXIT_FAILED
 
     assert world.head() == before
-    assert world.host.asked("docker", "image", "tag", PREVIOUS_IMAGE, IMAGE) == [before]
-    rollback = ("scripts/prod.sh", "compose", "up", "-d", "--no-deps", "db", "app")
-    assert world.host.asked(*rollback) == [before]
+    assert world.host.asked(*ROLLBACK) == [before]
+    # The previous app is started from the previous pin, not the failed release's.
+    assert world.host.pins[-1] == (ROLLBACK, f"SAVETHEDATE_IMAGE={FIRST_PIN}\n")
+    assert world.pin() == FIRST_PIN
     assert any("FAILED" in line for line in world.log)
 
     world.host.calls.clear()
@@ -423,6 +492,7 @@ def test_a_tag_that_cannot_be_checked_out_is_a_failure_not_a_crash(world: World)
     assert world.deploy() == EXIT_FAILED
     assert world.head() == before
     assert world.host.asked("scripts/prod.sh", "deploy") == []
+    assert world.pin() == FIRST_PIN
     assert not world.config.attempt_file.exists()
 
 
@@ -445,19 +515,132 @@ def test_a_deploy_killed_halfway_is_rolled_back_by_the_next_tick(world: World) -
     world.push_main()
     world.tag("v1", world.bill)
     world.config.state_dir.mkdir()
-    world.config.attempt_file.write_text(f"v1 {before} 1\n")
+    world.config.attempt_file.write_text(f"v1 {before} {FIRST_PIN}\n")
     _git(world.checkout, "fetch", "-q", "--tags", "origin")
     _git(world.checkout, "checkout", "-q", "--detach", "v1")
+    (world.checkout / "image.env").write_text(f"SAVETHEDATE_IMAGE={world.push_image('v1')}\n")
 
     assert world.deploy() == EXIT_FAILED
 
     assert world.head() == before
+    assert world.pin() == FIRST_PIN
     assert world.host.asked("scripts/prod.sh", "deploy") == []
     assert world.host.asked(*INSTALLER) == [before]
     assert world.installed_script.read_bytes() == world.deploy_script_at(before)
     assert not world.config.attempt_file.exists()
     assert world.deploy() == EXIT_DONE  # v1 is recorded as failed
     assert world.head() == before
+
+
+# -- The image is pulled and pinned, never built (TAP-10322) -------------------------
+
+
+def test_a_tag_whose_image_is_not_pushed_yet_waits_and_is_not_burned(world: World) -> None:
+    """The tag can reach it13 before the image does. That must cost nothing.
+
+    Refused before anything moved, and NOT recorded as failed: a failed tag is never
+    retried, and this one has not been tried. The next tick, with the image there,
+    ships it.
+    """
+    before = world.head()
+    tagged = world.commit("release one")
+    world.push_main()
+    world.tag("v1", world.bill, image=False)
+
+    assert world.deploy() == EXIT_REFUSED
+
+    assert world.head() == before
+    assert world.pin() == FIRST_PIN
+    assert world.host.asked("scripts/prod.sh") == []
+    assert not world.config.attempt_file.exists()
+    assert not world.config.failed_tags_file.exists()
+    assert any("scripts/build-image.sh" in line for line in world.log)
+
+    world.push_image("v1")
+    assert world.deploy() == EXIT_DONE
+    assert world.head() == tagged
+
+
+def test_an_image_built_from_another_commit_is_not_what_bill_signed(world: World) -> None:
+    """The signature approves a commit. The image has to be that commit.
+
+    `v1` pushed from the wrong checkout, or from before the last merge, would
+    otherwise ship under a tag that approves something else.
+    """
+    before = world.head()
+    world.commit("release one")
+    world.push_main()
+    world.tag("v1", world.bill, image=False)
+    world.push_image("v1", built_from=before)
+
+    assert world.deploy() == EXIT_REFUSED
+
+    assert world.head() == before
+    assert world.pin() == FIRST_PIN
+    assert world.host.asked("scripts/prod.sh") == []
+    assert any(f"was built from {before}" in line for line in world.log)
+
+
+@pytest.mark.parametrize(
+    "contents",
+    [
+        None,
+        "",
+        f"SAVETHEDATE_IMAGE={REPOSITORY}:v0\n",
+        f"SAVETHEDATE_IMAGE={REPOSITORY}@{_digest('v0')}\n",
+        "SAVETHEDATE_IMAGE=savethedate-prod:latest\n",
+    ],
+    ids=["missing", "empty", "tag-only", "digest-only", "the-old-local-tag"],
+)
+def test_without_a_pinned_image_to_go_back_to_nothing_moves(
+    world: World, contents: str | None
+) -> None:
+    """`image.env` is the way back and names where to pull from. No pin, no deploy."""
+    before = world.head()
+    world.commit("release one")
+    world.push_main()
+    world.tag("v1", world.bill)
+    image_file = world.checkout / "image.env"
+    if contents is None:
+        image_file.unlink()
+    else:
+        image_file.write_text(contents)
+
+    assert world.deploy() == EXIT_REFUSED
+
+    assert world.head() == before
+    assert world.host.calls == []
+    assert not world.config.attempt_file.exists()
+
+
+def test_each_release_is_pulled_from_the_repository_the_live_pin_names(world: World) -> None:
+    """The repository is written down once, in the pin, and every release follows it."""
+    world.commit("release one")
+    world.push_main()
+    world.tag("v1", world.bill)
+    assert world.deploy() == EXIT_DONE
+    world.commit("release two")
+    world.push_main()
+    world.tag("v2", world.bill)
+
+    assert world.deploy() == EXIT_DONE
+
+    assert world.pin() == f"{REPOSITORY}:v2@{_digest('v2')}"
+    assert len(world.host.asked("docker", "pull", "--quiet", f"{REPOSITORY}:v2")) == 1
+
+
+def test_an_attempt_left_by_a_deploy_from_before_images_were_pinned_is_stuck(
+    world: World,
+) -> None:
+    """The older attempt file ended in 0 or 1, not a pin. There is no image to restore
+    from that, so it stops loudly rather than guess."""
+    before = world.head()
+    world.config.state_dir.mkdir()
+    world.config.attempt_file.write_text(f"v1 {before} 1\n")
+
+    assert world.deploy() == EXIT_ROLLBACK_FAILED
+    assert any(line.startswith("STUCK") for line in world.log)
+    assert world.host.calls == []
 
 
 # -- The installed copy follows the live tag (TAP-12499) ----------------------------
@@ -615,7 +798,7 @@ def test_a_reinstall_that_fails_after_a_deploy_keeps_the_new_app_and_fails_loudl
     assert world.deploy() == EXIT_REINSTALL_FAILED
 
     assert world.head() == tagged
-    assert world.host.asked("docker", "image", "tag", PREVIOUS_IMAGE, IMAGE) == []
+    assert world.pin() == f"{REPOSITORY}:v1@{_digest('v1')}"
     assert world.host.asked("scripts/prod.sh", "compose", "up", "-d", "--no-deps") == []
     assert not world.config.attempt_file.exists()
     assert not world.config.failed_tags_file.exists()
@@ -662,7 +845,7 @@ def test_prod_sh_migrates_on_its_own_before_up() -> None:
     text = (ROOT / "scripts" / "prod.sh").read_text()
     body = text.split("deploy() {", 1)[1].split("\n}", 1)[0]
     steps = [line.strip() for line in body.splitlines() if line.strip().startswith(("dc ", "_"))]
-    assert steps == ["dc build", "dc run --rm migrate", "dc up -d", "_wait_healthy"]
+    assert steps == ["dc pull migrate app", "dc run --rm migrate", "dc up -d", "_wait_healthy"]
 
 
 def test_prod_sh_stops_before_up_when_the_migration_fails(tmp_path: Path) -> None:
@@ -670,6 +853,7 @@ def test_prod_sh_stops_before_up_when_the_migration_fails(tmp_path: Path) -> Non
     (tmp_path / "scripts").mkdir()
     shutil.copy(ROOT / "scripts" / "prod.sh", tmp_path / "scripts" / "prod.sh")
     (tmp_path / ".env.prod").write_text("POSTGRES_PASSWORD=not-a-real-one\n")
+    (tmp_path / "image.env").write_text(f"SAVETHEDATE_IMAGE={FIRST_PIN}\n")
     bin_dir = tmp_path / "bin"
     bin_dir.mkdir()
     calls = tmp_path / "docker-calls"
@@ -692,7 +876,7 @@ def test_prod_sh_stops_before_up_when_the_migration_fails(tmp_path: Path) -> Non
 
     assert result.returncode != 0
     asked = [line.split(" -f ", 1)[1].split(" ", 1)[1] for line in calls.read_text().splitlines()]
-    assert asked == ["build", "run --rm migrate"]
+    assert asked == ["pull migrate app", "run --rm migrate"]
 
 
 def test_the_deploy_unit_runs_the_installed_copy_not_the_checkout() -> None:
@@ -723,6 +907,7 @@ def test_the_deploy_script_needs_nothing_but_the_standard_library() -> None:
         "collections",
         "dataclasses",
         "fcntl",
+        "json",
         "os",
         "pathlib",
         "re",

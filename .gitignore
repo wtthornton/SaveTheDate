@@ -12,6 +12,10 @@ venv/
 .env.prod
 # Off-machine backup credentials: the R2 access key and secret.
 .env.backup
+# The image production runs (TAP-10322). The deploy unit rewrites it in the deploy
+# directory for each release; tracked, it would make that checkout dirty and the
+# deploy refuses to move a dirty checkout. `image.env.example` shows the shape.
+image.env
 *.db
 *.sqlite3
 .pytest_cache/

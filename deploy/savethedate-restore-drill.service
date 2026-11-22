@@ -10,11 +10,13 @@
 
 [Unit]
 Description=SaveTheDate: restore the newest backup and count the guests
-Documentation=file:///home/wtthornton/code/SaveTheDate/docs/RUNBOOK.md
+Documentation=file://%h/srv/savethedate/docs/RUNBOOK.md
 After=docker.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/wtthornton/code/SaveTheDate
-ExecStart=/home/wtthornton/code/SaveTheDate/scripts/restore-drill.sh
+# The deploy directory, not a development checkout (TAP-10322). `~/code` can be
+# renamed away and this still runs.
+WorkingDirectory=%h/srv/savethedate
+ExecStart=%h/srv/savethedate/scripts/restore-drill.sh
 TimeoutStartSec=900

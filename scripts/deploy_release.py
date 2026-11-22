@@ -9,7 +9,9 @@ That signature is the production approval, and nothing else moves production.
 
 One tick:
 
-1. Fetch `main` and the tags from `origin` into the deploy checkout.
+1. Fetch `main` and the tags from `origin` into the deploy directory,
+   `~/srv/savethedate`: a clone of the repository that is nobody's working copy, with
+   `.env.prod` and `image.env` beside the compose file (TAP-10322).
 2. Look at the `v<N>` tags numbered above the live one, newest first. A tag counts
    only if its signature verifies against `allowed_signers` and the commit it names is
    on `origin/main`: only merged code that Bill approved ships. Tags that do not count
@@ -18,18 +20,24 @@ One tick:
 3. Take the newest tag that counts. Stop quietly if it has failed before. A failed tag
    is never retried, and an older approval is never shipped in its place; the fix is
    a new tag.
-4. Keep the running image as `savethedate-prod:previous`, move the checkout to the tag
-   and run the tag's own `scripts/prod.sh deploy`. That is build, migrate to completion,
-   start the app, then wait for `/health`.
-5. If that fails, record the tag as failed, move the checkout back, restore the
-   previous image and start the previous app without re-running migrations. The unit
+4. Pull the image that was built for the tag, `<repository>:v<N>`, and read its
+   digest. Nothing is built on it13. The repository is the one `image.env` already
+   names. The image must carry the tag's commit in its
+   `org.opencontainers.image.revision` label, which `scripts/build-image.sh` sets. No
+   image yet, or one built from another commit, is a refusal: nothing has moved, and
+   the next tick looks again.
+5. Move the checkout to the tag, write `image.env` with the image pinned by tag and
+   digest, and run the tag's own `scripts/prod.sh deploy`. That is pull, migrate to
+   completion, start the app, then wait for `/health`. If that fails, record the tag
+   as failed, move the checkout back, put the previous pin back in `image.env` and
+   start the previous app without re-running migrations. The unit
    then fails, and `scripts/prod.sh status` lists it under FAILED UNITS. The previous
    app is then running on whatever schema the new migration left; that is safe only
    for backward-compatible migrations, and a /health failure there is reported as
-   PRODUCTION MAY BE DOWN. A tick that
-   was killed mid-deploy leaves an `attempt` file, and the next tick rolls it back the
-   same way.
-6. Once the app is settled, at the new tag or back at the previous commit, run that
+   PRODUCTION MAY BE DOWN.
+6. A tick that was killed mid-deploy leaves an `attempt` file, and the next tick rolls
+   it back the same way.
+7. Once the app is settled, at the new tag or back at the previous commit, run that
    checkout's own `deploy/install-timers.sh` (TAP-12499). It replaces the installed
    copy of this file and the units with the ones from the commit now serving, so the
    installed copy never runs ahead of, or behind, what is live. The attempt file is
@@ -49,6 +57,7 @@ It never removes a volume and never runs `down`. The guest list is in that volum
 from __future__ import annotations
 
 import fcntl
+import json
 import os
 import re
 import subprocess
@@ -69,8 +78,14 @@ EXIT_ROLLBACK_FAILED = 3  # PRODUCTION MAY BE DOWN; the attempt file is kept for
 # installed deploy copy and units may be stale. Nothing is rolled back. TAP-12499.
 EXIT_REINSTALL_FAILED = 4
 
-IMAGE = "savethedate-prod:latest"
-PREVIOUS_IMAGE = "savethedate-prod:previous"
+# The one line of `image.env`, which Compose reads as `${SAVETHEDATE_IMAGE}`.
+IMAGE_VARIABLE = "SAVETHEDATE_IMAGE"
+# repository:tag@sha256:<64 hex>. `scripts/prod.sh` refuses anything else too.
+PIN_PATTERN = re.compile(
+    r"^(?P<repository>[^\s@]+):(?P<tag>[^\s@:/]+)@(?P<digest>sha256:[0-9a-f]{64})$"
+)
+# Set by `scripts/build-image.sh` to the commit the image was built from.
+REVISION_LABEL = "org.opencontainers.image.revision"
 TAG_PATTERN = re.compile(r"^v(\d+)$")
 GOOD_SIGNATURE = re.compile(r'Good "git" signature for (\S+) with')
 
@@ -96,10 +111,16 @@ class Config:
     def from_environment(cls) -> Config:
         home = Path.home()
         return cls(
-            checkout=Path(os.environ.get("SAVETHEDATE_DEPLOY_DIR", home / "code" / "SaveTheDate")),
+            # Not under ~/code. Production must keep running with that directory gone.
+            checkout=Path(os.environ.get("SAVETHEDATE_DEPLOY_DIR", home / "srv" / "savethedate")),
             allowed_signers=home / ".config" / "savethedate" / "allowed_signers",
             state_dir=home / ".local" / "state" / "savethedate" / "deploy",
         )
+
+    @property
+    def image_file(self) -> Path:
+        """The image production runs, pinned by tag and digest. Gitignored."""
+        return self.checkout / "image.env"
 
     @property
     def failed_tags_file(self) -> Path:
@@ -231,20 +252,98 @@ class Deployer:
         self.log(f"{tag} is signed by {match.group(1)} and is on origin/main.")
         return None
 
+    def current_pin(self) -> tuple[str, str]:
+        """The pinned image `image.env` names now, and the repository it is in.
+
+        The pin is the way back. The repository is where the next release is pulled
+        from, so it is written down in exactly one place.
+        """
+        try:
+            lines = self.config.image_file.read_text().splitlines()
+        except FileNotFoundError:
+            raise Refusal(
+                f"{self.config.image_file} is missing, so there is no image repository to "
+                "pull from and no image to go back to"
+            ) from None
+        values = [
+            line.partition("=")[2].strip()
+            for line in lines
+            if line.partition("=")[0].strip() == IMAGE_VARIABLE
+        ]
+        match = PIN_PATTERN.match(values[0]) if len(values) == 1 else None
+        if match is None:
+            raise Refusal(
+                f"{self.config.image_file} does not hold exactly one "
+                f"{IMAGE_VARIABLE}=repository:tag@sha256:digest line"
+            )
+        return values[0], match.group("repository")
+
+    def pin_for(self, tag: str, repository: str) -> str:
+        """Pull the image built for `tag` and return it pinned by tag and digest.
+
+        Runs before anything has moved, so every failure here is a Refusal. An image
+        that has not been pushed yet is the ordinary case: the tag can arrive first.
+        """
+        reference = f"{repository}:{tag}"
+        pulled = self._cmd("docker", "pull", "--quiet", reference)
+        if pulled.returncode != 0:
+            raise Refusal(
+                f"{reference} could not be pulled ({pulled.stderr.strip() or 'no output'}). "
+                "Build and push it with scripts/build-image.sh on nlt-dev"
+            )
+        inspected = self._cmd("docker", "image", "inspect", reference)
+        if inspected.returncode != 0:
+            raise Refusal(f"docker image inspect {reference} failed: {inspected.stderr.strip()}")
+        try:
+            image = json.loads(inspected.stdout)[0]
+            labels = image["Config"].get("Labels") or {}
+            digests = [
+                name.partition("@")[2]
+                for name in image.get("RepoDigests") or []
+                if name.partition("@")[0] == repository
+            ]
+        except (ValueError, LookupError, TypeError, AttributeError):
+            raise Refusal(f"docker image inspect {reference} gave nothing readable") from None
+
+        # The signature approves a commit. This is what ties the image to it: built
+        # from any other commit, it is not what Bill signed. It catches the wrong
+        # image under the right tag. It is not a defence against whoever can push to
+        # the registry, who can write any label; the registry is trusted to that extent.
+        commit = self._git("rev-parse", f"{tag}^{{commit}}")
+        built_from = labels.get(REVISION_LABEL)
+        if built_from != commit:
+            raise Refusal(
+                f"{reference} was built from {built_from or 'an unlabelled commit'}, "
+                f"but {tag} names {commit}"
+            )
+        pin = f"{reference}@{digests[0]}" if len(digests) == 1 else ""
+        if PIN_PATTERN.match(pin) is None:
+            raise Refusal(f"{reference} has no single registry digest for {repository}: {digests}")
+        return pin
+
+    def _write_pin(self, pin: str) -> None:
+        # Whole or not at all, like the attempt file: Compose must never read half a line.
+        partial = self.config.image_file.with_suffix(".partial")
+        partial.write_text(f"{IMAGE_VARIABLE}={pin}\n")
+        os.replace(partial, self.config.image_file)
+
     def deploy(self, tag: str) -> int:
         previous_commit = self._git("rev-parse", "HEAD")
-        had_image = self._cmd("docker", "image", "inspect", IMAGE).returncode == 0
-        if had_image and self._cmd("docker", "image", "tag", IMAGE, PREVIOUS_IMAGE).returncode:
-            self.log(f"REFUSED: could not keep the running image as {PREVIOUS_IMAGE}.")
+        try:
+            previous_pin, repository = self.current_pin()
+            pin = self.pin_for(tag, repository)
+        except Refusal as refusal:
+            self.log(f"REFUSED: {refusal}. Nothing was changed.")
             return EXIT_REFUSED
 
-        self.log(f"Deploying {tag} over {previous_commit[:12]}.")
-        self._write_attempt(f"{tag} {previous_commit} {int(had_image)}\n")
+        self.log(f"Deploying {tag} as {pin} over {previous_commit[:12]}.")
+        self._write_attempt(f"{tag} {previous_commit} {previous_pin}\n")
         try:
             self._git("checkout", "--quiet", "--detach", tag)
-        except Refusal as refusal:
-            self.log(f"FAILED: {refusal}.")
-            return self.fail(tag, previous_commit, had_image)
+            self._write_pin(pin)
+        except (Refusal, OSError) as problem:
+            self.log(f"FAILED: {problem}.")
+            return self.fail(tag, previous_commit, previous_pin)
         deployed = self._cmd("scripts/prod.sh", "deploy")
         self.log(deployed.stdout + deployed.stderr)
         if deployed.returncode == 0:
@@ -259,7 +358,7 @@ class Deployer:
             return EXIT_DONE
 
         self.log(f"FAILED: {tag} did not deploy. Rolling back to {previous_commit[:12]}.")
-        return self.fail(tag, previous_commit, had_image)
+        return self.fail(tag, previous_commit, previous_pin)
 
     def reinstall(self, live: str) -> bool:
         """Install this script and the units from the checkout, which is now `live`.
@@ -293,7 +392,7 @@ class Deployer:
             "keep running whatever copy is installed."
         )
         self.log(
-            "Once the cause is fixed, run deploy/install-timers.sh from ~/code/SaveTheDate "
+            f"Once the cause is fixed, run deploy/install-timers.sh from {self.config.checkout} "
             "on it13, or let the next release reinstall it."
         )
         return False
@@ -314,20 +413,24 @@ class Deployer:
         it is rolled back like one.
         """
         fields = self.config.attempt_file.read_text().split()
-        if len(fields) != 3 or tag_number(fields[0]) is None:
+        if (
+            len(fields) != 3
+            or tag_number(fields[0]) is None
+            or PIN_PATTERN.match(fields[2]) is None
+        ):
             self.log(f"STUCK: {self.config.attempt_file} is not an attempt record: {fields!r}.")
             self.log("A deploy may be half finished. Check scripts/prod.sh status on it13,")
             self.log("then remove the file by hand. No deploy runs until then.")
             return EXIT_ROLLBACK_FAILED
-        tag, previous_commit, had_image = fields
+        tag, previous_commit, previous_pin = fields
         self.log(
             f"FAILED: the deploy of {tag} was interrupted. Rolling back to {previous_commit[:12]}."
         )
-        return self.fail(tag, previous_commit, had_image == "1")
+        return self.fail(tag, previous_commit, previous_pin)
 
-    def fail(self, tag: str, previous_commit: str, had_image: bool) -> int:
+    def fail(self, tag: str, previous_commit: str, previous_pin: str) -> int:
         self._record_failed(tag)
-        result = self.rollback(previous_commit, had_image)
+        result = self.rollback(previous_commit, previous_pin)
         if result == EXIT_ROLLBACK_FAILED:
             # Kept after a failed rollback, so the next tick tries the rollback again.
             return result
@@ -341,27 +444,32 @@ class Deployer:
         self.reinstall(previous_commit[:12])
         return result
 
-    def rollback(self, previous_commit: str, had_image: bool) -> int:
-        steps: list[Sequence[str]] = [("git", "checkout", "--quiet", "--detach", previous_commit)]
-        if had_image:
-            steps.append(("docker", "image", "tag", PREVIOUS_IMAGE, IMAGE))
-        else:
-            self.log(
-                f"There was no {IMAGE} before this deploy, so there is no image to go back to."
-            )
+    def rollback(self, previous_commit: str, previous_pin: str) -> int:
+        moved_back = self._cmd("git", "checkout", "--quiet", "--detach", previous_commit)
+        if moved_back.returncode != 0:
+            self.log(f"ROLLBACK FAILED at the checkout: {moved_back.stderr.strip()}")
+            self.log("PRODUCTION MAY BE DOWN. Run scripts/prod.sh status on it13.")
+            return EXIT_ROLLBACK_FAILED
+        # The previous image is still on this box, and the pin names it by digest, so
+        # going back is one line in a file and needs no registry.
+        try:
+            self._write_pin(previous_pin)
+        except OSError as exc:
+            self.log(f"ROLLBACK FAILED writing {self.config.image_file}: {exc}")
+            self.log("PRODUCTION MAY BE DOWN. Run scripts/prod.sh status on it13.")
+            return EXIT_ROLLBACK_FAILED
         # --no-deps: the schema may already be at the new revision, which the previous
         # code's `alembic upgrade head` does not know, so migrate must not run again.
         # That also means the previous app now runs on the NEW schema. It comes back
         # only if the migration was backward compatible (expand, then contract in a
         # later release); if it dropped something the previous code reads, /health
         # fails below and this says so.
-        steps.append(("scripts/prod.sh", "compose", "up", "-d", "--no-deps", "db", "app"))
-        for step in steps:
-            result = self._cmd(*step)
-            if result.returncode != 0:
-                self.log(f"ROLLBACK FAILED at `{' '.join(step)}`: {result.stderr.strip()}")
-                self.log("PRODUCTION MAY BE DOWN. Run scripts/prod.sh status on it13.")
-                return EXIT_ROLLBACK_FAILED
+        step = ("scripts/prod.sh", "compose", "up", "-d", "--no-deps", "db", "app")
+        result = self._cmd(*step)
+        if result.returncode != 0:
+            self.log(f"ROLLBACK FAILED at `{' '.join(step)}`: {result.stderr.strip()}")
+            self.log("PRODUCTION MAY BE DOWN. Run scripts/prod.sh status on it13.")
+            return EXIT_ROLLBACK_FAILED
         if not self.app_healthy():
             self.log("ROLLBACK FAILED: the previous app does not answer /health.")
             self.log("PRODUCTION MAY BE DOWN. Run scripts/prod.sh status on it13.")

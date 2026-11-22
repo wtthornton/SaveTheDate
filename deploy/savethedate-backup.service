@@ -9,15 +9,17 @@
 
 [Unit]
 Description=SaveTheDate: back up the production database off this machine
-Documentation=file:///home/wtthornton/code/SaveTheDate/docs/RUNBOOK.md
+Documentation=file://%h/srv/savethedate/docs/RUNBOOK.md
 # The dump runs `pg_dump` inside the running db container, so there is nothing to do
 # if Docker is not up yet. A failure here is loud rather than silent; see the drill.
 After=docker.service
 
 [Service]
 Type=oneshot
-WorkingDirectory=/home/wtthornton/code/SaveTheDate
-ExecStart=/home/wtthornton/code/SaveTheDate/scripts/backup.sh
+# The deploy directory, not a development checkout (TAP-10322). `~/code` can be
+# renamed away and this still runs.
+WorkingDirectory=%h/srv/savethedate
+ExecStart=%h/srv/savethedate/scripts/backup.sh
 
 # The database may be mid-write when this starts; a dump is a consistent snapshot, so
 # it does not need the app stopped. Generous timeout anyway: a dump that is killed

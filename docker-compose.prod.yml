@@ -1,10 +1,15 @@
 # The production stack. TAP-7733.
 #
 # Always drive this through `scripts/prod.sh`, never `docker compose -f` by hand:
-# the script supplies `--env-file .env.prod`, and without it every `${...}` below
-# resolves to empty. Compose does not fail on an unset variable, it substitutes
-# nothing — so a forgotten flag produces a Postgres with a blank password rather
-# than an error.
+# the script supplies `--env-file .env.prod` and `--env-file image.env`, and without
+# them every `${...}` below resolves to empty. Compose does not fail on an unset
+# variable, it substitutes nothing — so a forgotten flag produces a Postgres with a
+# blank password rather than an error.
+#
+# This file is read from the DEPLOY DIRECTORY, `~/srv/savethedate` on it13: a clone of
+# this repository that the deploy unit moves from one signed tag to the next, with
+# `.env.prod`, `.env.backup` and `image.env` beside it. Nothing in production reads
+# `~/code` (TAP-10322).
 #
 # This shares a machine with the development stack in `docker-compose.yml`, so the
 # two are kept apart on every axis that can collide:
@@ -20,8 +25,27 @@
 # value in a committed file cannot be missing on the day somebody rebuilds the
 # environment from memory. `tests/test_production_stack.py` asserts each one.
 # `.env.prod` holds only what must not be committed.
+#
+# The one exception is the application image. It is pinned by tag AND digest, and a
+# digest does not exist until the image has been built, so it cannot be written here
+# ahead of time. It comes from `image.env` in the deploy directory, which
+# `scripts/deploy_release.py` writes for each release. See `x-app-image` below.
 
+# Fixed, never derived. Left out, Compose would name the project after the directory
+# this file sits in, and moving the deploy directory would start the stack on a NEW,
+# EMPTY volume beside the one that holds the guest list.
 name: savethedate-prod
+
+# The application image: `<repository>:v<N>@sha256:<digest>`, from `image.env`.
+#
+# There is NO `build:` in this file. The image is built once, on nlt-dev, by
+# `scripts/build-image.sh`, from the commit a release tag names, and pushed. it13
+# only pulls it. So production needs no source tree to build from, and what runs is
+# the bytes that were built, not whatever a rebuild months later would resolve.
+#
+# `:?` and not `:-`: with no pin the stack must refuse to start, not fall back to
+# some `latest`. `scripts/prod.sh` also refuses a value that has no digest.
+x-app-image: &app-image ${SAVETHEDATE_IMAGE:?set SAVETHEDATE_IMAGE in image.env, as repository:tag@sha256:digest}
 
 services:
   db:
@@ -67,10 +91,7 @@ services:
   # cannot start until it has exited 0. A failed migration therefore stops the
   # release instead of producing an app talking to a half-migrated schema.
   migrate:
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: savethedate-prod:latest
+    image: *app-image
     restart: "no"
     command: ["alembic", "upgrade", "head"]
     environment:
@@ -80,12 +101,8 @@ services:
         condition: service_healthy
 
   app:
-    # Same image as `migrate`, built once. Declaring the build here as well lets
-    # `docker compose build` name either service without building twice.
-    build:
-      context: .
-      dockerfile: Dockerfile
-    image: savethedate-prod:latest
+    # The same image as `migrate`, by the same anchor, so the two cannot differ.
+    image: *app-image
     restart: unless-stopped
     ports:
       # 127.0.0.1 ONLY. The named Cloudflare Tunnel runs on this box and dials out,

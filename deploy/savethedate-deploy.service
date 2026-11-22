@@ -18,7 +18,7 @@
 
 [Unit]
 Description=SaveTheDate: deploy the newest signed release tag
-Documentation=file:///home/wtthornton/code/SaveTheDate/docs/RUNBOOK.md
+Documentation=file://%h/srv/savethedate/docs/RUNBOOK.md
 After=docker.service network-online.target
 
 [Service]

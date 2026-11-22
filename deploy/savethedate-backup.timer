@@ -2,7 +2,7 @@
 
 [Unit]
 Description=SaveTheDate: nightly database backup
-Documentation=file:///home/wtthornton/code/SaveTheDate/docs/RUNBOOK.md
+Documentation=file://%h/srv/savethedate/docs/RUNBOOK.md
 
 [Timer]
 OnCalendar=*-*-* 03:30:00

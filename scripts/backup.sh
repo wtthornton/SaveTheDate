@@ -5,7 +5,10 @@
 #   scripts/backup.sh            dump, verify, upload, prune
 #   scripts/backup.sh --local    dump and verify only; do NOT upload (for testing)
 #
-# Run on a timer by `deploy/savethedate-backup.timer`.
+# Run on a timer by `deploy/savethedate-backup.timer`, from the deploy directory
+# (`~/srv/savethedate` on it13). It reads `.env.prod`, `image.env` and `.env.backup`
+# from beside the compose file there and stages dumps in `.backups/` there. It needs
+# no other checkout to exist.
 #
 # LOSING THE GUEST LIST IS THE ONE FAILURE HERE WITH NO RECOVERY PATH, and the date
 # cannot move. Three things follow, and each is enforced below rather than hoped for:
@@ -31,7 +34,6 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="${ROOT}/docker-compose.prod.yml"
 ENV_FILE="${ROOT}/.env.prod"
 BACKUP_ENV="${ROOT}/.env.backup"
 STAGING="${BACKUP_STAGING:-${ROOT}/.backups}"
@@ -57,7 +59,10 @@ chmod 700 "$STAGING"
 
 [ -f "$ENV_FILE" ] || die "missing $ENV_FILE — the production stack is not configured"
 
-dc() { docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"; }
+# Through prod.sh, which is the one place that knows the compose file and the env
+# files it needs. Naming them again here is how this script and the stack it backs up
+# come to disagree.
+dc() { "${ROOT}/scripts/prod.sh" compose "$@"; }
 
 # -- 1. The manifest, BEFORE the dump ---------------------------------------
 #

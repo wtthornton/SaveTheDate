@@ -22,7 +22,6 @@
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-COMPOSE_FILE="${ROOT}/docker-compose.prod.yml"
 ENV_FILE="${ROOT}/.env.prod"
 BACKUP_ENV="${ROOT}/.env.backup"
 WORK="$(mktemp -d)"
@@ -45,7 +44,10 @@ cleanup() {
 trap cleanup EXIT
 
 [ -f "$ENV_FILE" ] || die "missing $ENV_FILE"
-dc() { docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"; }
+# Through prod.sh, which is the one place that knows the compose file and the env
+# files it needs. Naming them again here is how this script and the stack it backs up
+# come to disagree.
+dc() { "${ROOT}/scripts/prod.sh" compose "$@"; }
 
 # -- 1. Get a dump and its manifest ------------------------------------------
 DUMP=""

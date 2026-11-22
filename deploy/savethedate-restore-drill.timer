@@ -3,7 +3,7 @@
 
 [Unit]
 Description=SaveTheDate: weekly restore drill
-Documentation=file:///home/wtthornton/code/SaveTheDate/docs/RUNBOOK.md
+Documentation=file://%h/srv/savethedate/docs/RUNBOOK.md
 
 [Timer]
 OnCalendar=Sun *-*-* 04:30:00

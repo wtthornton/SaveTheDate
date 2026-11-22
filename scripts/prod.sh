@@ -2,8 +2,9 @@
 #
 # The production stack on this box. TAP-7733.
 #
-#   scripts/prod.sh deploy   build, migrate, and bring the app up (the deploy unit runs it)
-#   scripts/prod.sh up       start without rebuilding
+#   scripts/prod.sh deploy   pull the pinned image, migrate, and bring the app up
+#                            (the deploy unit runs it)
+#   scripts/prod.sh up       start what is already pinned
 #   scripts/prod.sh down     stop the stack, KEEPING the database volume
 #   scripts/prod.sh status   what is running, and whether the app answers
 #   scripts/prod.sh logs     follow the app's logs
@@ -14,6 +15,13 @@
 # error on an unset variable, it substitutes nothing — so running the compose file
 # without it would start Postgres with a blank password rather than fail.
 #
+# It runs from the DEPLOY DIRECTORY, `~/srv/savethedate` on it13, and reads three
+# files beside itself there: `docker-compose.prod.yml`, `.env.prod` (secrets) and
+# `image.env` (the image this release runs). It builds nothing and needs no source
+# tree; nothing here reads `~/code` (TAP-10322). `scripts/backup.sh` and
+# `scripts/restore-drill.sh` reach Compose through `prod.sh compose`, so this is the
+# only place that knows which files Compose is given.
+#
 # THIS IS THE GUEST LIST. `docker-compose.prod.yml` holds the only copy on this
 # machine, in the volume `savethedate-prod_pgdata`. Nothing here removes a volume,
 # and `down` deliberately offers no way to.
@@ -23,7 +31,12 @@ set -euo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 COMPOSE_FILE="${ROOT}/docker-compose.prod.yml"
 ENV_FILE="${ROOT}/.env.prod"
+IMAGE_FILE="${ROOT}/image.env"
 APP_URL_DEFAULT_PORT=8100
+
+# repository:tag@sha256:<64 hex>. The tag says which release it is, for a person; the
+# digest is what Docker actually pulls, so a tag that is moved later changes nothing.
+IMAGE_PIN='^SAVETHEDATE_IMAGE=[^[:space:]@]+:[^[:space:]@:/]+@sha256:[0-9a-f]{64}$'
 
 _require_env() {
   if [ ! -f "$ENV_FILE" ]; then
@@ -39,11 +52,27 @@ _require_env() {
     echo "Generate one: python3 -c \"import secrets; print(secrets.token_urlsafe(32))\"" >&2
     exit 1
   fi
+  # The compose file's `:?` catches a missing pin. It cannot tell `savethedate:v3`
+  # from a pinned reference, and a bare tag is exactly the unpinned image this file
+  # exists to rule out, so the shape is checked here.
+  if [ ! -f "$IMAGE_FILE" ]; then
+    echo "Missing $IMAGE_FILE" >&2
+    echo "It names the image production runs, as one line:" >&2
+    echo "  SAVETHEDATE_IMAGE=<repository>:v<N>@sha256:<digest>" >&2
+    echo "scripts/build-image.sh prints that line when it pushes a release image, and" >&2
+    echo "the deploy unit rewrites it for each release. See docs/RUNBOOK.md." >&2
+    exit 1
+  fi
+  if ! grep -qE "$IMAGE_PIN" "$IMAGE_FILE"; then
+    echo "SAVETHEDATE_IMAGE in $IMAGE_FILE is not pinned by tag and digest." >&2
+    echo "It must be exactly: SAVETHEDATE_IMAGE=<repository>:v<N>@sha256:<64 hex digits>" >&2
+    exit 1
+  fi
 }
 
 dc() {
   _require_env
-  docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"
+  docker compose --env-file "$ENV_FILE" --env-file "$IMAGE_FILE" -f "$COMPOSE_FILE" "$@"
 }
 
 _app_port() {
@@ -59,8 +88,13 @@ _app_port() {
 }
 
 deploy() {
-  # The release order the plan asks for: build the image, run the migration to
+  # The release order the plan asks for: get the image, run the migration to
   # completion, and only then start the app.
+  #
+  # The image is PULLED, never built here (TAP-10322). `image.env` pins it by digest,
+  # so this fetches exactly the bytes that were built on nlt-dev, and is a no-op when
+  # they are already on this box. Only `migrate` and `app` are named: a bare `pull`
+  # would also move Postgres to whatever `postgres:17-alpine` means today.
   #
   # The migration runs on its own first, and `up` comes only after it has passed.
   # `up` alone looks equivalent because the app waits on
@@ -73,7 +107,7 @@ deploy() {
   # the schema is unchanged too. `up` then runs migrate once more, as a no-op.
   #
   # `scripts/deploy_release.py` runs this from a signed tag; nobody should need to.
-  dc build
+  dc pull migrate app
   dc run --rm migrate
   dc up -d
   _wait_healthy
